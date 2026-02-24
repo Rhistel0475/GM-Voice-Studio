@@ -1,6 +1,6 @@
 """
-TTS service: thin interface over XTTSv2 (Coqui TTS).
-Callers get (audio_array, sample_rate). Set COQUI_TOS_AGREED=1 to accept the model license.
+TTS service: thin interface over the XTTSv2 engine.
+Callers get (audio_array, sample_rate); engine can be swapped later.
 """
 import logging
 import os
@@ -12,20 +12,13 @@ import numpy as np
 import torch
 import soundfile as sf
 
-# Coqui TTS imports isin_mps_friendly from transformers.pytorch_utils, which was removed in transformers 5.x.
-# Provide a compatibility shim so TTS can load (torch.isin works on MPS in recent PyTorch).
-import transformers.pytorch_utils as _tf_pt_utils
-if not hasattr(_tf_pt_utils, "isin_mps_friendly"):
-    _tf_pt_utils.isin_mps_friendly = torch.isin
-
 from config import AUDIO_CACHE_SIZE
 
-# XTTSv2 supported languages (no preset accents; always use a cloned voice)
+# XTTSv2 Supported Languages
 DEFAULT_LANGUAGE_TAGS = ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "hu", "ko", "ja", "hi"]
 
 _tts = None
 _audio_cache: list[str] = []
-
 
 def _get_tts():
     global _tts
@@ -33,18 +26,15 @@ def _get_tts():
         os.environ["COQUI_TOS_AGREED"] = "1"
         from TTS.api import TTS
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        logging.info("Loading XTTSv2 on %s...", device)
+        logging.info(f"Loading XTTSv2 on {device}...")
         _tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
     return _tts
-
 
 def is_model_loaded() -> bool:
     return _tts is not None
 
-
 def get_supported_language_tags() -> list[str]:
     return list(DEFAULT_LANGUAGE_TAGS)
-
 
 def _evict_old_audio():
     while len(_audio_cache) >= AUDIO_CACHE_SIZE and _audio_cache:
@@ -54,7 +44,6 @@ def _evict_old_audio():
         except OSError:
             pass
 
-
 def generate(
     text: str,
     language_tag: Optional[str] = "en",
@@ -63,6 +52,7 @@ def generate(
     top_p: float = 0.85,
     repetition_penalty: float = 2.0,
 ) -> tuple[np.ndarray, int]:
+    
     text = (text or "").strip()
     if not text:
         raise ValueError("Text is required")
@@ -83,7 +73,7 @@ def generate(
         gpt_cond_latent = latents["gpt_cond_latent"].to(device)
         speaker_embedding = latents["speaker_embedding"].to(device)
 
-        # FIX: We now use strict keyword arguments to prevent the tensor-shifting bug
+        # Strict keyword arguments to prevent Tensor/Boolean evaluation bugs
         out = tts.synthesizer.tts_model.inference(
             text=text,
             language=lang,
@@ -101,7 +91,6 @@ def generate(
 
     return audio, sr
 
-
 def generate_to_file(
     text: str,
     language_tag: Optional[str] = "en",
@@ -114,10 +103,8 @@ def generate_to_file(
     try:
         sf.write(path, audio, sample_rate)
     except Exception as e:
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+        try: os.unlink(path)
+        except OSError: pass
         raise RuntimeError(f"Could not save audio: {e!s}") from e
     _audio_cache.append(path)
     return path
