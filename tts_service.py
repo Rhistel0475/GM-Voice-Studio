@@ -73,39 +73,28 @@ def generate(
     lang = language_tag if language_tag in DEFAULT_LANGUAGE_TAGS else "en"
 
     try:
-        try:
-            latents = torch.load(speaker_emb_path, map_location="cpu", weights_only=False)
-        except TypeError:
-            latents = torch.load(speaker_emb_path, map_location="cpu")
-        device = tts.synthesizer.tts_model.device
-        # Support dict (our format + TTS internal "gpt_conditioning_latents") or tuple from get_conditioning_latents
-        if isinstance(latents, dict):
-            gpt_cond_latent = (latents.get("gpt_cond_latent") or latents.get("gpt_conditioning_latents"))
-            speaker_embedding = latents.get("speaker_embedding")
-            if gpt_cond_latent is None or speaker_embedding is None:
-                raise ValueError(
-                    "Voice file missing gpt_cond_latent or speaker_embedding. Re-clone the voice (upload a new sample)."
-                )
-        elif isinstance(latents, (tuple, list)) and len(latents) == 2:
-            gpt_cond_latent, speaker_embedding = latents[0], latents[1]
-        else:
-            raise ValueError(
-                "Voice file is in an old format (single embedding). Re-clone the voice by uploading a new sample."
-            )
-        gpt_cond_latent = gpt_cond_latent.to(device)
-        speaker_embedding = speaker_embedding.to(device)
+        latents = torch.load(speaker_emb_path)
+        if not isinstance(latents, dict):
+            raise ValueError("Voice file is in an old format. Re-clone the voice by uploading a new sample.")
+            
+        device = tts.device
+        
+        # Send latents to GPU/CPU
+        gpt_cond_latent = latents["gpt_cond_latent"].to(device)
+        speaker_embedding = latents["speaker_embedding"].to(device)
 
+        # FIX: We now use strict keyword arguments to prevent the tensor-shifting bug
         out = tts.synthesizer.tts_model.inference(
-            text,
-            lang,
-            gpt_cond_latent,
-            speaker_embedding,
+            text=text,
+            language=lang,
+            gpt_cond_latent=gpt_cond_latent,
+            speaker_embedding=speaker_embedding,
             temperature=temperature,
             top_p=top_p,
-            repetition_penalty=repetition_penalty,
+            repetition_penalty=repetition_penalty
         )
         audio = np.array(out["wav"])
-        sr = 24000
+        sr = 24000  # XTTSv2 native sample rate
     except Exception as e:
         logging.exception("TTS generate failed")
         raise RuntimeError(f"Generation failed: {e!s}") from e
