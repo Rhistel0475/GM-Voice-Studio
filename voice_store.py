@@ -45,21 +45,26 @@ def _meta_path(voice_id: str) -> Path:
 
 def _local_save_embedding(
     voice_id: str,
-    embedding: torch.Tensor,
+    embedding: dict | torch.Tensor,
     consent_scope: str = "tts",
     name: Optional[str] = None,
+    faction: Optional[str] = None,
 ) -> None:
     pt = _pt_path(voice_id)
     meta = _meta_path(voice_id)
-    emb = embedding.cpu()
-    if emb.ndim == 1:
-        emb = emb.unsqueeze(0)
+    if isinstance(embedding, dict):
+        emb = {k: v.cpu() if hasattr(v, "cpu") else v for k, v in embedding.items()}
+    else:
+        emb = embedding.cpu()
+        if emb.ndim == 1:
+            emb = emb.unsqueeze(0)
     torch.save(emb, pt)
     meta.write_text(json.dumps({
         "voice_id": voice_id,
         "consent_scope": consent_scope,
         "created_at": time.time(),
         "name": (name or "").strip(),
+        "faction": (faction or "").strip() or "",
     }, indent=2))
 
 
@@ -90,6 +95,7 @@ def _local_list_voices() -> list[dict]:
                 "name": data.get("name", ""),
                 "created_at": data.get("created_at", 0),
                 "consent_scope": data.get("consent_scope", "tts"),
+                "faction": data.get("faction", ""),
             })
         except (json.JSONDecodeError, OSError):
             continue
@@ -139,20 +145,25 @@ def _s3_client():
 
 def _s3_save_embedding(
     voice_id: str,
-    embedding: torch.Tensor,
+    embedding: dict | torch.Tensor,
     consent_scope: str = "tts",
     name: Optional[str] = None,
+    faction: Optional[str] = None,
 ) -> None:
     client = _s3_client()
     bucket = VOICE_STORAGE_BUCKET
-    emb = embedding.cpu()
-    if emb.ndim == 1:
-        emb = emb.unsqueeze(0)
+    if isinstance(embedding, dict):
+        emb = {k: v.cpu() if hasattr(v, "cpu") else v for k, v in embedding.items()}
+    else:
+        emb = embedding.cpu()
+        if emb.ndim == 1:
+            emb = emb.unsqueeze(0)
     meta = {
         "voice_id": voice_id,
         "consent_scope": consent_scope,
         "created_at": time.time(),
         "name": (name or "").strip(),
+        "faction": (faction or "").strip() or "",
     }
     with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
         torch.save(emb, f.name)
@@ -298,15 +309,16 @@ def save_embedding(
     consent_scope: str = "tts",
     name: Optional[str] = None,
     owner_id: Optional[str] = None,
+    faction: Optional[str] = None,
 ) -> None:
     """Save .pt and metadata. Embedding shape [1, 128] or [128]. owner_id used when use_db() for per-user scoping."""
     created_at = time.time()
     if _use_s3():
-        _s3_save_embedding(voice_id, embedding, consent_scope=consent_scope, name=name)
+        _s3_save_embedding(voice_id, embedding, consent_scope=consent_scope, name=name, faction=faction)
     else:
-        _local_save_embedding(voice_id, embedding, consent_scope=consent_scope, name=name)
+        _local_save_embedding(voice_id, embedding, consent_scope=consent_scope, name=name, faction=faction)
     if use_db():
-        db_insert_voice(voice_id, (name or "").strip(), consent_scope, created_at, owner_id=owner_id)
+        db_insert_voice(voice_id, (name or "").strip(), consent_scope, created_at, owner_id=owner_id, faction=faction)
 
 
 def load_embedding_path(voice_id: str) -> Optional[str]:

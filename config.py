@@ -1,8 +1,8 @@
 """Env-based configuration for TTS and voice storage."""
 import os
 
-# TTS engine
-MODEL_NAME = os.environ.get("KANI_MODEL_NAME", "nineninesix/kani-tts-2-en")
+# TTS engine (XTTSv2 via Coqui TTS)
+# Set COQUI_TOS_AGREED=1 to accept the model license (required for unattended startup).
 AUDIO_CACHE_SIZE = int(os.environ.get("AUDIO_CACHE_SIZE", "10"))
 
 # Server (Gradio and FastAPI)

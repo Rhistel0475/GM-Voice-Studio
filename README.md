@@ -1,22 +1,24 @@
-# Kani TTS
+# GM Voice Studio (XTTSv2)
 
-AI voice engine: generate speech with regional accents or clone a voice from a short recording. Uses [Kani-TTS-2](https://huggingface.co/nineninesix/kani-tts-2-en) and a WavLM-based speaker embedder.
+AI voice engine: clone a voice from a short recording and generate speech with [XTTSv2](https://github.com/coqui-ai/TTS) (Coqui TTS). Supports multiple languages; a cloned character voice is required for synthesis.
 
 ## Run the server
 
 ```bash
 # From project root, with venv activated
+export COQUI_TOS_AGREED=1   # Required: accept Coqui model license (prevents hang on first load)
 pip install -r requirements-core.txt && pip install -r requirements-server.txt
 python server.py
 ```
 
-**If pip reports "resolution-too-deep"**: Your venv may already have the packages (check for "Requirement already satisfied"). Try running `python server.py` first. If you need a clean install, install in order one package at a time so pip never resolves the full tree at once:
+**Python 3.12+**: This project uses **coqui-tts** (the [maintained fork](https://github.com/idiap/coqui-ai-TTS)) which supports Python 3.10–3.14. The original PyPI package `TTS` only supports Python &lt;3.12.
+
+**If pip reports "resolution-too-deep"**: Install in order one package at a time:
 
 ```bash
 pip install torch>=2.10.0
-pip install "transformers==4.56.0"
 pip install "soundfile>=0.13.0"
-pip install "kani-tts-2==0.0.5"
+pip install "coqui-tts>=0.27.0"
 pip install fastapi uvicorn slowapi "gradio>=6.6.0"
 python server.py
 ```
@@ -28,7 +30,7 @@ python server.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `KANI_MODEL_NAME` | `nineninesix/kani-tts-2-en` | Hugging Face model ID |
+| `COQUI_TOS_AGREED` | (unset) | Set to `1` to accept the Coqui TTS model license (recommended for servers) |
 | `SERVER_NAME` | `0.0.0.0` | Bind address |
 | `PORT` | `7862` | Server port (override with env var) |
 | `VOICE_STORAGE_PATH` | `./voice_storage` | Directory for cloned voice embeddings (local) |

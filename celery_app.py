@@ -24,6 +24,7 @@ def clone_voice_task(
     consent_scope: str = "tts",
     name: str | None = None,
     owner_id: str | None = None,
+    faction: str | None = None,
 ):
     """
     Run voice clone on a pre-saved upload file. Returns voice_id.
@@ -37,6 +38,7 @@ def clone_voice_task(
             consent_scope=consent_scope,
             name=name,
             owner_id=owner_id,
+            faction=faction,
         )
         return {"status": "completed", "voice_id": voice_id}
     except Exception as e:
@@ -54,19 +56,25 @@ def narrate_task(
     self,
     job_id: str,
     text: str,
-    language_tag: str = "en_us",
+    language_tag: str = "en",
     voice_id: str | None = None,
     chunk_by: str = "sentence",
     max_chars: int = 500,
 ):
     """
     Run long-form narrate: split text, TTS each chunk, concatenate, write WAV to NARRATE_RESULT_PATH/job_id.wav.
-    Returns {"job_type": "narrate"} on success.
+    XTTSv2 requires voice_id. Returns {"job_type": "narrate"} on success.
     """
     from config import NARRATE_RESULT_PATH
     from text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
     from tts_service import generate as tts_generate
     from voice_store import load_embedding_path
+
+    if not voice_id:
+        return {"job_type": "narrate", "status": "failed", "error": "Narrate requires voice_id (XTTSv2)."}
+    speaker_emb_path = load_embedding_path(voice_id)
+    if not speaker_emb_path:
+        return {"job_type": "narrate", "status": "failed", "error": "Voice not found"}
 
     os.makedirs(NARRATE_RESULT_PATH, exist_ok=True)
     out_path = os.path.join(NARRATE_RESULT_PATH, f"{job_id}.wav")
@@ -81,10 +89,6 @@ def narrate_task(
         if not chunks:
             return {"job_type": "narrate", "status": "failed", "error": "No chunks produced"}
 
-        speaker_emb_path = load_embedding_path(voice_id) if voice_id else None
-        if voice_id and not speaker_emb_path:
-            return {"job_type": "narrate", "status": "failed", "error": "Voice not found"}
-
         import numpy as np
         import soundfile as sf
 
@@ -95,9 +99,9 @@ def narrate_task(
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.95,
-                top_p=0.9,
-                repetition_penalty=1.15,
+                temperature=0.75,
+                top_p=0.85,
+                repetition_penalty=2.0,
             )
             if sr_out is None:
                 sr_out = sr

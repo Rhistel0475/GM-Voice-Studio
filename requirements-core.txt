@@ -1,7 +1,6 @@
 # Step 1: TTS stack. Then: pip install -r requirements-server.txt
-# Exact pins reduce "resolution-too-deep" by limiting pip's search.
-# If you still hit resolution-too-deep, see README "Install (resolution-too-deep)".
+# XTTSv2 via Coqui TTS. Set COQUI_TOS_AGREED=1 to accept the model license.
+# Use coqui-tts (Python 3.10–3.14). For Python 3.9–3.11 you can use TTS instead.
 torch>=2.10.0
-transformers==4.56.0
 soundfile>=0.13.0
-kani-tts-2==0.0.5
+coqui-tts>=0.27.0

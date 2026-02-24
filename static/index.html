@@ -152,16 +152,16 @@
       <div id="voice_list" class="voice-list" role="list"></div>
       <label for="voice_id_sel"><strong>Speak as (character / NPC voice):</strong></label>
       <select id="voice_id_sel" aria-label="Character or NPC voice">
-        <option value="">-- None (use accent below) --</option>
+        <option value="">-- Select a character voice (required) --</option>
       </select>
       <button type="button" id="set_default_btn" style="margin-top: 4px; padding: 6px 12px; font-size: 14px;">Set selected as default</button>
 
       <div class="section-title">Speak a line</div>
       <label for="text"><strong>Dialogue or line:</strong></label>
       <textarea id="text" rows="5" placeholder="Enter dialogue or a short line to speak as the selected character." aria-label="Dialogue or line to speak">The ancient door grinds open, revealing a chamber untouched for centuries.</textarea>
-      <label for="tag"><strong>Accent (preset):</strong></label>
-      <select id="tag" aria-label="Accent preset"></select>
-      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: #a6adc8;">Regional accent (US, NY, Oakland, Glasgow, Boston, SC). Used when no character voice is selected.</p>
+      <label for="tag"><strong>Language:</strong></label>
+      <select id="tag" aria-label="Language"></select>
+      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: #a6adc8;">Language (e.g. en, es, fr). Used with the selected character voice.</p>
       <label for="ref_audio"><strong>Or one-off clip (this request only):</strong></label>
       <input type="file" id="ref_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="One-off reference audio file">
 
@@ -195,6 +195,44 @@
   </div>
 
   <div class="container">
+      <div class="section-title">Ambient Audio Mixer</div>
+      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-text-muted);">Layer looping atmospheric tracks beneath your NPC dialogue.</p>
+      <div class="slider-group">
+          <div class="slider-container">
+              <label>1930s City Rain (<span id="vol_rain_val">0</span>%)</label><br>
+              <input type="range" id="vol_rain" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_rain').volume = this.value; document.getElementById('vol_rain_val').innerText = Math.round(this.value * 100); if(this.value > 0) document.getElementById('audio_rain').play(); else document.getElementById('audio_rain').pause();">
+              <audio id="audio_rain" loop src="https://cdn.pixabay.com/audio/2021/08/04/audio_3484f3ccab.mp3"></audio>
+          </div>
+          <div class="slider-container">
+              <label>Muffled Speakeasy Jazz (<span id="vol_jazz_val">0</span>%)</label><br>
+              <input type="range" id="vol_jazz" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_jazz').volume = this.value; document.getElementById('vol_jazz_val').innerText = Math.round(this.value * 100); if(this.value > 0) document.getElementById('audio_jazz').play(); else document.getElementById('audio_jazz').pause();">
+              <audio id="audio_jazz" loop src="https://cdn.pixabay.com/audio/2022/01/18/audio_82c206db23.mp3"></audio>
+          </div>
+          <div class="slider-container">
+              <label>Arcane Vault Hum (<span id="vol_magic_val">0</span>%)</label><br>
+              <input type="range" id="vol_magic" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_magic').volume = this.value; document.getElementById('vol_magic_val').innerText = Math.round(this.value * 100); if(this.value > 0) document.getElementById('audio_magic').play(); else document.getElementById('audio_magic').pause();">
+              <audio id="audio_magic" loop src="https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a73467.mp3"></audio>
+          </div>
+      </div>
+  </div>
+
+  <div class="container">
+      <div class="section-title">Scene Script Library</div>
+      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-text-muted);">Save and load box-text descriptions for quick narration.</p>
+      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+          <select id="saved_scripts_sel" style="margin: 0; flex: 2;">
+            <option value="">-- Select a saved scene --</option>
+          </select>
+          <button type="button" id="load_script_btn" style="flex: 1; padding: 10px;">Load to Narrator</button>
+          <button type="button" id="delete_script_btn" style="flex: 0.5; padding: 10px; background: #a04040; color: #e8e0d5;">Delete</button>
+      </div>
+      <div style="display: flex; gap: 10px;">
+          <input type="text" id="save_script_name" placeholder="Scene Name (e.g., The Black Cat Club, The Docks)" style="margin: 0; flex: 2; padding: 10px; background: var(--rpg-input-bg); color: var(--rpg-text); border: 1px solid var(--rpg-border); border-radius: 5px;">
+          <button type="button" id="save_script_btn" style="flex: 1.5; padding: 10px;">Save Current Text</button>
+      </div>
+  </div>
+
+  <div class="container">
       <div class="section-title">Narrate scene or script</div>
       <p>Uses the selected character voice above. Paste scene text or script; it will be split into chunks, each spoken in sequence, then combined into one WAV.</p>
       <label for="narrate_text"><strong>Script (max 5000 characters):</strong></label>
@@ -224,8 +262,10 @@
       </div>
       <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
       <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px;">
+      <label for="clone_voice_faction"><strong>Faction / Group (Optional):</strong></label>
+      <input type="text" id="clone_voice_faction" placeholder="e.g., The O'Bannion Syndicate, Silver Court Mages" aria-label="Faction or group" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:var(--rpg-input-bg); color:var(--rpg-text); border:1px solid var(--rpg-border); border-radius:5px;">
       <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
-      <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="Upload audio for cloning" disabled>
+      <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
       <p style="margin: 8px 0 12px 0; font-size: 0.9em; color: #a6adc8;">Or record with your microphone: 15–25 s in a quiet room, speaking clearly with natural variation (helps avoid robotic or pitch-shifted clone).</p>
       <div style="margin-bottom: 15px;">
         <button type="button" id="record_start" disabled style="padding: 8px 16px; margin-right: 8px; background: #f38ba8; color: #1e1e2e; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Start recording</button>
@@ -242,7 +282,8 @@
         <option value="tts">TTS only</option>
         <option value="commercial">Commercial use</option>
       </select>
-      <p style="margin: 4px 0 15px 0; font-size: 0.9em; color: #a6adc8;">TTS only: for personal or internal use. Commercial use: you may use this voice in paid or commercial projects.</p>
+      <p style="margin: 4px 0 8px 0; font-size: 0.9em; color: #a6adc8;">TTS only: for personal or internal use. Commercial use: you may use this voice in paid or commercial projects.</p>
+      <p style="margin: 0 0 10px 0; font-size: 0.85em; color: #a6adc8;">Upload or record a clip above, check the consent box, then click Create voice.</p>
       <button id="create_voice" type="button" disabled>Create voice</button>
       <div id="voice_id_wrap" style="display:none; margin-top:10px;" role="status" aria-live="polite">
         <div id="voice_id_out" class="voice-id-out"></div>
@@ -308,7 +349,7 @@
     function refreshVoiceIdSelect() {
       const sel = document.getElementById("voice_id_sel");
       const cur = sel.value;
-      sel.innerHTML = '<option value="">-- None (use accent above) --</option>';
+      sel.innerHTML = '<option value="">-- Select a character voice (required) --</option>';
       voiceListData.forEach(function(v) {
         const opt = document.createElement("option");
         opt.value = v.voice_id;
@@ -458,7 +499,7 @@
 
     function updateCreateVoiceDisabled() {
       const hasInput = cloneAudio.files.length > 0 || recordedBlob;
-      createVoiceBtn.disabled = !consentCheck.checked || !hasInput;
+      createVoiceBtn.disabled = !hasInput;
     }
 
     function audioBufferToWav(buffer) {
@@ -492,7 +533,6 @@
     }
 
     consentCheck.onchange = function() {
-      cloneAudio.disabled = !consentCheck.checked;
       document.getElementById("record_start").disabled = !consentCheck.checked;
       updateCreateVoiceDisabled();
     };
@@ -584,7 +624,11 @@
         createVoiceBtn.onclick = async () => {
           setError("");
           const hasFile = cloneAudio.files.length > 0;
-          if (!consentCheck.checked || (!hasFile && !recordedBlob)) return;
+          if (!hasFile && !recordedBlob) return;
+          if (!consentCheck.checked) {
+            setError("Please check the consent box above to create a voice.");
+            return;
+          }
           createVoiceBtn.textContent = "Creating...";
           createVoiceBtn.disabled = true;
       const fd = new FormData();
@@ -595,6 +639,7 @@
       }
       fd.append("consent_scope", document.getElementById("consent_scope").value);
       fd.append("name", document.getElementById("clone_voice_name").value || "");
+      fd.append("faction", document.getElementById("clone_voice_faction").value || "");
       let cloneResponse = null;
       try {
         const res = await fetch("/voices/clone", { method: "POST", body: fd, headers: getAuthHeaders() });
@@ -707,7 +752,7 @@
       narrateStatus.textContent = "Generating... (this may take a minute)";
       const body = {
         text: text,
-        language_tag: tagSel.value || "en_us",
+        language_tag: tagSel.value || "en",
         voice_id: document.getElementById("voice_id_sel").value || null,
         chunk_by: narrateChunkBy.value,
         max_chars: parseInt(document.getElementById("narrate_max_chars").value, 10) || 500
@@ -754,7 +799,7 @@
 
       const fd = new FormData();
       fd.append("text", document.getElementById("text").value);
-      fd.append("language_tag", tagSel.value || "en_us");
+      fd.append("language_tag", tagSel.value || "en");
       fd.append("temperature", document.getElementById("temp").value);
       fd.append("top_p", document.getElementById("topp").value);
       fd.append("repetition_penalty", document.getElementById("rep").value);
@@ -788,6 +833,51 @@
           cancelTtsBtn.style.display = "none";
       }
     };
+
+    // --- Scene Script Library Logic ---
+    function loadSavedScripts() {
+        const sel = document.getElementById("saved_scripts_sel");
+        sel.innerHTML = '<option value="">-- Select a saved scene --</option>';
+        const scripts = JSON.parse(localStorage.getItem("gm_scripts") || "{}");
+        for (const name in scripts) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            sel.appendChild(opt);
+        }
+    }
+
+    document.getElementById("save_script_btn").onclick = function() {
+        const name = document.getElementById("save_script_name").value.trim();
+        const text = document.getElementById("narrate_text").value.trim();
+        if (!name || !text) { alert("Please enter both a scene name and text in the Narrate box."); return; }
+        const scripts = JSON.parse(localStorage.getItem("gm_scripts") || "{}");
+        scripts[name] = text;
+        localStorage.setItem("gm_scripts", JSON.stringify(scripts));
+        document.getElementById("save_script_name").value = "";
+        loadSavedScripts();
+    };
+
+    document.getElementById("load_script_btn").onclick = function() {
+        const name = document.getElementById("saved_scripts_sel").value;
+        if (!name) return;
+        const scripts = JSON.parse(localStorage.getItem("gm_scripts") || "{}");
+        if (scripts[name]) {
+            document.getElementById("narrate_text").value = scripts[name];
+            updateNarrateCharCount();
+        }
+    };
+
+    document.getElementById("delete_script_btn").onclick = function() {
+        const name = document.getElementById("saved_scripts_sel").value;
+        if (!name || !confirm("Delete scene: " + name + "?")) return;
+        const scripts = JSON.parse(localStorage.getItem("gm_scripts") || "{}");
+        delete scripts[name];
+        localStorage.setItem("gm_scripts", JSON.stringify(scripts));
+        loadSavedScripts();
+    };
+
+    loadSavedScripts();
 
     loadConfig();
     loadTags();

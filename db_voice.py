@@ -67,11 +67,12 @@ def _init_schema_sqlite(conn: sqlite3.Connection) -> None:
         )
     """)
     conn.commit()
-    try:
-        conn.execute("ALTER TABLE voices ADD COLUMN owner_id TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # column already exists
+    for col in ["owner_id", "faction"]:
+        try:
+            conn.execute(f"ALTER TABLE voices ADD COLUMN {col} TEXT")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
 
 def _init_schema_pg(conn: Any) -> None:
@@ -85,12 +86,13 @@ def _init_schema_pg(conn: Any) -> None:
                 owner_id TEXT
             )
         """)
-        cur.execute("""
-            SELECT 1 FROM information_schema.columns
-            WHERE table_name = 'voices' AND column_name = 'owner_id'
-        """)
-        if cur.fetchone() is None:
-            cur.execute("ALTER TABLE voices ADD COLUMN owner_id TEXT")
+        for col in ["owner_id", "faction"]:
+            cur.execute("""
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'voices' AND column_name = %s
+            """, (col,))
+            if cur.fetchone() is None:
+                cur.execute(f"ALTER TABLE voices ADD COLUMN {col} TEXT")
     conn.commit()
 
 
@@ -100,25 +102,27 @@ def db_insert_voice(
     consent_scope: str,
     created_at: float,
     owner_id: Optional[str] = None,
+    faction: Optional[str] = None,
 ) -> None:
     conn = _get_conn()
     name = name or ""
     consent_scope = consent_scope or "tts"
+    faction = (faction or "").strip() or None
     if _is_sqlite():
         conn.execute(
-            "INSERT OR REPLACE INTO voices (voice_id, name, consent_scope, created_at, owner_id) VALUES (?, ?, ?, ?, ?)",
-            (voice_id, name, consent_scope, created_at, owner_id),
+            "INSERT OR REPLACE INTO voices (voice_id, name, consent_scope, created_at, owner_id, faction) VALUES (?, ?, ?, ?, ?, ?)",
+            (voice_id, name, consent_scope, created_at, owner_id, faction),
         )
         conn.commit()
     else:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO voices (voice_id, name, consent_scope, created_at, owner_id)
-                VALUES (%s, %s, %s, %s, %s)
-                ON CONFLICT (voice_id) DO UPDATE SET name = EXCLUDED.name, consent_scope = EXCLUDED.consent_scope, created_at = EXCLUDED.created_at, owner_id = EXCLUDED.owner_id
+                INSERT INTO voices (voice_id, name, consent_scope, created_at, owner_id, faction)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (voice_id) DO UPDATE SET name = EXCLUDED.name, consent_scope = EXCLUDED.consent_scope, created_at = EXCLUDED.created_at, owner_id = EXCLUDED.owner_id, faction = EXCLUDED.faction
                 """,
-                (voice_id, name, consent_scope, created_at, owner_id),
+                (voice_id, name, consent_scope, created_at, owner_id, faction),
             )
         conn.commit()
 
@@ -127,13 +131,13 @@ def db_get_voice(voice_id: str, owner_id: Optional[str] = None) -> Optional[dict
     conn = _get_conn()
     if _is_sqlite():
         row = conn.execute(
-            "SELECT voice_id, name, consent_scope, created_at, owner_id FROM voices WHERE voice_id = ?",
+            "SELECT voice_id, name, consent_scope, created_at, owner_id, faction FROM voices WHERE voice_id = ?",
             (voice_id,),
         ).fetchone()
     else:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT voice_id, name, consent_scope, created_at, owner_id FROM voices WHERE voice_id = %s",
+                "SELECT voice_id, name, consent_scope, created_at, owner_id, faction FROM voices WHERE voice_id = %s",
                 (voice_id,),
             )
             row = cur.fetchone()
@@ -142,16 +146,17 @@ def db_get_voice(voice_id: str, owner_id: Optional[str] = None) -> Optional[dict
     row_owner = row[4] if len(row) > 4 else None
     if owner_id is not None and row_owner is not None and row_owner != owner_id:
         return None
-    return {"voice_id": row[0], "name": row[1] or "", "consent_scope": row[2] or "tts", "created_at": row[3]}
+    faction = row[5] if len(row) > 5 else ""
+    return {"voice_id": row[0], "name": row[1] or "", "consent_scope": row[2] or "tts", "created_at": row[3], "faction": faction or ""}
 
 
 def db_list_voices(owner_id: Optional[str] = None) -> list[dict]:
     conn = _get_conn()
     if owner_id is None:
-        q = "SELECT voice_id, name, consent_scope, created_at FROM voices ORDER BY created_at DESC"
+        q = "SELECT voice_id, name, consent_scope, created_at, faction FROM voices ORDER BY created_at DESC"
         args = ()
     else:
-        q = "SELECT voice_id, name, consent_scope, created_at FROM voices WHERE owner_id = ? ORDER BY created_at DESC"
+        q = "SELECT voice_id, name, consent_scope, created_at, faction FROM voices WHERE owner_id = ? ORDER BY created_at DESC"
         args = (owner_id,)
     if _is_sqlite():
         rows = conn.execute(q, args).fetchall()
@@ -160,7 +165,7 @@ def db_list_voices(owner_id: Optional[str] = None) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(q_pg, args)
             rows = cur.fetchall()
-    return [{"voice_id": r[0], "name": r[1] or "", "consent_scope": r[2] or "tts", "created_at": r[3]} for r in rows]
+    return [{"voice_id": r[0], "name": r[1] or "", "consent_scope": r[2] or "tts", "created_at": r[3], "faction": (r[4] if len(r) > 4 else "") or ""} for r in rows]
 
 
 def db_update_voice(voice_id: str, name: Optional[str] = None, owner_id: Optional[str] = None) -> bool:

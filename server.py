@@ -173,6 +173,7 @@ async def create_voice(
     audio: UploadFile = File(...),
     consent_scope: str = Form("tts"),
     name: str = Form(""),
+    faction: str = Form(""),
     _auth: None = Depends(verify_api_key),
 ):
     """Upload a short audio sample; validate and store speaker embedding. Returns voice_id or job_id when queue is enabled."""
@@ -197,6 +198,7 @@ async def create_voice(
                 consent_scope=consent_scope,
                 name=name or "",
                 owner_id=owner_id,
+                faction=faction or "",
             )
             increment("clone_requests_total")
             request.state.job_id = task.id
@@ -219,6 +221,7 @@ async def create_voice(
             consent_scope=consent_scope,
             name=name or None,
             owner_id=owner_id,
+            faction=faction or None,
         )
         increment("clone_requests_total")
         request.state.voice_id = voice_id
@@ -329,16 +332,15 @@ async def tts_endpoint(
     request: Request,
     text: str = Form(...),
     _auth: None = Depends(verify_api_key),
-    language_tag: str = Form("en_us"),
+    language_tag: str = Form("en"),
     voice_id: Optional[str] = Form(None),
-    temperature: float = Form(0.95),
-    top_p: float = Form(0.9),
-    repetition_penalty: float = Form(1.15),
+    temperature: float = Form(0.75),
+    top_p: float = Form(0.85),
+    repetition_penalty: float = Form(2.0),
     reference_audio: Optional[UploadFile] = File(None),
 ):
     """
     Generate speech. Use either:
-    - language_tag only (preset accent),
     - voice_id (persistent cloned voice),
     - or reference_audio (one-off clone for this request).
     """
@@ -348,31 +350,41 @@ async def tts_endpoint(
     if voice_id:
         request.state.voice_id = voice_id
 
-    # Ensure we always pass a supported preset accent to the engine
+    # Ensure we always pass a supported language tag to the engine
     supported = _lang_tags()
-    lang_tag = (language_tag or "").strip() or "en_us"
+    lang_tag = (language_tag or "").strip() or "en"
     if lang_tag not in supported and supported:
         lang_tag = supported[0]
     language_tag = lang_tag
 
     speaker_emb_path: Optional[str] = None
 
+    # Option A: Use a saved NPC Voice ID
     if voice_id:
         speaker_emb_path = load_embedding_path(voice_id)
         if not speaker_emb_path:
             raise HTTPException(404, "Voice not found")
+
+    # Option B: Use a one-off audio upload
     elif reference_audio and reference_audio.filename:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(await reference_audio.read())
             tmp_path = tmp.name
         pt_path = None
         try:
-            from kani_tts import compute_speaker_embedding
+            # NEW: XTTSv2 latents extraction
+            from tts_service import _get_tts
             import torch
-            emb = compute_speaker_embedding(tmp_path)
+            tts = _get_tts()
+            gpt_cond_latent, speaker_embedding = tts.synthesizer.tts_model.get_conditioning_latents(audio_path=tmp_path)
+            emb = {
+                "gpt_cond_latent": gpt_cond_latent.cpu(),
+                "speaker_embedding": speaker_embedding.cpu()
+            }
             fd, pt_path = tempfile.mkstemp(suffix=".pt")
             os.close(fd)
-            torch.save(emb.cpu() if emb.ndim == 2 else emb.unsqueeze(0).cpu(), pt_path)
+            torch.save(emb, pt_path)
+
             audio, sr = tts_generate(
                 text,
                 language_tag=language_tag,
@@ -429,7 +441,7 @@ async def tts_endpoint(
 
 class NarrateBody(BaseModel):
     text: str
-    language_tag: Optional[str] = "en_us"
+    language_tag: Optional[str] = "en"
     voice_id: Optional[str] = None
     chunk_by: str = "sentence"
     max_chars: int = 500
@@ -460,9 +472,12 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
 
     if body.async_ and _use_clone_queue():
         from celery_app import narrate_task
+        if not body.voice_id:
+            increment("errors_total")
+            raise HTTPException(400, "Narrate requires a voice_id (XTTSv2).")
         job_id = str(uuid.uuid4())
         supported = _lang_tags()
-        lang_tag = (body.language_tag or "").strip() or "en_us"
+        lang_tag = (body.language_tag or "").strip() or "en"
         if lang_tag not in supported and supported:
             lang_tag = supported[0]
         narrate_task.delay(
@@ -476,17 +491,18 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
         increment("tts_requests_total")
         return JSONResponse({"job_id": job_id})
 
+    if not body.voice_id:
+        increment("errors_total")
+        raise HTTPException(400, "Narrate requires a voice_id (XTTSv2). Select a character voice.")
+    speaker_emb_path = load_embedding_path(body.voice_id)
+    if not speaker_emb_path:
+        raise HTTPException(404, "Voice not found")
+
     supported = _lang_tags()
-    lang_tag = (body.language_tag or "").strip() or "en_us"
+    lang_tag = (body.language_tag or "").strip() or "en"
     if lang_tag not in supported and supported:
         lang_tag = supported[0]
     language_tag = lang_tag
-
-    speaker_emb_path: Optional[str] = None
-    if body.voice_id:
-        speaker_emb_path = load_embedding_path(body.voice_id)
-        if not speaker_emb_path:
-            raise HTTPException(404, "Voice not found")
 
     audio_list: list = []
     sr_out: Optional[int] = None
@@ -496,9 +512,9 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.95,
-                top_p=0.9,
-                repetition_penalty=1.15,
+                temperature=0.75,
+                top_p=0.85,
+                repetition_penalty=2.0,
             )
             if sr_out is None:
                 sr_out = sr
