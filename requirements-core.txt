@@ -1,0 +1,7 @@
+# Step 1: TTS stack. Then: pip install -r requirements-server.txt
+# Exact pins reduce "resolution-too-deep" by limiting pip's search.
+# If you still hit resolution-too-deep, see README "Install (resolution-too-deep)".
+torch>=2.10.0
+transformers==4.56.0
+soundfile>=0.13.0
+kani-tts-2==0.0.5

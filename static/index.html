@@ -1,0 +1,803 @@
+
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>GM Voice Studio</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600&display=swap">
+  <style>
+    /* RPG palette: warm dark base, amber/gold accents, readable text */
+    :root {
+      --rpg-bg: #1a1510;
+      --rpg-panel: #2d2620;
+      --rpg-border: #8b6914;
+      --rpg-accent: #c9a227;
+      --rpg-accent-light: #d4af37;
+      --rpg-text: #e8e0d5;
+      --rpg-text-muted: #a89888;
+      --rpg-input-bg: #252018;
+      --rpg-error-bg: #2a1818;
+      --rpg-error-border: #c94a4a;
+      --rpg-error-text: #e8a0a0;
+    }
+    body {
+      font-family: 'Crimson Text', Georgia, serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: var(--rpg-bg);
+      background-image: linear-gradient(180deg, #252018 0%, var(--rpg-bg) 100%);
+      color: var(--rpg-text);
+    }
+    .container {
+      background: var(--rpg-panel);
+      padding: 25px;
+      border-radius: 10px;
+      border: 1px solid var(--rpg-border);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      margin-bottom: 20px;
+    }
+    textarea {
+      width: 100%;
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid var(--rpg-border);
+      background: var(--rpg-input-bg);
+      color: var(--rpg-text);
+      font-family: inherit;
+      margin-bottom: 15px;
+      box-sizing: border-box;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--rpg-accent-light);
+      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.3);
+    }
+    select, input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      margin-bottom: 15px;
+      background: var(--rpg-input-bg);
+      color: var(--rpg-text);
+      border: 1px solid var(--rpg-border);
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--rpg-accent-light);
+      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.3);
+    }
+    .slider-group { display: flex; justify-content: space-between; margin-bottom: 15px; gap: 15px; }
+    .slider-container { flex: 1; }
+    .slider-container input { width: 100%; }
+    button {
+      width: 100%;
+      padding: 15px;
+      font-size: 18px;
+      font-family: 'Crimson Text', Georgia, serif;
+      font-weight: 600;
+      background: var(--rpg-accent);
+      color: #1a1510;
+      border: 1px solid var(--rpg-border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    button:hover { background: var(--rpg-accent-light); border-color: var(--rpg-accent-light); }
+    button:focus {
+      outline: none;
+      border-color: var(--rpg-accent-light);
+      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.4);
+    }
+    button:disabled {
+      background: #3d352a;
+      color: var(--rpg-text-muted);
+      border-color: #5a5040;
+      cursor: not-allowed;
+    }
+    .player-container { margin-top: 25px; text-align: center; }
+    audio { width: 100%; }
+    h1 {
+      font-family: 'Cinzel', serif;
+      color: var(--rpg-accent);
+      letter-spacing: 0.05em;
+      border-bottom: 2px solid var(--rpg-border);
+      padding-bottom: 10px;
+    }
+    .section-title {
+      font-family: 'Cinzel', serif;
+      color: var(--rpg-accent);
+      margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 1.2em;
+      padding-left: 10px;
+      border-left: 3px solid var(--rpg-border);
+    }
+    .consent-box { margin: 10px 0; padding: 10px; background: var(--rpg-input-bg); border-radius: 5px; border: 1px solid rgba(139, 105, 20, 0.4); }
+    .voice-id-out { margin-top: 10px; padding: 10px; background: var(--rpg-bg); border-radius: 5px; font-family: monospace; word-break: break-all; color: var(--rpg-text-muted); }
+    .voice-list { margin-top: 10px; }
+    .voice-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: var(--rpg-input-bg); border-radius: 5px; border: 1px solid rgba(139, 105, 20, 0.3); }
+    .voice-item .label { flex: 1; }
+    .voice-item input.edit-name { width: 120px; padding: 4px; background: var(--rpg-bg); color: var(--rpg-text); border: 1px solid var(--rpg-border); border-radius: 4px; }
+    .voice-item button { padding: 4px 10px; cursor: pointer; border: 1px solid transparent; border-radius: 6px; font-size: 12px; }
+    .voice-item button.delete { background: #a04040; color: #e8e0d5; border-color: #8b3030; }
+    .voice-item button.set-default { background: var(--rpg-accent); color: #1a1510; border-color: var(--rpg-border); }
+    .default-star { color: var(--rpg-accent-light); margin-left: 4px; }
+    .narrate-char-over { color: var(--rpg-accent-light); }
+    .error-area {
+      margin-bottom: 15px;
+      padding: 12px;
+      background: var(--rpg-error-bg);
+      border: 1px solid var(--rpg-error-border);
+      border-radius: 5px;
+      color: var(--rpg-error-text);
+    }
+  </style>
+    </head>
+    <body>
+      <div id="error_area" class="error-area" role="alert" style="display: none; max-width: 800px; margin: 20px auto 0 auto;"></div>
+      <div id="api_key_wrap" class="container" style="display:none;">
+      <div class="section-title">API key</div>
+      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #a6adc8;">This server requires an API key. Enter it below (stored in memory only, not on disk).</p>
+      <label for="api_key_input"><strong>API key:</strong></label>
+      <input type="password" id="api_key_input" placeholder="Enter your API key" autocomplete="off" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px;">
+  </div>
+  <div class="container">
+      <h1>GM Voice Studio</h1>
+      <p>Clone character and NPC voices, then speak or narrate in-session.</p>
+
+      <div class="section-title">Character / NPC voices</div>
+      <div id="voice_list" class="voice-list" role="list"></div>
+      <label for="voice_id_sel"><strong>Speak as (character / NPC voice):</strong></label>
+      <select id="voice_id_sel" aria-label="Character or NPC voice">
+        <option value="">-- None (use accent below) --</option>
+      </select>
+      <button type="button" id="set_default_btn" style="margin-top: 4px; padding: 6px 12px; font-size: 14px;">Set selected as default</button>
+
+      <div class="section-title">Speak a line</div>
+      <label for="text"><strong>Dialogue or line:</strong></label>
+      <textarea id="text" rows="5" placeholder="Enter dialogue or a short line to speak as the selected character." aria-label="Dialogue or line to speak">The ancient door grinds open, revealing a chamber untouched for centuries.</textarea>
+      <label for="tag"><strong>Accent (preset):</strong></label>
+      <select id="tag" aria-label="Accent preset"></select>
+      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: #a6adc8;">Regional accent (US, NY, Oakland, Glasgow, Boston, SC). Used when no character voice is selected.</p>
+      <label for="ref_audio"><strong>Or one-off clip (this request only):</strong></label>
+      <input type="file" id="ref_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="One-off reference audio file">
+
+      <div class="section-title">Voice style</div>
+      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #a6adc8;">For cloned voices, try temperature 0.95–1.1 if output sounds robotic or pitch feels off.</p>
+          <div class="slider-group" role="group" aria-label="Generation parameters">
+              <div class="slider-container">
+                  <label for="temp">Temperature (<span id="temp_val">0.95</span>)</label><br>
+                  <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.95" aria-valuemin="0.1" aria-valuemax="1.5" aria-valuenow="0.95" aria-valuetext="0.95" oninput="var v=this.value; document.getElementById('temp_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
+                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: #a6adc8;">Higher = more varied, expressive; lower = more consistent and stable.</p>
+              </div>
+              <div class="slider-container">
+                  <label for="topp">Top-p (<span id="topp_val">0.9</span>)</label><br>
+                  <input type="range" id="topp" min="0.5" max="1.0" step="0.01" value="0.9" aria-valuemin="0.5" aria-valuemax="1" aria-valuenow="0.9" aria-valuetext="0.9" oninput="var v=this.value; document.getElementById('topp_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
+                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: #a6adc8;">Narrower = more focused choices; higher = more diversity in pronunciation.</p>
+              </div>
+              <div class="slider-container">
+                  <label for="rep">Repetition Penalty (<span id="rep_val">1.15</span>)</label><br>
+                  <input type="range" id="rep" min="1.0" max="1.5" step="0.01" value="1.15" aria-valuemin="1" aria-valuemax="1.5" aria-valuenow="1.15" aria-valuetext="1.15" oninput="var v=this.value; document.getElementById('rep_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
+                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: #a6adc8;">Higher = discourages repeating the same words or phrases; helps avoid loops.</p>
+              </div>
+      </div>
+
+      <button id="go" type="button">Generate Audio</button>
+      <button type="button" id="cancel_tts_btn" style="display: none; margin-top: 8px; padding: 8px 16px; font-size: 14px; width: auto; background: #45475a; color: #cdd6f4;">Cancel</button>
+
+      <div class="player-container">
+        <audio id="player" controls aria-label="Generated audio playback"></audio>
+        <button type="button" id="export_btn" style="margin-top: 10px; padding: 8px 16px; font-size: 14px; width: auto;" disabled aria-label="Export current audio as WAV">Export WAV</button>
+      </div>
+  </div>
+
+  <div class="container">
+      <div class="section-title">Narrate scene or script</div>
+      <p>Uses the selected character voice above. Paste scene text or script; it will be split into chunks, each spoken in sequence, then combined into one WAV.</p>
+      <label for="narrate_text"><strong>Script (max 5000 characters):</strong></label>
+      <textarea id="narrate_text" rows="10" placeholder="Paste script or long text..." aria-label="Script for narration" style="width:100%; padding:10px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px; margin-bottom:5px;"></textarea>
+      <div id="narrate_char_count_wrap" style="margin-bottom:15px; font-size: 0.9em; color:#a6adc8;" role="status" aria-live="polite"><span id="narrate_char_count">0 / 5000 characters</span></div>
+      <label for="narrate_chunk_by"><strong>Chunk by:</strong></label>
+      <select id="narrate_chunk_by" aria-label="Chunk by" style="width:100%; padding:10px; margin-bottom:5px; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px; box-sizing:border-box;">
+        <option value="sentence">Sentence</option>
+        <option value="paragraph">Paragraph</option>
+        <option value="fixed">Fixed (N chars)</option>
+      </select>
+      <p style="margin: 0 0 15px 0; font-size: 0.9em; color: #a6adc8;"><strong>Sentence</strong>: split at sentence boundaries (after periods, question marks, exclamation). Best for natural phrasing.<br><strong>Paragraph</strong>: split at double line breaks. Keeps whole paragraphs together.<br><strong>Fixed (N chars)</strong>: split every N characters at word boundaries. Use when you need even chunk lengths.</p>
+      <div id="narrate_fixed_wrap" style="display:none; margin-bottom:15px;">
+        <label for="narrate_max_chars"><strong>Max characters per chunk:</strong></label>
+        <input type="number" id="narrate_max_chars" min="50" max="1500" value="500" aria-label="Max characters per chunk" style="width:100%; padding:10px; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px; box-sizing:border-box;">
+        <p style="margin: 4px 0 0 0; font-size: 0.9em; color: #a6adc8;">Larger values = fewer chunks and API calls; smaller = shorter segments, often with more natural breaks.</p>
+      </div>
+          <button id="narrate_btn" type="button">Generate narration</button>
+          <button type="button" id="cancel_narrate_btn" style="display: none; margin-top: 8px; padding: 8px 16px; font-size: 14px; width: auto; background: #45475a; color: #cdd6f4;">Cancel</button>
+          <div id="narrate_status" style="margin-top:10px; color:#a6adc8;"></div>
+  </div>
+
+  <div class="container">
+      <div class="section-title">Create character / NPC voice</div>
+      <div class="consent-box">
+        <label><input type="checkbox" id="consent" /> I have the right to use this voice. I am the speaker or have their permission. I will not use it to impersonate without disclosure.</label>
+      </div>
+      <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
+      <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px;">
+      <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
+      <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="Upload audio for cloning" disabled>
+      <p style="margin: 8px 0 12px 0; font-size: 0.9em; color: #a6adc8;">Or record with your microphone: 15–25 s in a quiet room, speaking clearly with natural variation (helps avoid robotic or pitch-shifted clone).</p>
+      <div style="margin-bottom: 15px;">
+        <button type="button" id="record_start" disabled style="padding: 8px 16px; margin-right: 8px; background: #f38ba8; color: #1e1e2e; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Start recording</button>
+        <button type="button" id="record_stop" disabled style="padding: 8px 16px; background: #45475a; color: #cdd6f4; border: none; border-radius: 5px; cursor: pointer;">Stop</button>
+        <span id="record_status" style="margin-left: 12px; color: #a6adc8;"></span>
+      </div>
+      <div id="record_playback_wrap" style="display: none; margin-bottom: 15px;">
+        <label style="font-size: 0.9em; color: #a6adc8;">Play recording before cloning:</label>
+        <audio id="record_playback" controls style="display: block; margin-top: 6px; width: 100%; max-width: 400px;"></audio>
+        <button type="button" id="record_rerecord" style="margin-top: 8px; padding: 6px 12px; background: #45475a; color: #cdd6f4; border: none; border-radius: 5px; cursor: pointer;">Re-record</button>
+      </div>
+      <label for="consent_scope"><strong>Consent scope:</strong></label>
+      <select id="consent_scope" aria-label="Consent scope">
+        <option value="tts">TTS only</option>
+        <option value="commercial">Commercial use</option>
+      </select>
+      <p style="margin: 4px 0 15px 0; font-size: 0.9em; color: #a6adc8;">TTS only: for personal or internal use. Commercial use: you may use this voice in paid or commercial projects.</p>
+      <button id="create_voice" type="button" disabled>Create voice</button>
+      <div id="voice_id_wrap" style="display:none; margin-top:10px;" role="status" aria-live="polite">
+        <div id="voice_id_out" class="voice-id-out"></div>
+        <button type="button" id="voice_id_copy_btn" style="margin-top:6px; padding:6px 12px; font-size:14px; width:auto;" aria-label="Copy voice or job ID">Copy ID</button>
+      </div>
+  </div>
+
+  <script>
+    const DEFAULT_VOICE_KEY = "kani_default_voice_id";
+    let voiceListData = [];
+    let maxNarrateChars = 5000;
+    let requireApiKey = false;
+
+    function getAuthHeaders() {
+      if (!requireApiKey) return {};
+      const key = document.getElementById("api_key_input") && document.getElementById("api_key_input").value.trim();
+      if (!key) return {};
+      return { "X-API-Key": key };
+    }
+
+    async function loadConfig() {
+      try {
+        const r = await fetch("/config");
+        const j = await r.json();
+        requireApiKey = !!j.require_api_key;
+        const wrap = document.getElementById("api_key_wrap");
+        if (wrap) wrap.style.display = requireApiKey ? "block" : "none";
+      } catch (e) {}
+    }
+
+    async function loadLimits() {
+      try {
+        const r = await fetch("/limits");
+        const j = await r.json();
+        if (j.max_narrate_chars) maxNarrateChars = j.max_narrate_chars;
+      } catch (e) {}
+    }
+
+    function updateNarrateCharCount() {
+      const ta = document.getElementById("narrate_text");
+      const el = document.getElementById("narrate_char_count");
+      const wrap = document.getElementById("narrate_char_count_wrap");
+      if (!el || !ta) return;
+      const n = ta.value.length;
+      el.textContent = n + " / " + maxNarrateChars + " characters";
+      if (n > maxNarrateChars) {
+        wrap.classList.add("narrate-char-over");
+      } else {
+        wrap.classList.remove("narrate-char-over");
+      }
+    }
+
+    async function fetchVoiceList() {
+      const r = await fetch("/voices/list", { headers: getAuthHeaders() });
+      voiceListData = await r.json();
+      return voiceListData;
+    }
+
+    function voiceLabel(v) {
+      return (v.name && v.name.trim()) ? v.name.trim() : (v.voice_id.slice(0, 8) + "...");
+    }
+
+    function refreshVoiceIdSelect() {
+      const sel = document.getElementById("voice_id_sel");
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">-- None (use accent above) --</option>';
+      voiceListData.forEach(function(v) {
+        const opt = document.createElement("option");
+        opt.value = v.voice_id;
+        opt.textContent = voiceLabel(v);
+        sel.appendChild(opt);
+      });
+      const defaultId = localStorage.getItem(DEFAULT_VOICE_KEY);
+      if (defaultId && voiceListData.some(function(x) { return x.voice_id === defaultId; })) {
+        sel.value = defaultId;
+      } else if (voiceListData.some(function(x) { return x.voice_id === cur; })) {
+        sel.value = cur;
+      }
+    }
+
+    function renderVoiceList() {
+      const container = document.getElementById("voice_list");
+      container.innerHTML = "";
+      voiceListData.forEach(function(v) {
+        const row = document.createElement("div");
+        row.className = "voice-item";
+        const label = document.createElement("span");
+        label.className = "label";
+        const defaultId = localStorage.getItem(DEFAULT_VOICE_KEY);
+        label.textContent = voiceLabel(v) + (defaultId === v.voice_id ? " *" : "");
+        const editInput = document.createElement("input");
+        editInput.type = "text";
+        editInput.className = "edit-name";
+        editInput.placeholder = "Name";
+        editInput.value = v.name || "";
+        editInput.style.display = "none";
+        editInput.onblur = function() {
+          const name = editInput.value.trim();
+          editInput.style.display = "none";
+          label.style.display = "";
+          if (name !== (v.name || "")) {
+            fetch("/voices/" + encodeURIComponent(v.voice_id), {
+              method: "PATCH",
+              headers: Object.assign({ "Content-Type": "application/json" }, getAuthHeaders()),
+              body: JSON.stringify({ name: name })
+            }).then(function() { return fetchVoiceList(); }).then(function() {
+              refreshVoiceList();
+              refreshVoiceIdSelect();
+            });
+          }
+        };
+        const editBtn = document.createElement("button");
+        editBtn.textContent = "Edit";
+        editBtn.onclick = function() {
+          label.style.display = "none";
+          editInput.style.display = "inline-block";
+          editInput.focus();
+        };
+        const setDefaultBtn = document.createElement("button");
+        setDefaultBtn.className = "set-default";
+        setDefaultBtn.textContent = "Set default";
+        setDefaultBtn.onclick = function() {
+          localStorage.setItem(DEFAULT_VOICE_KEY, v.voice_id);
+          renderVoiceList();
+          refreshVoiceIdSelect();
+        };
+        const delBtn = document.createElement("button");
+        delBtn.className = "delete";
+        delBtn.textContent = "Delete";
+        delBtn.onclick = function() {
+          if (!confirm("Delete this voice?")) return;
+          fetch("/voices/" + encodeURIComponent(v.voice_id), { method: "DELETE", headers: getAuthHeaders() })
+            .then(function() { return fetchVoiceList(); })
+            .then(function() {
+              refreshVoiceList();
+              refreshVoiceIdSelect();
+              if (document.getElementById("voice_id_sel").value === v.voice_id) {
+                document.getElementById("voice_id_sel").value = "";
+              }
+            });
+        };
+        row.appendChild(label);
+        row.appendChild(editInput);
+        row.appendChild(editBtn);
+        row.appendChild(setDefaultBtn);
+        row.appendChild(delBtn);
+        container.appendChild(row);
+      });
+    }
+
+    function refreshVoiceList() {
+      renderVoiceList();
+    }
+
+    const tagSel = document.getElementById("tag");
+    const player = document.getElementById("player");
+    const btn = document.getElementById("go");
+    const exportBtn = document.getElementById("export_btn");
+    let currentExportFilename = null;
+
+    function setExportReady(filename) {
+      currentExportFilename = filename || "audio.wav";
+      exportBtn.disabled = false;
+    }
+
+    function setError(msg) {
+      var el = document.getElementById("error_area");
+      el.textContent = msg || "";
+      el.style.display = msg ? "block" : "none";
+    }
+
+    exportBtn.onclick = function() {
+      if (!player.src || !currentExportFilename) return;
+      const a = document.createElement("a");
+      a.href = player.src;
+      a.download = currentExportFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+    const refAudio = document.getElementById("ref_audio");
+    const consentCheck = document.getElementById("consent");
+    const cloneAudio = document.getElementById("clone_audio");
+    const createVoiceBtn = document.getElementById("create_voice");
+    const voiceIdWrap = document.getElementById("voice_id_wrap");
+    const voiceIdOut = document.getElementById("voice_id_out");
+    const voiceIdCopyBtn = document.getElementById("voice_id_copy_btn");
+
+    let recordedBlob = null;
+    let recordPlaybackUrl = null;
+    let mediaRecorder = null;
+    let recordChunks = [];
+    let recordStartTime = null;
+    let recordTimer = null;
+
+    function setRecordPlayback(blob) {
+      const wrap = document.getElementById("record_playback_wrap");
+      const audio = document.getElementById("record_playback");
+      if (recordPlaybackUrl) {
+        URL.revokeObjectURL(recordPlaybackUrl);
+        recordPlaybackUrl = null;
+      }
+      if (blob) {
+        recordPlaybackUrl = URL.createObjectURL(blob);
+        audio.src = recordPlaybackUrl;
+        wrap.style.display = "block";
+      } else {
+        audio.removeAttribute("src");
+        audio.load();
+        wrap.style.display = "none";
+      }
+    }
+
+    function updateCreateVoiceDisabled() {
+      const hasInput = cloneAudio.files.length > 0 || recordedBlob;
+      createVoiceBtn.disabled = !consentCheck.checked || !hasInput;
+    }
+
+    function audioBufferToWav(buffer) {
+      const numChannels = 1;
+      const sampleRate = buffer.sampleRate;
+      const channel = buffer.getChannelData(0);
+      const len = channel.length;
+      const buf = new ArrayBuffer(44 + len * 2);
+      const view = new DataView(buf);
+      const write = (offset, val) => view.setUint32(offset, val, true);
+      const write16 = (offset, val) => view.setInt16(offset, val, true);
+      view.setUint8(0, 82); view.setUint8(1, 73); view.setUint8(2, 70); view.setUint8(3, 70);
+      write(4, 36 + len * 2);
+      view.setUint8(8, 87); view.setUint8(9, 65); view.setUint8(10, 86); view.setUint8(11, 69);
+      view.setUint8(12, 102); view.setUint8(13, 109); view.setUint8(14, 116); view.setUint8(15, 32);
+      write(16, 16);
+      write16(20, 1);
+      write16(22, numChannels);
+      write(24, sampleRate);
+      write(28, sampleRate * 2);
+      write16(32, 2);
+      write16(34, 16);
+      view.setUint8(36, 100); view.setUint8(37, 97); view.setUint8(38, 116); view.setUint8(39, 97);
+      write(40, len * 2);
+      for (let i = 0; i < len; i++) {
+        const s = Math.max(-1, Math.min(1, channel[i]));
+        const n = Math.round(s * 32767);
+        write16(44 + i * 2, n < 0 ? Math.max(-32768, n) : Math.min(32767, n));
+      }
+      return new Blob([buf], { type: "audio/wav" });
+    }
+
+    consentCheck.onchange = function() {
+      cloneAudio.disabled = !consentCheck.checked;
+      document.getElementById("record_start").disabled = !consentCheck.checked;
+      updateCreateVoiceDisabled();
+    };
+    cloneAudio.onchange = function() {
+      if (cloneAudio.files.length) {
+        recordedBlob = null;
+        setRecordPlayback(null);
+      }
+      updateCreateVoiceDisabled();
+    };
+
+    document.getElementById("record_start").onclick = async function() {
+      const statusEl = document.getElementById("record_status");
+      const startBtn = document.getElementById("record_start");
+      const stopBtn = document.getElementById("record_stop");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const opts = { mimeType: "audio/webm;codecs=opus" };
+        if (!MediaRecorder.isTypeSupported(opts.mimeType)) opts.mimeType = "audio/webm";
+        mediaRecorder = new MediaRecorder(stream);
+        recordChunks = [];
+        mediaRecorder.ondataavailable = function(e) { if (e.data.size) recordChunks.push(e.data); };
+        mediaRecorder.onstop = async function() {
+          stream.getTracks().forEach(function(t) { t.stop(); });
+          const blob = new Blob(recordChunks, { type: mediaRecorder.mimeType });
+          try {
+            const arrayBuffer = await blob.arrayBuffer();
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const decoded = await ctx.decodeAudioData(arrayBuffer);
+            const targetSr = 16000;
+            const offline = new OfflineAudioContext(1, Math.ceil(decoded.duration * targetSr), targetSr);
+            const src = offline.createBufferSource();
+            src.buffer = decoded;
+            src.connect(offline.destination);
+            src.start(0);
+            const resampled = await offline.startRendering();
+            recordedBlob = audioBufferToWav(resampled);
+            setRecordPlayback(recordedBlob);
+            const dur = Math.round(decoded.duration);
+            let msg = "Recording ready (" + dur + " s, 16 kHz). Play back below, then Create voice to clone.";
+            if (dur < 5) msg = "Recording ready (" + dur + " s). Too short — use 5–30 s for best results. " + msg;
+            else if (dur > 30) msg = "Recording ready (" + dur + " s). Longer than 30 s — server will use first 30 s only. " + msg;
+            statusEl.textContent = msg;
+            updateCreateVoiceDisabled();
+          } catch (e) {
+            statusEl.textContent = "Could not process recording: " + (e.message || e);
+          }
+        };
+        mediaRecorder.start();
+        recordStartTime = Date.now();
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+        statusEl.textContent = "Recording... (5–30 s recommended)";
+        recordTimer = setInterval(function() {
+          const sec = Math.floor((Date.now() - recordStartTime) / 1000);
+          statusEl.textContent = "Recording... " + sec + " s";
+        }, 1000);
+      } catch (e) {
+        statusEl.textContent = "Mic access failed: " + (e.message || e);
+      }
+    };
+
+    document.getElementById("record_stop").onclick = function() {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        mediaRecorder.stop();
+        clearInterval(recordTimer);
+        document.getElementById("record_start").disabled = false;
+        document.getElementById("record_stop").disabled = true;
+      }
+    };
+
+    document.getElementById("record_rerecord").onclick = function() {
+      recordedBlob = null;
+      setRecordPlayback(null);
+      document.getElementById("record_status").textContent = "";
+      updateCreateVoiceDisabled();
+    };
+
+    async function loadTags() {
+      const r = await fetch("/voices");
+      const j = await r.json();
+      for (const t of j.language_tags) {
+        const opt = document.createElement("option");
+        opt.value = t; opt.textContent = t;
+        tagSel.appendChild(opt);
+      }
+    }
+
+        createVoiceBtn.onclick = async () => {
+          setError("");
+          const hasFile = cloneAudio.files.length > 0;
+          if (!consentCheck.checked || (!hasFile && !recordedBlob)) return;
+          createVoiceBtn.textContent = "Creating...";
+          createVoiceBtn.disabled = true;
+      const fd = new FormData();
+      if (recordedBlob) {
+        fd.append("audio", recordedBlob, "recording.wav");
+      } else {
+        fd.append("audio", cloneAudio.files[0]);
+      }
+      fd.append("consent_scope", document.getElementById("consent_scope").value);
+      fd.append("name", document.getElementById("clone_voice_name").value || "");
+      let cloneResponse = null;
+      try {
+        const res = await fetch("/voices/clone", { method: "POST", body: fd, headers: getAuthHeaders() });
+        if (!res.ok) { const t = await res.text(); throw new Error(t || "Clone failed"); }
+        cloneResponse = await res.json();
+        voiceIdWrap.style.display = "block";
+        recordedBlob = null;
+        setRecordPlayback(null);
+        document.getElementById("record_status").textContent = "";
+        if (cloneResponse.job_id) {
+          voiceIdOut.textContent = "Clone queued. Job ID: " + cloneResponse.job_id + ". Checking status...";
+          voiceIdWrap.dataset.copyId = cloneResponse.job_id;
+          voiceIdCopyBtn.textContent = "Copy job ID";
+          voiceIdCopyBtn.style.display = "inline-block";
+          const pollJob = async () => {
+            try {
+              const r = await fetch("/jobs/" + encodeURIComponent(cloneResponse.job_id), { headers: getAuthHeaders() });
+              const status = await r.json();
+              if (status.status === "completed" && status.voice_id) {
+                voiceIdOut.textContent = "Voice created: " + status.voice_id;
+                voiceIdWrap.dataset.copyId = status.voice_id;
+                voiceIdCopyBtn.textContent = "Copy voice ID";
+                await fetchVoiceList();
+                refreshVoiceList();
+                refreshVoiceIdSelect();
+                createVoiceBtn.textContent = "Create voice";
+                updateCreateVoiceDisabled();
+                setTimeout(function() { voiceIdCopyBtn.focus(); }, 100);
+                return;
+              }
+              if (status.status === "failed") {
+                voiceIdOut.textContent = "Clone failed: " + (status.error || "Unknown error");
+                voiceIdWrap.dataset.copyId = cloneResponse.job_id;
+                createVoiceBtn.textContent = "Create voice";
+                updateCreateVoiceDisabled();
+                return;
+              }
+              setTimeout(pollJob, 2000);
+            } catch (err) {
+              voiceIdOut.textContent = "Error checking status: " + (err.message || err);
+              createVoiceBtn.textContent = "Create voice";
+              updateCreateVoiceDisabled();
+            }
+          };
+          pollJob();
+        } else {
+          voiceIdOut.textContent = "Voice created: " + (cloneResponse.voice_id || "");
+          voiceIdWrap.dataset.copyId = cloneResponse.voice_id || "";
+          voiceIdCopyBtn.textContent = "Copy voice ID";
+          voiceIdCopyBtn.style.display = cloneResponse.voice_id ? "inline-block" : "none";
+          await fetchVoiceList();
+          refreshVoiceList();
+          refreshVoiceIdSelect();
+          if (cloneResponse.voice_id && voiceIdCopyBtn.style.display !== "none") {
+            setTimeout(function() { voiceIdCopyBtn.focus(); }, 100);
+          }
+        }
+          } catch (e) {
+            setError(e.message || "Clone failed");
+          } finally {
+            if (!cloneResponse || !cloneResponse.job_id) {
+          createVoiceBtn.textContent = "Create voice";
+          updateCreateVoiceDisabled();
+        }
+      }
+    };
+
+    voiceIdCopyBtn.onclick = function() {
+      const id = voiceIdWrap.dataset.copyId;
+      if (!id) return;
+      navigator.clipboard.writeText(id).then(function() {
+        const t = voiceIdCopyBtn.textContent;
+        voiceIdCopyBtn.textContent = "Copied!";
+        setTimeout(function() { voiceIdCopyBtn.textContent = t; }, 1500);
+      });
+    };
+
+    document.getElementById("set_default_btn").onclick = function() {
+      const vid = document.getElementById("voice_id_sel").value;
+      if (vid) {
+        localStorage.setItem(DEFAULT_VOICE_KEY, vid);
+        refreshVoiceList();
+      }
+    };
+
+    const narrateChunkBy = document.getElementById("narrate_chunk_by");
+    const narrateFixedWrap = document.getElementById("narrate_fixed_wrap");
+    narrateChunkBy.onchange = function() {
+      narrateFixedWrap.style.display = narrateChunkBy.value === "fixed" ? "block" : "none";
+    };
+
+    document.getElementById("narrate_text").addEventListener("input", updateNarrateCharCount);
+
+    document.getElementById("narrate_btn").onclick = async function() {
+      const narrateBtn = document.getElementById("narrate_btn");
+      const narrateStatus = document.getElementById("narrate_status");
+      const cancelNarrateBtn = document.getElementById("cancel_narrate_btn");
+      setError("");
+      const text = document.getElementById("narrate_text").value.trim();
+      if (!text) {
+        narrateStatus.textContent = "Please enter some text.";
+        return;
+      }
+      if (text.length > maxNarrateChars) {
+        narrateStatus.textContent = "Text exceeds " + maxNarrateChars + " characters. Shorten the script.";
+        return;
+      }
+      narrateBtn.disabled = true;
+      cancelNarrateBtn.style.display = "inline-block";
+      narrateStatus.textContent = "Generating... (this may take a minute)";
+      const body = {
+        text: text,
+        language_tag: tagSel.value || "en_us",
+        voice_id: document.getElementById("voice_id_sel").value || null,
+        chunk_by: narrateChunkBy.value,
+        max_chars: parseInt(document.getElementById("narrate_max_chars").value, 10) || 500
+      };
+      const ac = new AbortController();
+      cancelNarrateBtn.onclick = function() { ac.abort(); };
+      try {
+        const res = await fetch("/tts/narrate", {
+          method: "POST",
+          headers: Object.assign({ "Content-Type": "application/json" }, getAuthHeaders()),
+          body: JSON.stringify(body),
+          signal: ac.signal
+        });
+        if (!res.ok) {
+          const err = await res.text();
+          throw new Error(err || "Narration failed");
+        }
+        const blob = await res.blob();
+        player.src = URL.createObjectURL(blob);
+        player.play();
+        setExportReady("narration.wav");
+        narrateStatus.textContent = "Done. Use the audio player at the top of the page to listen or download.";
+        try { player.focus(); } catch (e) {}
+      } catch (e) {
+        if (e.name === "AbortError") {
+          setError("Request cancelled.");
+          narrateStatus.textContent = "Cancelled.";
+        } else {
+          setError(e.message || "Narration failed");
+          narrateStatus.textContent = "Error: " + (e.message || e);
+        }
+      } finally {
+        narrateBtn.disabled = false;
+        cancelNarrateBtn.style.display = "none";
+      }
+    };
+
+    btn.onclick = async () => {
+      setError("");
+      btn.textContent = "Processing... (This may take a minute on CPU)";
+      btn.disabled = true;
+      var cancelTtsBtn = document.getElementById("cancel_tts_btn");
+      cancelTtsBtn.style.display = "inline-block";
+
+      const fd = new FormData();
+      fd.append("text", document.getElementById("text").value);
+      fd.append("language_tag", tagSel.value || "en_us");
+      fd.append("temperature", document.getElementById("temp").value);
+      fd.append("top_p", document.getElementById("topp").value);
+      fd.append("repetition_penalty", document.getElementById("rep").value);
+
+      const vid = document.getElementById("voice_id_sel").value;
+      if (vid) fd.append("voice_id", vid);
+      else if (refAudio.files.length > 0) fd.append("reference_audio", refAudio.files[0]);
+
+      const ac = new AbortController();
+      cancelTtsBtn.onclick = function() { ac.abort(); };
+      try {
+          const res = await fetch("/tts", { method: "POST", body: fd, headers: getAuthHeaders(), signal: ac.signal });
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText || "Generation failed");
+          }
+          const blob = await res.blob();
+          player.src = URL.createObjectURL(blob);
+          player.play();
+          setExportReady("tts.wav");
+          try { player.focus(); } catch (e) {}
+      } catch (e) {
+          if (e.name === "AbortError") {
+            setError("Request cancelled.");
+          } else {
+            setError(e.message || "Generation failed");
+          }
+      } finally {
+          btn.textContent = "Generate Audio";
+          btn.disabled = false;
+          cancelTtsBtn.style.display = "none";
+      }
+    };
+
+    loadConfig();
+    loadTags();
+    loadLimits().then(function() {
+      updateNarrateCharCount();
+    });
+    fetchVoiceList().then(function() {
+      refreshVoiceList();
+      refreshVoiceIdSelect();
+    });
+  </script>
+</body>
+</html>

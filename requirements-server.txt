@@ -1,0 +1,5 @@
+# Step 2: after requirements-core.txt. FastAPI + Gradio (no TTS deps).
+fastapi>=0.100.0
+uvicorn>=0.22.0
+slowapi>=0.1.9
+gradio>=6.6.0
