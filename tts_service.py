@@ -12,7 +12,13 @@ import numpy as np
 import torch
 import soundfile as sf
 
-from config import AUDIO_CACHE_SIZE
+from config import (
+    AUDIO_CACHE_SIZE,
+    CLONE_GPT_COND_LEN,
+    CLONE_MAX_REF_LENGTH,
+    CLONE_SOUND_NORM_REFS,
+    CLONE_TRIM_DB,
+)
 
 # XTTSv2 Supported Languages
 DEFAULT_LANGUAGE_TAGS = ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "hu", "ko", "ja", "hi"]
@@ -36,6 +42,20 @@ def is_model_loaded() -> bool:
 def get_supported_language_tags() -> list[str]:
     return list(DEFAULT_LANGUAGE_TAGS)
 
+
+def get_conditioning_latents_for_clone(audio_path: str) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute XTTSv2 conditioning latents from reference audio using clone-quality config."""
+    tts = _get_tts()
+    gpt_cond_chunk_len = min(6, CLONE_GPT_COND_LEN)
+    return tts.synthesizer.tts_model.get_conditioning_latents(
+        audio_path=audio_path,
+        max_ref_length=CLONE_MAX_REF_LENGTH,
+        gpt_cond_len=CLONE_GPT_COND_LEN,
+        gpt_cond_chunk_len=gpt_cond_chunk_len,
+        sound_norm_refs=CLONE_SOUND_NORM_REFS,
+        librosa_trim_db=CLONE_TRIM_DB,
+    )
+
 def _evict_old_audio():
     while len(_audio_cache) >= AUDIO_CACHE_SIZE and _audio_cache:
         path = _audio_cache.pop(0)
@@ -48,9 +68,9 @@ def generate(
     text: str,
     language_tag: Optional[str] = "en",
     speaker_emb_path: Optional[str] = None,
-    temperature: float = 0.75,
-    top_p: float = 0.85,
-    repetition_penalty: float = 2.0,
+    temperature: float = 0.65,       # Lowered from 0.75 for stability
+    top_p: float = 0.80,             # Lowered from 0.85
+    repetition_penalty: float = 1.15, # Lowered from 2.0 to stop slurring
 ) -> tuple[np.ndarray, int]:
     
     text = (text or "").strip()

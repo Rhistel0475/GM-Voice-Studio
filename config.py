@@ -40,6 +40,13 @@ CLONE_MIN_DURATION_SEC = float(os.environ.get("CLONE_MIN_DURATION_SEC", "3.0"))
 CLONE_MAX_DURATION_SEC = float(os.environ.get("CLONE_MAX_DURATION_SEC", "120.0"))
 CLONE_TARGET_SAMPLE_RATE = 16000
 
+# XTTSv2 conditioning quality (improves clone fidelity)
+CLONE_SOUND_NORM_REFS = os.environ.get("CLONE_SOUND_NORM_REFS", "1").strip() in ("1", "true", "yes")
+CLONE_GPT_COND_LEN = int(os.environ.get("CLONE_GPT_COND_LEN", "10"))  # seconds of ref used for GPT latents (model default 6)
+CLONE_MAX_REF_LENGTH = int(os.environ.get("CLONE_MAX_REF_LENGTH", "30"))  # max seconds per reference (model default 30)
+_env_trim = os.environ.get("CLONE_TRIM_DB", "").strip()
+CLONE_TRIM_DB = int(_env_trim) if _env_trim.isdigit() else None  # trim silence (e.g. 30); empty = no trim
+
 # GDPR: retention (document your policy; delete via DELETE /voices/{voice_id})
 VOICE_RETENTION_DAYS = int(os.environ.get("VOICE_RETENTION_DAYS", "0"))  # 0 = keep until deleted
 

@@ -8,7 +8,7 @@ from typing import Optional
 
 from config import CLONE_MAX_DURATION_SEC, CLONE_MIN_DURATION_SEC
 from voice_store import create_voice_id, save_embedding
-from tts_service import _get_tts  # Import our new XTTSv2 service
+from tts_service import get_conditioning_latents_for_clone
 
 
 def _get_duration_sec(audio_path: str) -> float:
@@ -37,13 +37,7 @@ def clone_voice(
         raise ValueError(f"Audio too long: {duration:.1f}s (max {CLONE_MAX_DURATION_SEC}s)")
 
     try:
-        # Load the XTTSv2 model
-        tts = _get_tts()
-        
-        # XTTSv2 computes two separate latent tensors for voice cloning
-        gpt_cond_latent, speaker_embedding = tts.synthesizer.tts_model.get_conditioning_latents(audio_path=audio_path)
-        
-        # Store them together in a dictionary
+        gpt_cond_latent, speaker_embedding = get_conditioning_latents_for_clone(audio_path)
         embedding = {
             "gpt_cond_latent": gpt_cond_latent,
             "speaker_embedding": speaker_embedding

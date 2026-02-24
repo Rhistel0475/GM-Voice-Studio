@@ -334,9 +334,9 @@ async def tts_endpoint(
     _auth: None = Depends(verify_api_key),
     language_tag: str = Form("en"),
     voice_id: Optional[str] = Form(None),
-    temperature: float = Form(0.75),
-    top_p: float = Form(0.85),
-    repetition_penalty: float = Form(2.0),
+    temperature: float = Form(0.65),       # Lowered from 0.75 for stability
+    top_p: float = Form(0.80),             # Lowered from 0.85
+    repetition_penalty: float = Form(1.15), # Lowered from 2.0 to stop slurring
     reference_audio: Optional[UploadFile] = File(None),
 ):
     """
@@ -372,11 +372,9 @@ async def tts_endpoint(
             tmp_path = tmp.name
         pt_path = None
         try:
-            # NEW: XTTSv2 latents extraction
-            from tts_service import _get_tts
+            from tts_service import get_conditioning_latents_for_clone
             import torch
-            tts = _get_tts()
-            gpt_cond_latent, speaker_embedding = tts.synthesizer.tts_model.get_conditioning_latents(audio_path=tmp_path)
+            gpt_cond_latent, speaker_embedding = get_conditioning_latents_for_clone(tmp_path)
             emb = {
                 "gpt_cond_latent": gpt_cond_latent.cpu(),
                 "speaker_embedding": speaker_embedding.cpu()
@@ -512,9 +510,9 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.75,
-                top_p=0.85,
-                repetition_penalty=2.0,
+                temperature=0.65,
+                top_p=0.80,
+                repetition_penalty=1.15,
             )
             if sr_out is None:
                 sr_out = sr
