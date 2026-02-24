@@ -67,7 +67,7 @@ def generate(
         if not isinstance(latents, dict):
             raise ValueError("Voice file is in an old format. Re-clone the voice by uploading a new sample.")
             
-        device = tts.device
+        device = tts.synthesizer.tts_model.device
         
         # Send latents to GPU/CPU
         gpt_cond_latent = latents["gpt_cond_latent"].to(device)
