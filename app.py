@@ -12,14 +12,9 @@ from config import SERVER_NAME
 PORT = int(os.environ.get("PORT", os.environ.get("GRADIO_SERVER_PORT", "7861")))
 from tts_service import generate_to_file
 
-LANG_TAGS = [
-    "en_us",
-    "en_nyork",
-    "en_oakl",
-    "en_glasg",
-    "en_bost",
-    "en_scou",
-]
+# Pocket TTS: English only; default preset voice
+LANG_TAGS = ["en"]
+DEFAULT_VOICE = "alba"
 
 
 def generate(text: str, lang_tag: str):
@@ -28,7 +23,7 @@ def generate(text: str, lang_tag: str):
         raise gr.Error("Type something first 🙂")
 
     try:
-        path = generate_to_file(text, language_tag=lang_tag)
+        path = generate_to_file(text, language_tag=lang_tag, speaker_emb_path=DEFAULT_VOICE)
         with open(path, "rb") as f:
             # Gradio expects file path; we return path. Returned text from Kani not shown in UI.
             return path, ""
@@ -43,7 +38,7 @@ with gr.Blocks(title="Kani TTS") as demo:
     gr.Markdown("# Kani TTS\nType text, choose a tag, generate audio.")
 
     text = gr.Textbox(label="Text to speak", lines=4, value="Hello! Kani TTS is working.")
-    lang = gr.Dropdown(LANG_TAGS, value="en_us", label="Language / Voice tag")
+    lang = gr.Dropdown(LANG_TAGS, value="en", label="Language")
     btn = gr.Button("Generate", variant="primary")
 
     audio_out = gr.Audio(label="Output audio", type="filepath")

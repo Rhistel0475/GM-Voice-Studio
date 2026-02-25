@@ -1,6 +1,5 @@
 # Step 1: TTS stack. Then: pip install -r requirements-server.txt
-# XTTSv2 via Coqui TTS. Set COQUI_TOS_AGREED=1 to accept the model license.
-# Use coqui-tts (Python 3.10–3.14). For Python 3.9–3.11 you can use TTS instead.
-torch>=2.10.0
+# Pocket TTS (Kyutai). Python 3.10–3.14, PyTorch 2.5+.
+torch>=2.5.0
 soundfile>=0.13.0
-coqui-tts>=0.27.0
+pocket-tts

@@ -1,6 +1,6 @@
 # Kani TTS: full list. To avoid "resolution-too-deep", install in two steps:
 #   pip install -r requirements-core.txt && pip install -r requirements-server.txt
-torch>=2.10.0
+torch>=2.5.0
 gradio>=6.6.0
 kani-tts-2>=0.0.5
 soundfile>=0.13.0

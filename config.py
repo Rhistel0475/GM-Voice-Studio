@@ -1,15 +1,14 @@
 """Env-based configuration for TTS and voice storage."""
 import os
 
-# TTS engine (XTTSv2 via Coqui TTS)
-# Set COQUI_TOS_AGREED=1 to accept the model license (required for unattended startup).
+# TTS engine (Pocket TTS via Kyutai)
 AUDIO_CACHE_SIZE = int(os.environ.get("AUDIO_CACHE_SIZE", "10"))
 
 # Server (Gradio and FastAPI)
 SERVER_NAME = os.environ.get("SERVER_NAME", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "7862"))
 
-# Voice cloning: where to store .pt embeddings and metadata (local path for MVP)
+# Voice cloning: where to store .safetensors voice files and metadata (local path for MVP)
 VOICE_STORAGE_PATH = os.environ.get("VOICE_STORAGE_PATH", os.path.join(os.path.dirname(__file__), "voice_storage"))
 # Optional object store: VOICE_STORAGE_BACKEND=local|s3 (default local)
 VOICE_STORAGE_BACKEND = (os.environ.get("VOICE_STORAGE_BACKEND", "local") or "local").lower()
@@ -40,13 +39,6 @@ CLONE_MIN_DURATION_SEC = float(os.environ.get("CLONE_MIN_DURATION_SEC", "3.0"))
 CLONE_MAX_DURATION_SEC = float(os.environ.get("CLONE_MAX_DURATION_SEC", "120.0"))
 CLONE_TARGET_SAMPLE_RATE = 16000
 
-# XTTSv2 conditioning quality (improves clone fidelity)
-CLONE_SOUND_NORM_REFS = os.environ.get("CLONE_SOUND_NORM_REFS", "1").strip() in ("1", "true", "yes")
-CLONE_GPT_COND_LEN = int(os.environ.get("CLONE_GPT_COND_LEN", "10"))  # seconds of ref used for GPT latents (model default 6)
-CLONE_MAX_REF_LENGTH = int(os.environ.get("CLONE_MAX_REF_LENGTH", "30"))  # max seconds per reference (model default 30)
-_env_trim = os.environ.get("CLONE_TRIM_DB", "").strip()
-CLONE_TRIM_DB = int(_env_trim) if _env_trim.isdigit() else None  # trim silence (e.g. 30); empty = no trim
-
 # GDPR: retention (document your policy; delete via DELETE /voices/{voice_id})
 VOICE_RETENTION_DAYS = int(os.environ.get("VOICE_RETENTION_DAYS", "0"))  # 0 = keep until deleted
 
@@ -57,3 +49,6 @@ RATE_LIMIT_CLONE = os.environ.get("RATE_LIMIT_CLONE", "10/minute") or None
 
 # CORS: comma-separated origins (e.g. https://app.example.com). Empty = same-origin only.
 CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").strip()
+
+# Hugging Face token for gated models (e.g. Pocket TTS voice cloning). Set HF_TOKEN in env or .env.
+HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()

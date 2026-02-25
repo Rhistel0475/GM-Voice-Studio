@@ -1,5 +1,5 @@
 """
-Voice store: persist speaker embeddings (.pt) and metadata for voice_id.
+Voice store: persist voice files (.safetensors for Pocket TTS) and metadata for voice_id.
 Supports local directory (default) or optional S3 backend via VOICE_STORAGE_BACKEND=s3.
 """
 import json
@@ -33,6 +33,12 @@ if VOICE_STORAGE_BACKEND == "local":
     os.makedirs(VOICE_STORAGE_PATH, exist_ok=True)
 
 # --- Local backend ---
+
+VOICE_DATA_EXT = ".safetensors"
+
+
+def _voice_data_path(voice_id: str) -> Path:
+    return Path(VOICE_STORAGE_PATH) / f"{voice_id}{VOICE_DATA_EXT}"
 
 
 def _pt_path(voice_id: str) -> Path:
@@ -69,7 +75,7 @@ def _local_save_embedding(
 
 
 def _local_load_embedding_path(voice_id: str) -> Optional[str]:
-    p = _pt_path(voice_id)
+    p = _voice_data_path(voice_id)
     if p.exists():
         return str(p)
     return None
@@ -114,16 +120,38 @@ def _local_update_metadata(voice_id: str, name: Optional[str] = None) -> bool:
     return True
 
 
+def _local_save_voice_from_file(
+    voice_id: str,
+    voice_file_path: str,
+    consent_scope: str = "tts",
+    name: Optional[str] = None,
+    faction: Optional[str] = None,
+) -> None:
+    """Copy voice file to storage and write metadata. Used by Pocket TTS (.safetensors)."""
+    import shutil
+    dest = _voice_data_path(voice_id)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(voice_file_path, dest)
+    meta = _meta_path(voice_id)
+    meta.write_text(json.dumps({
+        "voice_id": voice_id,
+        "consent_scope": consent_scope,
+        "created_at": time.time(),
+        "name": (name or "").strip(),
+        "faction": (faction or "").strip() or "",
+    }, indent=2))
+
+
 def _local_delete_voice(voice_id: str) -> bool:
-    pt = _pt_path(voice_id)
+    data_path = _voice_data_path(voice_id)
     meta = _meta_path(voice_id)
     ok = False
-    if pt.exists():
+    if data_path.exists():
         try:
-            pt.unlink()
+            data_path.unlink()
             ok = True
         except OSError as e:
-            logging.warning("Could not delete %s: %s", pt, e)
+            logging.warning("Could not delete %s: %s", data_path, e)
     if meta.exists():
         try:
             meta.unlink()
@@ -199,15 +227,59 @@ def _s3_save_embedding(
     )
 
 
+def _s3_save_voice_from_file(
+    voice_id: str,
+    voice_file_path: str,
+    consent_scope: str = "tts",
+    name: Optional[str] = None,
+    faction: Optional[str] = None,
+) -> None:
+    """Upload voice file to S3 and write metadata. Used by Pocket TTS (.safetensors)."""
+    client = _s3_client()
+    bucket = VOICE_STORAGE_BUCKET
+    key = f"{voice_id}{VOICE_DATA_EXT}"
+    with open(voice_file_path, "rb") as f:
+        client.put_object(Bucket=bucket, Key=key, Body=f.read())
+    meta = {
+        "voice_id": voice_id,
+        "consent_scope": consent_scope,
+        "created_at": time.time(),
+        "name": (name or "").strip(),
+        "faction": (faction or "").strip() or "",
+    }
+    client.put_object(
+        Bucket=bucket,
+        Key=f"{voice_id}.json",
+        Body=json.dumps(meta, indent=2),
+        ContentType="application/json",
+    )
+    try:
+        resp = client.get_object(Bucket=bucket, Key=INDEX_KEY)
+        index = json.loads(resp["Body"].read().decode())
+    except client.exceptions.NoSuchKey:
+        index = []
+    index_by_id = {e["voice_id"]: e for e in index}
+    index_by_id[voice_id] = meta
+    index = list(index_by_id.values())
+    index.sort(key=lambda x: x["created_at"], reverse=True)
+    client.put_object(
+        Bucket=bucket,
+        Key=INDEX_KEY,
+        Body=json.dumps(index, indent=2),
+        ContentType="application/json",
+    )
+
+
 def _s3_load_embedding_path(voice_id: str) -> Optional[str]:
     client = _s3_client()
     bucket = VOICE_STORAGE_BUCKET
+    key = f"{voice_id}{VOICE_DATA_EXT}"
     try:
-        resp = client.get_object(Bucket=bucket, Key=f"{voice_id}.pt")
+        resp = client.get_object(Bucket=bucket, Key=key)
         data = resp["Body"].read()
     except client.exceptions.NoSuchKey:
         return None
-    fd, path = tempfile.mkstemp(suffix=".pt")
+    fd, path = tempfile.mkstemp(suffix=VOICE_DATA_EXT)
     os.close(fd)
     with open(path, "wb") as f:
         f.write(data)
@@ -272,7 +344,7 @@ def _s3_delete_voice(voice_id: str) -> bool:
     client = _s3_client()
     bucket = VOICE_STORAGE_BUCKET
     ok = False
-    for key in (f"{voice_id}.pt", f"{voice_id}.json"):
+    for key in (f"{voice_id}{VOICE_DATA_EXT}", f"{voice_id}.json"):
         try:
             client.delete_object(Bucket=bucket, Key=key)
             ok = True
@@ -311,7 +383,7 @@ def save_embedding(
     owner_id: Optional[str] = None,
     faction: Optional[str] = None,
 ) -> None:
-    """Save .pt and metadata. Embedding shape [1, 128] or [128]. owner_id used when use_db() for per-user scoping."""
+    """Save .pt and metadata (legacy). For Pocket TTS use save_voice_from_file instead."""
     created_at = time.time()
     if _use_s3():
         _s3_save_embedding(voice_id, embedding, consent_scope=consent_scope, name=name, faction=faction)
@@ -321,8 +393,26 @@ def save_embedding(
         db_insert_voice(voice_id, (name or "").strip(), consent_scope, created_at, owner_id=owner_id, faction=faction)
 
 
+def save_voice_from_file(
+    voice_id: str,
+    voice_file_path: str,
+    consent_scope: str = "tts",
+    name: Optional[str] = None,
+    owner_id: Optional[str] = None,
+    faction: Optional[str] = None,
+) -> None:
+    """Register a voice from an existing .safetensors file (Pocket TTS). Copies to storage and writes metadata."""
+    created_at = time.time()
+    if _use_s3():
+        _s3_save_voice_from_file(voice_id, voice_file_path, consent_scope=consent_scope, name=name, faction=faction)
+    else:
+        _local_save_voice_from_file(voice_id, voice_file_path, consent_scope=consent_scope, name=name, faction=faction)
+    if use_db():
+        db_insert_voice(voice_id, (name or "").strip(), consent_scope, created_at, owner_id=owner_id, faction=faction)
+
+
 def load_embedding_path(voice_id: str) -> Optional[str]:
-    """Return path to .pt file if it exists. For S3, downloads to a temp file."""
+    """Return path to voice file (.safetensors) if it exists. For S3, downloads to a temp file."""
     if _use_s3():
         return _s3_load_embedding_path(voice_id)
     return _local_load_embedding_path(voice_id)
@@ -356,7 +446,7 @@ def update_metadata(voice_id: str, name: Optional[str] = None, owner_id: Optiona
 
 
 def delete_voice(voice_id: str, owner_id: Optional[str] = None) -> bool:
-    """Remove .pt and metadata for this voice. When use_db() and owner_id set, only delete if owned by owner. Returns True if something was deleted."""
+    """Remove voice file and metadata for this voice. When use_db() and owner_id set, only delete if owned by owner. Returns True if something was deleted."""
     if use_db() and owner_id is not None:
         if not db_get_voice(voice_id, owner_id=owner_id):
             return False

@@ -63,16 +63,19 @@ def narrate_task(
 ):
     """
     Run long-form narrate: split text, TTS each chunk, concatenate, write WAV to NARRATE_RESULT_PATH/job_id.wav.
-    XTTSv2 requires voice_id. Returns {"job_type": "narrate"} on success.
+    voice_id can be a preset name or a cloned voice_id. Returns {"job_type": "narrate"} on success.
     """
     from config import NARRATE_RESULT_PATH
     from text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
-    from tts_service import generate as tts_generate
+    from tts_service import _is_preset_voice, generate as tts_generate
     from voice_store import load_embedding_path
 
     if not voice_id:
-        return {"job_type": "narrate", "status": "failed", "error": "Narrate requires voice_id (XTTSv2)."}
-    speaker_emb_path = load_embedding_path(voice_id)
+        return {"job_type": "narrate", "status": "failed", "error": "Narrate requires voice_id."}
+    if _is_preset_voice(voice_id):
+        speaker_emb_path = voice_id.strip()
+    else:
+        speaker_emb_path = load_embedding_path(voice_id)
     if not speaker_emb_path:
         return {"job_type": "narrate", "status": "failed", "error": "Voice not found"}
 
@@ -99,9 +102,9 @@ def narrate_task(
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.75,
-                top_p=0.85,
-                repetition_penalty=2.0,
+                temperature=0.65,
+                top_p=0.80,
+                repetition_penalty=1.15,
             )
             if sr_out is None:
                 sr_out = sr

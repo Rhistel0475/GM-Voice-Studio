@@ -1,24 +1,23 @@
-# GM Voice Studio (XTTSv2)
+# GM Voice Studio (Pocket TTS)
 
-AI voice engine: clone a voice from a short recording and generate speech with [XTTSv2](https://github.com/coqui-ai/TTS) (Coqui TTS). Supports multiple languages; a cloned character voice is required for synthesis.
+AI voice engine: use built-in voices or clone a voice from a short recording, then generate speech with [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (Kyutai). English only; CPU-optimized, no GPU required.
 
 ## Run the server
 
 ```bash
 # From project root, with venv activated
-export COQUI_TOS_AGREED=1   # Required: accept Coqui model license (prevents hang on first load)
 pip install -r requirements-core.txt && pip install -r requirements-server.txt
 python server.py
 ```
 
-**Python 3.12+**: This project uses **coqui-tts** (the [maintained fork](https://github.com/idiap/coqui-ai-TTS)) which supports Python 3.10–3.14. The original PyPI package `TTS` only supports Python &lt;3.12.
+**Python 3.10–3.14**, **PyTorch 2.5+**. Pocket TTS runs on CPU by default and does not require a GPU.
 
 **If pip reports "resolution-too-deep"**: Install in order one package at a time:
 
 ```bash
-pip install torch>=2.10.0
+pip install torch>=2.5.0
 pip install "soundfile>=0.13.0"
-pip install "coqui-tts>=0.27.0"
+pip install pocket-tts
 pip install fastapi uvicorn slowapi "gradio>=6.6.0"
 python server.py
 ```
@@ -30,10 +29,9 @@ python server.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `COQUI_TOS_AGREED` | (unset) | Set to `1` to accept the Coqui TTS model license (recommended for servers) |
 | `SERVER_NAME` | `0.0.0.0` | Bind address |
 | `PORT` | `7862` | Server port (override with env var) |
-| `VOICE_STORAGE_PATH` | `./voice_storage` | Directory for cloned voice embeddings (local) |
+| `VOICE_STORAGE_PATH` | `./voice_storage` | Directory for cloned voice files (.safetensors) and metadata |
 | `API_KEYS` | (empty) | Comma-separated API keys; header `X-API-Key` |
 | `REQUIRE_API_KEY` | (unset) | Set to `1`/`true`/`yes` to require key for TTS/clone |
 
@@ -49,6 +47,7 @@ Optional features (see [config.py](config.py) for full list):
 | `ADMIN_API_KEY` | When set, `DELETE /admin/voices/{voice_id}` with header `X-Admin-Key` for take-down |
 | `ABUSE_CLONE_PER_IP_PER_HOUR` | Max clones per IP per hour (0 = disable) |
 | `RATE_LIMIT_GLOBAL`, `RATE_LIMIT_TTS`, `RATE_LIMIT_CLONE` | e.g. `60/minute`; empty = no limit |
+| `HF_TOKEN` | Hugging Face token for **voice cloning** (gated model). Optional if you run `hf auth login` first — then the cached token is used. Otherwise create at [hf.co/settings/tokens](https://huggingface.co/settings/tokens), request access at [hf.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts), and set `HF_TOKEN=hf_...` in `.env` (no spaces/quotes). |
 
 ## API overview
 
@@ -56,15 +55,21 @@ Optional features (see [config.py](config.py) for full list):
 - **GET /health** – Liveness: `{"status":"ok","service":"kani-tts"}`.
 - **GET /ready** – Readiness: 503 until TTS model has been loaded (use for load balancer probe).
 - **GET /config** – Client config, e.g. `{"require_api_key": true}`.
+- **GET /voices** – Returns `language_tags` (e.g. `["en"]`) and `preset_voices` (e.g. `["alba", "marius", ...]`).
 - **GET /limits** – Narrate limits: `max_narrate_chars`, `max_narrate_chunks`.
-- **POST /tts** – Generate speech: form fields `text`, `language_tag`, optional `voice_id`, `temperature`, `top_p`, `repetition_penalty`; optional file `reference_audio` for one-off clone. Returns WAV.
-- **POST /voices/clone** – Create persistent voice: form fields `audio` (file), optional `name`, `consent_scope`; returns `voice_id` or (when Celery enabled) `job_id`.
+- **POST /tts** – Generate speech: form fields `text`, `language_tag` (ignored; English only), `voice_id` (preset name or cloned voice ID), optional `temperature`, `top_p`, `repetition_penalty`; optional file `reference_audio` for one-off clone. Returns WAV.
+- **POST /voices/clone** – Create persistent voice: form fields `audio` (file), optional `name`, `consent_scope`, `faction`; returns `voice_id` or (when Celery enabled) `job_id`.
 - **GET /jobs/{job_id}** – When Celery enabled: poll clone (or async) job status; when completed, includes `voice_id`.
-- **POST /tts/narrate** – Long-form: JSON `text`, optional `voice_id`, `language_tag`, `chunk_by`, `max_chars`; returns WAV.
+- **POST /tts/narrate** – Long-form: JSON `text`, `voice_id` (preset or cloned), optional `language_tag`, `chunk_by`, `max_chars`; returns WAV.
 - **GET /voices/list**, **GET /voices/{id}**, **PATCH /voices/{id}**, **DELETE /voices/{id}** – List and manage cloned voices.
 - **DELETE /admin/voices/{voice_id}** – Take-down (requires `X-Admin-Key` when `ADMIN_API_KEY` is set).
 
 Full request/response schemas: **http://localhost:7862/docs** (or your host/port).
+
+## Built-in and cloned voices
+
+- **Preset voices:** Pocket TTS includes built-in voices (alba, marius, javert, jean, fantine, cosette, eponine, azelma). Use `voice_id` set to the preset name (e.g. `alba`) for TTS or narrate without cloning.
+- **Cloned voices:** Upload a short clean sample (WAV/MP3) to create a persistent voice; it is stored as a `.safetensors` file and appears in the voice list.
 
 ## Testing
 
@@ -102,14 +107,16 @@ The web UI is a GM-focused voice studio; the same API can be called from your TT
 
 **Endpoints and example payloads:**
 
-- **Create a character voice:** `POST /voices/clone` — form: `audio` (file), optional `name`, `consent_scope` (e.g. `tts` or `commercial`). Returns `voice_id` or (with Celery) `job_id`; poll `GET /jobs/{job_id}` until done.
-- **List voices:** `GET /voices/list` — returns `[{ "voice_id", "name", "consent_scope", "created_at" }, ...]`. When using API keys, only voices for that key are returned.
-- **Speak a line:** `POST /tts` — form: `text`, `language_tag` (e.g. `en_us`), optional `voice_id`, `temperature`, `top_p`, `repetition_penalty`. Returns WAV bytes.
-- **Narrate a scene:** `POST /tts/narrate` — JSON: `{ "text": "...", "voice_id": null, "language_tag": "en_us", "chunk_by": "sentence", "max_chars": 500 }`. Returns WAV. For long scripts, use `"async": true` when Celery is configured; then poll `GET /jobs/{job_id}` and fetch WAV from `GET /jobs/{job_id}/result`.
+- **Create a character voice:** `POST /voices/clone` — form: `audio` (file), optional `name`, `consent_scope` (e.g. `tts` or `commercial`), `faction`. Returns `voice_id` or (with Celery) `job_id`; poll `GET /jobs/{job_id}` until done.
+- **List voices:** `GET /voices/list` — returns cloned voices. Use `GET /voices` for preset voice names.
+- **Speak a line:** `POST /tts` — form: `text`, optional `voice_id` (preset name or cloned ID), `temperature`, `top_p`, `repetition_penalty`. Returns WAV bytes.
+- **Narrate a scene:** `POST /tts/narrate` — JSON: `{ "text": "...", "voice_id": "alba", "language_tag": "en", "chunk_by": "sentence", "max_chars": 500 }`. Returns WAV. For long scripts, use `"async": true` when Celery is configured; then poll `GET /jobs/{job_id}` and fetch WAV from `GET /jobs/{job_id}/result`.
 
-**Example (create voice then TTS):**
+**Example (preset voice then clone):**
 
 ```bash
+# Speak with built-in voice
+curl -X POST http://localhost:7862/tts -F "text=You approach the gates." -F "voice_id=alba" --output out.wav
 # Clone a voice (after uploading audio)
 curl -X POST http://localhost:7862/voices/clone -F "audio=@sample.wav" -F "name=Dragon Queen" -H "X-API-Key: YOUR_KEY"
 # Then speak as that voice
@@ -118,7 +125,7 @@ curl -X POST http://localhost:7862/tts -F "text=You approach the gates." -F "voi
 
 ## Voice cloning
 
-- **Upload:** WAV/MP3, 5–30 s, 16 kHz preferred.
-- **Mic:** Record in the UI; recording is resampled to 16 kHz and can be played back before creating the voice. Use "Re-record" to clear and try again.
-- Cloned voices appear in the "Or use a cloned voice" dropdown for TTS and in Script to narration.
+- **Upload:** WAV/MP3, 3–120 s (Pocket TTS). Clean speech works best.
+- **Mic:** Record in the UI; recording can be played back before creating the voice. Use "Re-record" to clear and try again.
+- Cloned voices are stored as `.safetensors` and appear in the voice dropdown with built-in presets.
 - When Celery is configured, clone returns a `job_id`; the UI polls until the job completes and then shows the new `voice_id`.

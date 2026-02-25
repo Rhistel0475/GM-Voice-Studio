@@ -2,6 +2,14 @@
 FastAPI app: TTS and voice cloning API with health check and voice_id persistence.
 Uses tts_service (thin interface) and voice_store.
 """
+# Load .env first so HF_TOKEN is available for Pocket TTS voice-cloning model download
+import os as _os
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".env"))
+except ImportError:
+    pass
+
 import io
 import logging
 import os
@@ -27,6 +35,7 @@ from config import (
     API_KEYS,
     CELERY_BROKER_URL,
     CORS_ORIGINS,
+    HF_TOKEN,
     NARRATE_RESULT_PATH,
     PENDING_CLONE_PATH,
     PORT,
@@ -39,7 +48,7 @@ from config import (
 from logging_config import configure_logging
 from metrics import increment, prometheus_text, record_request_duration
 from text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
-from tts_service import generate as tts_generate, get_supported_language_tags
+from tts_service import generate as tts_generate, get_preset_voices, get_supported_language_tags, _is_preset_voice
 from voice_clone import clone_voice
 from voice_store import delete_voice, get_metadata, list_voices, load_embedding_path, update_metadata
 
@@ -124,6 +133,10 @@ async def request_logging_and_metrics(request: Request, call_next):
 def startup():
     configure_logging()
     logging.info("Kani TTS API starting; models load on first request.")
+    if not HF_TOKEN:
+        logging.warning("HF_TOKEN is not set. Voice cloning may fail; set HF_TOKEN in .env or the environment.")
+    else:
+        logging.info("HF_TOKEN is set; voice cloning (gated model) should be available.")
 
 # --- Client config (e.g. whether API key is required) ---
 @app.get("/config")
@@ -156,10 +169,10 @@ def limits():
     """Return narrate limits so the frontend can show counters and disable submit without duplicating constants."""
     return {"max_narrate_chars": MAX_TOTAL_CHARS, "max_narrate_chunks": MAX_CHUNKS}
 
-# --- Voices (preset list) ---
+# --- Voices (preset list + language) ---
 @app.get("/voices")
 def voices():
-    return {"language_tags": _lang_tags()}
+    return {"language_tags": _lang_tags(), "preset_voices": get_preset_voices()}
 
 def _use_clone_queue() -> bool:
     return bool(CELERY_BROKER_URL and not CELERY_BROKER_URL.startswith("memory"))
@@ -359,34 +372,25 @@ async def tts_endpoint(
 
     speaker_emb_path: Optional[str] = None
 
-    # Option A: Use a saved NPC Voice ID
+    # Option A: Use a saved voice or preset
     if voice_id:
-        speaker_emb_path = load_embedding_path(voice_id)
+        if _is_preset_voice(voice_id):
+            speaker_emb_path = voice_id.strip()
+        else:
+            speaker_emb_path = load_embedding_path(voice_id)
         if not speaker_emb_path:
             raise HTTPException(404, "Voice not found")
 
-    # Option B: Use a one-off audio upload
+    # Option B: One-off reference audio (Pocket loads voice from WAV path)
     elif reference_audio and reference_audio.filename:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(await reference_audio.read())
             tmp_path = tmp.name
-        pt_path = None
         try:
-            from tts_service import get_conditioning_latents_for_clone
-            import torch
-            gpt_cond_latent, speaker_embedding = get_conditioning_latents_for_clone(tmp_path)
-            emb = {
-                "gpt_cond_latent": gpt_cond_latent.cpu(),
-                "speaker_embedding": speaker_embedding.cpu()
-            }
-            fd, pt_path = tempfile.mkstemp(suffix=".pt")
-            os.close(fd)
-            torch.save(emb, pt_path)
-
             audio, sr = tts_generate(
                 text,
                 language_tag=language_tag,
-                speaker_emb_path=pt_path,
+                speaker_emb_path=tmp_path,
                 temperature=temperature,
                 top_p=top_p,
                 repetition_penalty=repetition_penalty,
@@ -404,11 +408,6 @@ async def tts_endpoint(
                 os.unlink(tmp_path)
             except OSError:
                 pass
-            if pt_path and os.path.exists(pt_path):
-                try:
-                    os.unlink(pt_path)
-                except OSError:
-                    pass
 
     try:
         audio, sr = tts_generate(
@@ -472,7 +471,7 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
         from celery_app import narrate_task
         if not body.voice_id:
             increment("errors_total")
-            raise HTTPException(400, "Narrate requires a voice_id (XTTSv2).")
+            raise HTTPException(400, "Narrate requires a voice_id.")
         job_id = str(uuid.uuid4())
         supported = _lang_tags()
         lang_tag = (body.language_tag or "").strip() or "en"
@@ -491,8 +490,11 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
 
     if not body.voice_id:
         increment("errors_total")
-        raise HTTPException(400, "Narrate requires a voice_id (XTTSv2). Select a character voice.")
-    speaker_emb_path = load_embedding_path(body.voice_id)
+        raise HTTPException(400, "Narrate requires a voice_id. Select a character voice.")
+    if _is_preset_voice(body.voice_id):
+        speaker_emb_path = body.voice_id.strip()
+    else:
+        speaker_emb_path = load_embedding_path(body.voice_id)
     if not speaker_emb_path:
         raise HTTPException(404, "Voice not found")
 

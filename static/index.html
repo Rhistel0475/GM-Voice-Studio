@@ -161,7 +161,7 @@
       <textarea id="text" rows="5" placeholder="Enter dialogue or a short line to speak as the selected character." aria-label="Dialogue or line to speak">The ancient door grinds open, revealing a chamber untouched for centuries.</textarea>
       <label for="tag"><strong>Language:</strong></label>
       <select id="tag" aria-label="Language"></select>
-      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: #a6adc8;">Language (e.g. en, es, fr). Used with the selected character voice.</p>
+      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: #a6adc8;">Pocket TTS is English only.</p>
       <label for="ref_audio"><strong>Or one-off clip (this request only):</strong></label>
       <input type="file" id="ref_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="One-off reference audio file">
 
@@ -294,6 +294,7 @@
   <script>
     const DEFAULT_VOICE_KEY = "kani_default_voice_id";
     let voiceListData = [];
+    let presetVoices = [];
     let maxNarrateChars = 5000;
     let requireApiKey = false;
 
@@ -350,6 +351,18 @@
       const sel = document.getElementById("voice_id_sel");
       const cur = sel.value;
       sel.innerHTML = '<option value="">-- Select a character voice (required) --</option>';
+      presetVoices.forEach(function(name) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name.charAt(0).toUpperCase() + name.slice(1) + " (built-in)";
+        sel.appendChild(opt);
+      });
+      if (presetVoices.length && voiceListData.length) {
+        const sep = document.createElement("option");
+        sep.disabled = true;
+        sep.textContent = "── Cloned voices ──";
+        sel.appendChild(sep);
+      }
       voiceListData.forEach(function(v) {
         const opt = document.createElement("option");
         opt.value = v.voice_id;
@@ -357,9 +370,9 @@
         sel.appendChild(opt);
       });
       const defaultId = localStorage.getItem(DEFAULT_VOICE_KEY);
-      if (defaultId && voiceListData.some(function(x) { return x.voice_id === defaultId; })) {
+      if (defaultId && (presetVoices.indexOf(defaultId) !== -1 || voiceListData.some(function(x) { return x.voice_id === defaultId; }))) {
         sel.value = defaultId;
-      } else if (voiceListData.some(function(x) { return x.voice_id === cur; })) {
+      } else if (cur && (presetVoices.indexOf(cur) !== -1 || voiceListData.some(function(x) { return x.voice_id === cur; }))) {
         sel.value = cur;
       }
     }
@@ -614,6 +627,7 @@
     async function loadTags() {
       const r = await fetch("/voices");
       const j = await r.json();
+      presetVoices = j.preset_voices || [];
       for (const t of j.language_tags) {
         const opt = document.createElement("option");
         opt.value = t; opt.textContent = t;
@@ -880,13 +894,14 @@
     loadSavedScripts();
 
     loadConfig();
-    loadTags();
-    loadLimits().then(function() {
-      updateNarrateCharCount();
-    });
-    fetchVoiceList().then(function() {
+    loadTags().then(function() {
+      return fetchVoiceList();
+    }).then(function() {
       refreshVoiceList();
       refreshVoiceIdSelect();
+    });
+    loadLimits().then(function() {
+      updateNarrateCharCount();
     });
   </script>
 </body>

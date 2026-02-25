@@ -28,11 +28,11 @@ def test_ready_before_model_load():
 
 
 @pytest.mark.slow
-def test_tts_accent_only():
-    """POST /tts with text and accent returns 200 and WAV. Slow (loads model)."""
+def test_tts_with_preset_voice():
+    """POST /tts with text and preset voice returns 200 and WAV. Slow (loads model)."""
     r = client.post(
         "/tts",
-        data={"text": "Hello.", "language_tag": "en_us"},
+        data={"text": "Hello.", "language_tag": "en", "voice_id": "alba"},
     )
     assert r.status_code == 200, r.text[:500]
     assert r.headers.get("content-type", "").startswith("audio/")

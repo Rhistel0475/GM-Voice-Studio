@@ -1,6 +1,6 @@
 """
-TTS service: thin interface over the XTTSv2 engine.
-Callers get (audio_array, sample_rate); engine can be swapped later.
+TTS service: thin interface over Pocket TTS (Kyutai).
+Callers get (audio_array, sample_rate). English-only; supports preset voices and cloned voices (.safetensors).
 """
 import logging
 import os
@@ -9,52 +9,68 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-import torch
 import soundfile as sf
 
-from config import (
-    AUDIO_CACHE_SIZE,
-    CLONE_GPT_COND_LEN,
-    CLONE_MAX_REF_LENGTH,
-    CLONE_SOUND_NORM_REFS,
-    CLONE_TRIM_DB,
-)
+from config import AUDIO_CACHE_SIZE, HF_TOKEN
 
-# XTTSv2 Supported Languages
-DEFAULT_LANGUAGE_TAGS = ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "hu", "ko", "ja", "hi"]
+# Pocket TTS: English only; preset voice names from Kyutai
+DEFAULT_LANGUAGE_TAGS = ["en"]
+POCKET_PRESET_VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
-_tts = None
+_model = None
 _audio_cache: list[str] = []
 
+
 def _get_tts():
-    global _tts
-    if _tts is None:
-        os.environ["COQUI_TOS_AGREED"] = "1"
-        from TTS.api import TTS
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        logging.info(f"Loading XTTSv2 on {device}...")
-        _tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
-    return _tts
+    global _model
+    if _model is None:
+        # So gated models (e.g. voice cloning) can be downloaded
+        if HF_TOKEN:
+            os.environ["HF_TOKEN"] = HF_TOKEN
+            os.environ["HUGGING_FACE_HUB_TOKEN"] = HF_TOKEN
+        # Ensure ALL hf_hub_download calls get our token (Pocket TTS doesn't pass it).
+        _inject_hf_token()
+        from pocket_tts import TTSModel
+        logging.info("Loading Pocket TTS...")
+        _model = TTSModel.load_model()
+    return _model
+
+
+def _inject_hf_token():
+    """Make huggingface_hub use our token for every download (required for gated kyutai/pocket-tts)."""
+    import huggingface_hub.hub_mixin as hub_mixin
+    from huggingface_hub import hf_hub_download as _real_hf_hub_download
+
+    token = HF_TOKEN or os.environ.get("HUGGING_FACE_HUB_TOKEN") or os.environ.get("HF_TOKEN")
+    if not token:
+        logging.warning("HF_TOKEN not set; voice cloning download may fail for gated repos.")
+
+    def _hf_hub_download(*args, **kwargs):
+        # Inject token so gated repos (e.g. kyutai/pocket-tts) work
+        if token and (kwargs.get("token") is None or kwargs.get("token") is False):
+            kwargs["token"] = token
+        elif not token and "token" not in kwargs:
+            kwargs["token"] = True  # use cached CLI token
+        return _real_hf_hub_download(*args, **kwargs)
+
+    hub_mixin.hf_hub_download = _hf_hub_download
+    # pocket_tts.utils.utils does "from huggingface_hub import hf_hub_download"
+    # so we must patch the name they'll import (the module's binding)
+    import huggingface_hub
+    huggingface_hub.hf_hub_download = _hf_hub_download
+
 
 def is_model_loaded() -> bool:
-    return _tts is not None
+    return _model is not None
+
 
 def get_supported_language_tags() -> list[str]:
     return list(DEFAULT_LANGUAGE_TAGS)
 
 
-def get_conditioning_latents_for_clone(audio_path: str) -> tuple[torch.Tensor, torch.Tensor]:
-    """Compute XTTSv2 conditioning latents from reference audio using clone-quality config."""
-    tts = _get_tts()
-    gpt_cond_chunk_len = min(6, CLONE_GPT_COND_LEN)
-    return tts.synthesizer.tts_model.get_conditioning_latents(
-        audio_path=audio_path,
-        max_ref_length=CLONE_MAX_REF_LENGTH,
-        gpt_cond_len=CLONE_GPT_COND_LEN,
-        gpt_cond_chunk_len=gpt_cond_chunk_len,
-        sound_norm_refs=CLONE_SOUND_NORM_REFS,
-        librosa_trim_db=CLONE_TRIM_DB,
-    )
+def get_preset_voices() -> list[str]:
+    return list(POCKET_PRESET_VOICES)
+
 
 def _evict_old_audio():
     while len(_audio_cache) >= AUDIO_CACHE_SIZE and _audio_cache:
@@ -64,52 +80,46 @@ def _evict_old_audio():
         except OSError:
             pass
 
+
+def _is_preset_voice(voice_id: str) -> bool:
+    return voice_id and voice_id.strip().lower() in [v.lower() for v in POCKET_PRESET_VOICES]
+
+
 def generate(
     text: str,
     language_tag: Optional[str] = "en",
     speaker_emb_path: Optional[str] = None,
-    temperature: float = 0.65,       # Lowered from 0.75 for stability
-    top_p: float = 0.80,             # Lowered from 0.85
-    repetition_penalty: float = 1.15, # Lowered from 2.0 to stop slurring
+    temperature: float = 0.65,
+    top_p: float = 0.80,
+    repetition_penalty: float = 1.15,
 ) -> tuple[np.ndarray, int]:
-    
+    """Generate speech. speaker_emb_path: path to .safetensors file or preset voice name (e.g. alba). language_tag ignored (English only)."""
     text = (text or "").strip()
     if not text:
         raise ValueError("Text is required")
-    if not speaker_emb_path or not Path(speaker_emb_path).exists():
-        raise ValueError("XTTSv2 requires a Character/NPC voice to be selected to generate audio.")
+    if not speaker_emb_path or not speaker_emb_path.strip():
+        raise ValueError("Pocket TTS requires a voice to be selected (preset or cloned).")
 
-    tts = _get_tts()
-    lang = language_tag if language_tag in DEFAULT_LANGUAGE_TAGS else "en"
+    model = _get_tts()
+    voice_ref = speaker_emb_path.strip()
+    # Preset name or path to .safetensors (or any path Pocket accepts)
+    if not _is_preset_voice(voice_ref) and not Path(voice_ref).exists():
+        raise ValueError("Voice not found. Select a built-in voice or a cloned voice.")
 
     try:
-        latents = torch.load(speaker_emb_path)
-        if not isinstance(latents, dict):
-            raise ValueError("Voice file is in an old format. Re-clone the voice by uploading a new sample.")
-            
-        device = tts.synthesizer.tts_model.device
-        
-        # Send latents to GPU/CPU
-        gpt_cond_latent = latents["gpt_cond_latent"].to(device)
-        speaker_embedding = latents["speaker_embedding"].to(device)
-
-        # Strict keyword arguments to prevent Tensor/Boolean evaluation bugs
-        out = tts.synthesizer.tts_model.inference(
-            text=text,
-            language=lang,
-            gpt_cond_latent=gpt_cond_latent,
-            speaker_embedding=speaker_embedding,
-            temperature=temperature,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty
-        )
-        audio = np.array(out["wav"])
-        sr = 24000  # XTTSv2 native sample rate
+        voice_state = model.get_state_for_audio_prompt(voice_ref)
+        audio = model.generate_audio(voice_state, text)
+        if hasattr(audio, "numpy"):
+            arr = audio.numpy()
+        else:
+            arr = np.array(audio.cpu())
+        sr = model.sample_rate
     except Exception as e:
         logging.exception("TTS generate failed")
         raise RuntimeError(f"Generation failed: {e!s}") from e
 
-    return audio, sr
+    return arr, sr
+
 
 def generate_to_file(
     text: str,
@@ -123,8 +133,10 @@ def generate_to_file(
     try:
         sf.write(path, audio, sample_rate)
     except Exception as e:
-        try: os.unlink(path)
-        except OSError: pass
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
         raise RuntimeError(f"Could not save audio: {e!s}") from e
     _audio_cache.append(path)
     return path
