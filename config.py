@@ -52,3 +52,8 @@ CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").strip()
 
 # Hugging Face token for gated models (e.g. Pocket TTS voice cloning). Set HF_TOKEN in env or .env.
 HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
+
+# Anthropic AI: Co-GM NPC dialogue generation
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+AI_MODEL = os.environ.get("AI_MODEL", "claude-opus-4-6").strip() or "claude-opus-4-6"
+RATE_LIMIT_AI = os.environ.get("RATE_LIMIT_AI", "20/minute") or None

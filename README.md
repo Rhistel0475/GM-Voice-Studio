@@ -2,6 +2,30 @@
 
 AI voice engine: use built-in voices or clone a voice from a short recording, then generate speech with [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (Kyutai). English only; CPU-optimized, no GPU required.
 
+## Co-GM Setup (AI NPC Dialogue)
+
+The **Co-GM Assistant** panel lets Claude write short, in-character NPC dialogue on demand, then speak it aloud through the NPC's cloned voice.
+
+1. Get an [Anthropic API key](https://console.anthropic.com/) and add it to `.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+2. Install the `anthropic` package (included in `requirements.txt`):
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Start the server and open the **Co-GM Assistant** panel in the UI.
+4. Fill in the NPC name, personality notes, and select their cloned voice.
+5. Click a quick-prompt chip or type the current situation, then click **Speak as NPC**.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | (required) | Anthropic API key for NPC dialogue generation |
+| `AI_MODEL` | `claude-opus-4-6` | Claude model to use for dialogue |
+| `RATE_LIMIT_AI` | `20/minute` | Rate limit for `/ai/dialogue` endpoint |
+
+NPC profiles are saved to your browser's localStorage and persist across sessions. Conversation history is held in-memory for the session and cleared when you click **Clear** or load a different NPC.
+
 ## Run the server
 
 ```bash

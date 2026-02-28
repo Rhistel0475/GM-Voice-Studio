@@ -32,6 +32,8 @@ from slowapi.util import get_remote_address
 from config import (
     ABUSE_CLONE_PER_IP_PER_HOUR,
     ADMIN_API_KEY,
+    AI_MODEL,
+    ANTHROPIC_API_KEY,
     API_KEYS,
     CELERY_BROKER_URL,
     CORS_ORIGINS,
@@ -39,6 +41,7 @@ from config import (
     NARRATE_RESULT_PATH,
     PENDING_CLONE_PATH,
     PORT,
+    RATE_LIMIT_AI,
     RATE_LIMIT_CLONE,
     RATE_LIMIT_GLOBAL,
     RATE_LIMIT_TTS,
@@ -137,6 +140,8 @@ def startup():
         logging.warning("HF_TOKEN is not set. Voice cloning may fail; set HF_TOKEN in .env or the environment.")
     else:
         logging.info("HF_TOKEN is set; voice cloning (gated model) should be available.")
+    if not ANTHROPIC_API_KEY:
+        logging.warning("ANTHROPIC_API_KEY is not set. POST /ai/dialogue will return 500; add it to .env for Co-GM features.")
 
 # --- Client config (e.g. whether API key is required) ---
 @app.get("/config")
@@ -538,6 +543,63 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     response = StreamingResponse(buf, media_type="audio/wav")
     response.headers["Content-Disposition"] = 'attachment; filename="narration.wav"'
     return response
+
+
+# --- AI: Co-GM NPC Dialogue Generation ---
+
+class DialogueMessage(BaseModel):
+    role: str    # "user" or "assistant"
+    content: str
+
+
+class DialogueRequest(BaseModel):
+    npc_name: str
+    personality: str
+    situation: str
+    conversation_history: list[DialogueMessage] = []
+    voice_id: Optional[str] = None
+    faction: str = ""
+
+
+class DialogueResponse(BaseModel):
+    dialogue: str
+    voice_id: Optional[str]
+
+
+@app.post("/ai/dialogue", response_model=DialogueResponse)
+@limiter.limit(RATE_LIMIT_AI or "1000/minute")
+async def ai_dialogue(
+    request: Request,
+    body: DialogueRequest,
+    _auth: None = Depends(verify_api_key),
+):
+    """
+    Generate a short in-character NPC line using Claude (Anthropic).
+    Returns dialogue text only; call /tts separately to speak it aloud.
+    Requires ANTHROPIC_API_KEY in .env.
+    """
+    if not body.npc_name.strip():
+        raise HTTPException(400, "npc_name is required")
+    if not body.personality.strip():
+        raise HTTPException(400, "personality is required")
+
+    from ai_service import generate_dialogue
+    history = [{"role": m.role, "content": m.content} for m in body.conversation_history]
+
+    try:
+        dialogue = generate_dialogue(
+            npc_name=body.npc_name,
+            personality=body.personality,
+            situation=body.situation,
+            conversation_history=history,
+            faction=body.faction,
+        )
+    except RuntimeError as e:
+        increment("errors_total")
+        raise HTTPException(500, str(e))
+
+    increment("ai_dialogue_requests_total")
+    return DialogueResponse(dialogue=dialogue, voice_id=body.voice_id or None)
 
 
 # --- Favicon (browsers request this automatically; 204 avoids 404 in logs) ---

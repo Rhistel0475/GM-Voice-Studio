@@ -134,6 +134,34 @@
       border-radius: 5px;
       color: var(--rpg-error-text);
     }
+    /* Co-GM Assistant */
+    .npc-roster-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; min-height: 32px; align-items: center; }
+    .npc-chip {
+      padding: 4px 14px; border-radius: 16px; border: 1px solid var(--rpg-border);
+      background: var(--rpg-input-bg); color: var(--rpg-text); cursor: pointer;
+      font-family: 'Crimson Text', Georgia, serif; font-size: 0.95em; transition: 0.15s;
+    }
+    .npc-chip:hover { background: var(--rpg-panel); border-color: var(--rpg-accent); }
+    .npc-chip.active { background: var(--rpg-accent); color: #1a1510; border-color: var(--rpg-accent); }
+    .quick-prompt-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .quick-prompt-chip {
+      padding: 5px 12px; border-radius: 16px; border: 1px solid var(--rpg-border);
+      background: var(--rpg-input-bg); color: var(--rpg-text-muted); cursor: pointer;
+      font-size: 0.88em; font-family: 'Crimson Text', Georgia, serif; transition: 0.15s;
+    }
+    .quick-prompt-chip:hover { background: var(--rpg-panel); color: var(--rpg-text); border-color: var(--rpg-accent); }
+    .dialogue-log {
+      background: var(--rpg-bg); border: 1px solid var(--rpg-border); border-radius: 6px;
+      padding: 12px; min-height: 80px; max-height: 260px; overflow-y: auto;
+      margin-bottom: 12px; font-size: 0.95em; color: var(--rpg-text); line-height: 1.5;
+    }
+    .dialogue-log .log-entry { margin-bottom: 10px; }
+    .dialogue-log .log-npc { color: var(--rpg-accent-light); font-style: italic; font-weight: 600; }
+    .dialogue-log .log-gm { color: var(--rpg-text-muted); font-size: 0.88em; }
+    .cogm-status { font-size: 0.9em; color: var(--rpg-text-muted); min-height: 1.4em; margin-top: 8px; }
+    .btn-small { padding: 6px 14px; font-size: 14px; width: auto; }
+    .btn-danger { background: #a04040 !important; color: #e8e0d5 !important; border-color: #8b3030 !important; }
+    .btn-danger:hover { background: #c05050 !important; }
   </style>
     </head>
     <body>
@@ -214,6 +242,85 @@
               <audio id="audio_magic" loop src="https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a73467.mp3"></audio>
           </div>
       </div>
+  </div>
+
+  <!-- Co-GM Assistant Panel -->
+  <div class="container" id="cogm_panel">
+    <h1 style="font-size:1.4em;">Co-GM Assistant</h1>
+    <p style="margin:0 0 14px 0; font-size:0.9em; color:var(--rpg-text-muted);">
+      Set up an NPC profile, describe what's happening, and Claude writes an in-character line — spoken aloud in the NPC's cloned voice.
+    </p>
+
+    <!-- NPC Roster -->
+    <div class="section-title">NPC Roster</div>
+    <div id="cogm_roster_bar" class="npc-roster-bar" role="list" aria-label="Saved NPCs"></div>
+    <div style="display:flex; gap:8px; margin-bottom:16px;">
+      <button type="button" class="btn-small" id="cogm_save_npc_btn">Save NPC</button>
+      <button type="button" class="btn-small btn-danger" id="cogm_delete_npc_btn">Delete NPC</button>
+    </div>
+
+    <!-- NPC Quick Profile -->
+    <div class="section-title">NPC Profile</div>
+    <div style="display:flex; gap:10px; margin-bottom:10px;">
+      <div style="flex:1;">
+        <label for="cogm_npc_name"><strong>Name:</strong></label>
+        <input type="text" id="cogm_npc_name" placeholder="e.g. Captain Aldric Vane"
+               style="width:100%; padding:8px; margin-top:4px; box-sizing:border-box;
+                      background:var(--rpg-input-bg); color:var(--rpg-text);
+                      border:1px solid var(--rpg-border); border-radius:5px;">
+      </div>
+      <div style="flex:1;">
+        <label for="cogm_npc_voice"><strong>Voice:</strong></label>
+        <select id="cogm_npc_voice" aria-label="NPC voice"
+                style="width:100%; padding:9px; margin-top:4px; box-sizing:border-box;
+                       background:var(--rpg-input-bg); color:var(--rpg-text);
+                       border:1px solid var(--rpg-border); border-radius:5px;">
+          <option value="">-- No voice --</option>
+        </select>
+      </div>
+    </div>
+    <label for="cogm_npc_personality"><strong>Personality / Notes:</strong></label>
+    <textarea id="cogm_npc_personality" rows="3"
+              placeholder="e.g. Gruff veteran, fiercely loyal to the crown, hiding guilt over a past betrayal. Speaks tersely; rarely volunteers information."
+              style="margin-top:4px;"></textarea>
+
+    <!-- Situation -->
+    <div class="section-title">Current Situation</div>
+    <label for="cogm_situation"><strong>What is happening right now?</strong></label>
+    <textarea id="cogm_situation" rows="2"
+              placeholder="e.g. Players are demanding to pass the city gate after curfew and have just bribed the guard."
+              style="margin-top:4px; margin-bottom:8px;"></textarea>
+
+    <!-- Quick Prompt chips -->
+    <div class="quick-prompt-bar" id="cogm_quick_prompts" role="group" aria-label="Quick situation prompts">
+      <button type="button" class="quick-prompt-chip" data-prompt="The players enter the room and see the NPC for the first time.">Players enter</button>
+      <button type="button" class="quick-prompt-chip" data-prompt="The players are threatening the NPC with violence or serious consequences.">Threatened</button>
+      <button type="button" class="quick-prompt-chip" data-prompt="The players are offering a bribe of gold or a valuable favor.">Bribed</button>
+      <button type="button" class="quick-prompt-chip" data-prompt="The players have gained the NPC's trust and the NPC is about to reveal a closely guarded secret.">Reveal secret</button>
+      <button type="button" class="quick-prompt-chip" data-prompt="Combat has just broken out. The NPC reacts to the sudden violence.">Combat begins</button>
+      <button type="button" class="quick-prompt-chip" data-prompt="The players are asking the NPC for directions, information, or local knowledge.">Asked for info</button>
+    </div>
+
+    <!-- Generate button -->
+    <button type="button" id="cogm_generate_btn" style="margin-bottom:8px;">Speak as NPC</button>
+    <button type="button" id="cogm_cancel_btn" class="btn-small"
+            style="display:none; margin-bottom:8px; background:#45475a; color:#cdd6f4;">Cancel</button>
+    <div class="cogm-status" id="cogm_status" role="status" aria-live="polite"></div>
+
+    <!-- Dialogue Log -->
+    <div class="section-title" style="margin-top:14px; display:flex; align-items:center; gap:10px;">
+      Dialogue Log
+      <button type="button" class="btn-small btn-danger" id="cogm_clear_log_btn"
+              style="font-size:12px; padding:3px 10px;">Clear</button>
+    </div>
+    <div id="cogm_dialogue_log" class="dialogue-log" role="log" aria-live="polite" aria-label="NPC dialogue history">
+      <span style="color:var(--rpg-text-muted); font-style:italic;">No dialogue yet. Configure the NPC above and click Speak as NPC.</span>
+    </div>
+
+    <!-- Separate audio player for Co-GM output -->
+    <div class="player-container" style="margin-top:10px;">
+      <audio id="cogm_player" controls aria-label="NPC dialogue audio"></audio>
+    </div>
   </div>
 
   <div class="container">
@@ -893,12 +1000,285 @@
 
     loadSavedScripts();
 
+    // =============================================
+    // Co-GM Assistant
+    // =============================================
+
+    var COGM_ROSTER_KEY = "gm_npc_roster";
+    var cogmHistory = [];       // [{role:"user"|"assistant", content:"..."}]
+    var cogmActiveNpcId = null;
+    var cogmAbortController = null;
+
+    // --- Roster helpers ---
+
+    function cogmLoadRoster() {
+      try { return JSON.parse(localStorage.getItem(COGM_ROSTER_KEY) || "[]"); }
+      catch(e) { return []; }
+    }
+
+    function cogmSaveRoster(roster) {
+      localStorage.setItem(COGM_ROSTER_KEY, JSON.stringify(roster));
+    }
+
+    function cogmNpcId(name) {
+      return name.trim().toLowerCase().replace(/\s+/g, "_").replace(/[^a-z0-9_]/g, "");
+    }
+
+    function cogmRenderRoster() {
+      var bar = document.getElementById("cogm_roster_bar");
+      bar.innerHTML = "";
+      var roster = cogmLoadRoster();
+      if (!roster.length) {
+        bar.innerHTML = '<span style="color:var(--rpg-text-muted);font-size:0.9em;">No saved NPCs yet — fill in a profile and click Save NPC.</span>';
+        return;
+      }
+      roster.forEach(function(npc) {
+        var btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "npc-chip" + (cogmActiveNpcId === npc.id ? " active" : "");
+        btn.textContent = npc.name;
+        btn.setAttribute("role", "listitem");
+        btn.onclick = function() { cogmLoadNpc(npc); };
+        bar.appendChild(btn);
+      });
+    }
+
+    function cogmLoadNpc(npc) {
+      cogmActiveNpcId = npc.id;
+      document.getElementById("cogm_npc_name").value = npc.name || "";
+      document.getElementById("cogm_npc_personality").value = npc.personality || "";
+      var voiceSel = document.getElementById("cogm_npc_voice");
+      if (npc.voice_id && voiceSel.querySelector('option[value="' + npc.voice_id + '"]')) {
+        voiceSel.value = npc.voice_id;
+      }
+      cogmHistory = [];
+      cogmRenderLog();
+      cogmRenderRoster();
+      cogmSetStatus("Loaded: " + npc.name);
+    }
+
+    document.getElementById("cogm_save_npc_btn").onclick = function() {
+      var name = document.getElementById("cogm_npc_name").value.trim();
+      if (!name) { cogmSetStatus("Enter an NPC name before saving."); return; }
+      var roster = cogmLoadRoster();
+      var id = cogmNpcId(name);
+      var npc = {
+        id: id,
+        name: name,
+        personality: document.getElementById("cogm_npc_personality").value.trim(),
+        voice_id: document.getElementById("cogm_npc_voice").value || "",
+      };
+      var idx = roster.findIndex(function(n) { return n.id === id; });
+      if (idx >= 0) { roster[idx] = npc; } else { roster.push(npc); }
+      cogmSaveRoster(roster);
+      cogmActiveNpcId = id;
+      cogmRenderRoster();
+      cogmSetStatus("Saved: " + name);
+    };
+
+    document.getElementById("cogm_delete_npc_btn").onclick = function() {
+      if (!cogmActiveNpcId) { cogmSetStatus("Select an NPC chip first."); return; }
+      var roster = cogmLoadRoster().filter(function(n) { return n.id !== cogmActiveNpcId; });
+      cogmSaveRoster(roster);
+      cogmActiveNpcId = null;
+      cogmRenderRoster();
+      cogmSetStatus("NPC deleted.");
+    };
+
+    // --- Quick prompt chips ---
+
+    document.querySelectorAll(".quick-prompt-chip").forEach(function(chip) {
+      chip.onclick = function() {
+        document.getElementById("cogm_situation").value = chip.dataset.prompt;
+      };
+    });
+
+    // --- Dialogue log ---
+
+    function cogmRenderLog() {
+      var log = document.getElementById("cogm_dialogue_log");
+      if (!cogmHistory.length) {
+        log.innerHTML = '<span style="color:var(--rpg-text-muted);font-style:italic;">No dialogue yet.</span>';
+        return;
+      }
+      var npcName = document.getElementById("cogm_npc_name").value.trim() || "NPC";
+      log.innerHTML = cogmHistory.map(function(m) {
+        var cls = m.role === "assistant" ? "log-npc" : "log-gm";
+        var label = m.role === "assistant" ? npcName : "GM";
+        return '<div class="log-entry"><span class="' + cls + '">' + label + ':</span> ' + cogmEscapeHtml(m.content) + '</div>';
+      }).join("");
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function cogmEscapeHtml(s) {
+      return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    document.getElementById("cogm_clear_log_btn").onclick = function() {
+      cogmHistory = [];
+      cogmRenderLog();
+      cogmSetStatus("Conversation cleared.");
+    };
+
+    function cogmSetStatus(msg) {
+      document.getElementById("cogm_status").textContent = msg;
+    }
+
+    // --- Populate Co-GM voice dropdown (mirrors voice_id_sel) ---
+
+    function cogmRefreshVoiceSelect() {
+      var sel = document.getElementById("cogm_npc_voice");
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">-- No voice --</option>';
+      presetVoices.forEach(function(name) {
+        var opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name.charAt(0).toUpperCase() + name.slice(1) + " (built-in)";
+        sel.appendChild(opt);
+      });
+      if (presetVoices.length && voiceListData.length) {
+        var sep = document.createElement("option");
+        sep.disabled = true;
+        sep.textContent = "\u2500\u2500 Cloned voices \u2500\u2500";
+        sel.appendChild(sep);
+      }
+      voiceListData.forEach(function(v) {
+        var opt = document.createElement("option");
+        opt.value = v.voice_id;
+        opt.textContent = voiceLabel(v);
+        sel.appendChild(opt);
+      });
+      if (cur && sel.querySelector('option[value="' + cur + '"]')) {
+        sel.value = cur;
+      }
+    }
+
+    // Auto-fill NPC name from voice metadata when voice is selected (only if name is empty)
+    document.getElementById("cogm_npc_voice").addEventListener("change", function() {
+      var vid = this.value;
+      if (!vid) return;
+      var meta = voiceListData.find(function(v) { return v.voice_id === vid; });
+      if (!meta) return;
+      if (!document.getElementById("cogm_npc_name").value.trim() && meta.name) {
+        document.getElementById("cogm_npc_name").value = meta.name;
+      }
+    });
+
+    // --- Main generate action ---
+
+    document.getElementById("cogm_generate_btn").onclick = async function() {
+      var npcName = document.getElementById("cogm_npc_name").value.trim();
+      var personality = document.getElementById("cogm_npc_personality").value.trim();
+      var situation = document.getElementById("cogm_situation").value.trim();
+      var voiceId = document.getElementById("cogm_npc_voice").value;
+
+      // Look up faction from loaded voice metadata
+      var faction = "";
+      if (voiceId) {
+        var meta = voiceListData.find(function(v) { return v.voice_id === voiceId; });
+        if (meta && meta.faction) faction = meta.faction;
+      }
+
+      if (!npcName) { cogmSetStatus("Enter an NPC name."); return; }
+      if (!personality) { cogmSetStatus("Add a personality description."); return; }
+      if (!situation) { cogmSetStatus("Describe the current situation."); return; }
+
+      var genBtn = document.getElementById("cogm_generate_btn");
+      var cancelBtn = document.getElementById("cogm_cancel_btn");
+      genBtn.disabled = true;
+      cancelBtn.style.display = "inline-block";
+      cogmSetStatus("Generating dialogue\u2026");
+      cogmAbortController = new AbortController();
+      cancelBtn.onclick = function() { if (cogmAbortController) cogmAbortController.abort(); };
+
+      try {
+        var res = await fetch("/ai/dialogue", {
+          method: "POST",
+          headers: Object.assign({"Content-Type": "application/json"}, getAuthHeaders()),
+          body: JSON.stringify({
+            npc_name: npcName,
+            personality: personality,
+            situation: situation,
+            faction: faction,
+            conversation_history: cogmHistory,
+            voice_id: voiceId || null,
+          }),
+          signal: cogmAbortController.signal,
+        });
+
+        if (!res.ok) {
+          var errText = await res.text();
+          throw new Error(errText || "Dialogue generation failed");
+        }
+
+        var data = await res.json();
+        var dialogue = data.dialogue;
+
+        // Append user trigger and NPC response to history; cap at 20 turns
+        cogmHistory.push({role: "user", content: "[Situation: " + situation + "]"});
+        cogmHistory.push({role: "assistant", content: dialogue});
+        if (cogmHistory.length > 20) cogmHistory = cogmHistory.slice(cogmHistory.length - 20);
+
+        cogmRenderLog();
+
+        if (voiceId) {
+          cogmSetStatus("Speaking\u2026");
+          await cogmSpeakDialogue(dialogue, voiceId);
+        } else {
+          cogmSetStatus("Done. (Assign a voice in the NPC Profile to hear it spoken.)");
+        }
+
+      } catch(e) {
+        if (e.name === "AbortError") {
+          cogmSetStatus("Cancelled.");
+        } else {
+          cogmSetStatus("Error: " + (e.message || e));
+          setError(e.message || "Dialogue generation failed");
+        }
+      } finally {
+        genBtn.disabled = false;
+        cancelBtn.style.display = "none";
+        cogmAbortController = null;
+      }
+    };
+
+    async function cogmSpeakDialogue(text, voiceId) {
+      var fd = new FormData();
+      fd.append("text", text);
+      fd.append("language_tag", "en");
+      fd.append("voice_id", voiceId);
+      fd.append("temperature", "0.95");
+      fd.append("top_p", "0.9");
+      fd.append("repetition_penalty", "1.15");
+      try {
+        var res = await fetch("/tts", {method:"POST", body:fd, headers:getAuthHeaders()});
+        if (!res.ok) { var e = await res.text(); throw new Error(e || "TTS failed"); }
+        var blob = await res.blob();
+        var player = document.getElementById("cogm_player");
+        player.src = URL.createObjectURL(blob);
+        await player.play();
+        cogmSetStatus("Done.");
+      } catch(e) {
+        cogmSetStatus("Dialogue generated but TTS failed: " + (e.message || e));
+      }
+    }
+
+    function cogmInit() {
+      cogmRenderRoster();
+      cogmRenderLog();
+    }
+
+    // End Co-GM Assistant
+    // =============================================
+
     loadConfig();
     loadTags().then(function() {
       return fetchVoiceList();
     }).then(function() {
       refreshVoiceList();
       refreshVoiceIdSelect();
+      cogmRefreshVoiceSelect();
+      cogmInit();
     });
     loadLimits().then(function() {
       updateNarrateCharCount();
