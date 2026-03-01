@@ -692,17 +692,22 @@ def favicon():
 _STATIC_INDEX = Path(__file__).resolve().parent / "static" / "index.html"
 _STATIC_TEST  = Path(__file__).resolve().parent / "static" / "test_ui.html"
 
-@app.get("/", response_class=HTMLResponse)
-def index():
-    return FileResponse(_STATIC_INDEX, media_type="text/html")
-
 @app.get("/test", response_class=HTMLResponse)
 def test_ui():
     return FileResponse(_STATIC_TEST, media_type="text/html")
 
+@app.get("/live", response_class=HTMLResponse)
+def live_board():
+    live_html = Path(__file__).resolve().parent / "static" / "live.html"
+    return FileResponse(live_html, media_type="text/html")
 
 app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static_files")
 
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host=SERVER_NAME, port=PORT)
+
+   
 # ═══════════════════════════════════════════════════════════════════════════
 # GM Voice Studio – Live Board  (Gradio UI, mounted at /live)
 # ═══════════════════════════════════════════════════════════════════════════

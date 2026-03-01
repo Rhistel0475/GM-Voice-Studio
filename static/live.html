@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GM Voice Studio – Live Board</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --wood: #1b1410;
+            --parchment: #f3e2c5;
+            --gold: #d4af37;
+            --charcoal: #25242a;
+            --ink: #2c1a0e;
+            --red: #7a2020;
+            --green: #2a5020;
+            --amber: #b07820;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #1b1410 0%, #25242a 50%, #1b1410 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: var(--parchment);
+        }
+
+        .header-banner {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+                        url('/static/img/forest_campfire.jpg') center/cover no-repeat;
+            padding: 40px 24px;
+            text-align: center;
+            border-radius: 12px;
+            border: 4px solid var(--gold);
+            margin-bottom: 20px;
+            min-height: 150px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        }
+
+        .header-banner h1 {
+            font-family: 'Cinzel', serif;
+            color: var(--gold);
+            font-size: 36px;
+            margin: 0 0 8px;
+            text-shadow: 0 2px 12px rgba(0,0,0,0.9);
+            letter-spacing: 3px;
+            font-weight: 900;
+        }
+
+        .header-banner p {
+            color: var(--parchment);
+            font-size: 16px;
+            margin: 0;
+            letter-spacing: 2px;
+            font-weight: 600;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            max-width: 1800px;
+            margin: 0 auto;
+        }
+
+        .section-card {
+            background: rgba(243,226,197,0.95);
+            border: 4px solid var(--gold);
+            border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .studio-card {
+            background: rgba(37,36,42,0.95);
+            border: 4px solid var(--gold);
+            border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+
+        .section-title {
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--ink);
+            border-bottom: 3px solid var(--gold);
+            padding-bottom: 8px;
+            margin: 0 0 16px 0;
+        }
+
+        .studio-title {
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--gold);
+            border-bottom: 3px solid var(--gold);
+            padding-bottom: 8px;
+            margin: 0 0 16px 0;
+        }
+
+        .quicktool-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .quicktool-btn {
+            background: var(--parchment);
+            border: 3px solid var(--gold);
+            border-radius: 8px;
+            color: var(--ink);
+            font-family: 'Cinzel', serif;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            min-height: 72px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .quicktool-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 28px rgba(212,175,55,0.8), 0 4px 12px rgba(0,0,0,0.4);
+            background: #faecd6;
+        }
+
+        textarea, input[type="text"], select {
+            width: 100%;
+            background: rgba(255,255,255,0.7);
+            border: 2px solid var(--gold);
+            border-radius: 6px;
+            padding: 10px;
+            color: var(--ink);
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            resize: vertical;
+        }
+
+        .studio-card textarea,
+        .studio-card input[type="text"],
+        .studio-card select {
+            background: rgba(243,226,197,0.15);
+            color: var(--parchment);
+        }
+
+        label {
+            display: block;
+            font-family: 'Cinzel', serif;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--ink);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .studio-card label {
+            color: var(--gold);
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: var(--gold);
+            color: var(--ink);
+            border: 3px solid var(--gold);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .btn-primary:hover {
+            background: #b8951e;
+            box-shadow: 0 0 20px rgba(212,175,55,0.6);
+        }
+
+        .btn-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .btn-sm {
+            background: rgba(243,226,197,0.2);
+            border: 2px solid var(--gold);
+            border-radius: 6px;
+            padding: 8px;
+            color: var(--gold);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-sm:hover {
+            background: rgba(243,226,197,0.3);
+        }
+
+        .waveform-bar {
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #3ea18c 0%, #2dd4bf 50%, #3ea18c 100%);
+            border-radius: 2px;
+            margin: 12px 0;
+            box-shadow: 0 0 12px rgba(62,161,140,0.6);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        .npc-avatar {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #2c1a0e 0%, #1b1410 100%);
+            border: 4px solid var(--gold);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+        }
+
+        .reveals {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .reveal-badge {
+            padding: 6px 14px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-family: 'Cinzel', serif;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: white;
+        }
+
+        .reveal-badge.available { background: var(--green); }
+        .reveal-badge.conditional { background: var(--amber); }
+        .reveal-badge.locked { background: var(--red); }
+
+        .reveal-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .reveal-badge.available .reveal-dot { background: #4ade80; }
+        .reveal-badge.conditional .reveal-dot { background: #fbbf24; }
+        .reveal-badge.locked .reveal-dot { background: #ef4444; }
+
+        .chatbot {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 16px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 12px;
+        }
+
+        .chat-message {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            max-width: 85%;
+        }
+
+        .chat-message.user {
+            background: var(--parchment);
+            border: 2px solid var(--gold);
+            color: var(--ink);
+            margin-left: auto;
+        }
+
+        .chat-message.bot {
+            background: var(--charcoal);
+            border: 2px solid var(--gold);
+            color: var(--parchment);
+        }
+
+        .input-group {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .input-group input {
+            height: 42px;
+        }
+
+        .slider-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin: 12px 0;
+        }
+
+        .slider-container label {
+            font-size: 10px;
+            margin-bottom: 4px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--gold);
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .encounter-row, .party-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            padding: 8px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 8px;
+            border-left: 4px solid var(--gold);
+        }
+
+        .init-circle {
+            font-family: 'Cinzel', serif;
+            font-size: 14px;
+            font-weight: 900;
+            color: var(--gold);
+            background: var(--ink);
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .entity-name {
+            font-family: 'Cinzel', serif;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--ink);
+            min-width: 120px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .hp-bar-bg {
+            flex: 1;
+            height: 10px;
+            background: #d4aa70;
+            border-radius: 5px;
+            border: 1px solid rgba(44,26,14,0.3);
+            overflow: hidden;
+        }
+
+        .hp-bar {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.3s;
+        }
+
+        .hp-text {
+            font-size: 11px;
+            min-width: 50px;
+            text-align: right;
+            font-weight: 700;
+        }
+
+        .world-map {
+            margin-top: 20px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 4px solid var(--gold);
+        }
+
+        .world-map img {
+            width: 100%;
+            display: block;
+        }
+
+        .world-map-label {
+            background: rgba(27,20,16,0.85);
+            color: var(--gold);
+            font-family: 'Cinzel', serif;
+            font-size: 11px;
+            text-align: center;
+            padding: 6px;
+            letter-spacing: 2px;
+            font-weight: 700;
+        }
+
+        audio {
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        /* HP bar colors */
+        .hp-green { background: #2a5020; }
+        .hp-amber { background: #b07820; }
+        .hp-red   { background: #7a2020; }
+
+        /* HP text colors */
+        .text-green { color: #2a5020; }
+        .text-amber { color: #b07820; }
+        .text-red   { color: #7a2020; }
+
+        /* HP bar widths */
+        #hp-scout     { width: 67%; }
+        #hp-archer    { width: 60%; }
+        #hp-shaman    { width: 60%; }
+        #hp-wolf      { width: 25%; }
+        #hp-aethelred { width: 90%; }
+        #hp-lira      { width: 48%; }
+        #hp-torin     { width: 91%; }
+        #hp-zephyr    { width: 16%; }
+        #hp-mira      { width: 95%; }
+
+        /* Layout utilities */
+        .mt-8  { margin-top:  8px; }
+        .mt-12 { margin-top: 12px; }
+
+        /* Reveals section label */
+        .reveals-label {
+            font-size: 12px;
+            color: var(--ink);
+            font-family: 'Cinzel', serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 12px 0 6px;
+            font-weight: 700;
+        }
+
+        /* Send button — auto width with horizontal padding */
+        .btn-send { width: auto; padding: 0 24px; }
+
+        /* Full-width override for btn-sm */
+        .btn-full { width: 100%; }
+    </style>
+</head>
+<body>
+    <div class="header-banner">
+        <h1>GM VOICE STUDIO – LIVE BOARD</h1>
+        <p>Campaign: The Shattered Crown</p>
+    </div>
+
+    <div class="main-grid">
+        <!-- LEFT COLUMN -->
+        <div>
+            <!-- Quick Tools -->
+            <div class="section-card">
+                <h3 class="section-title">⚔️ Quick Tools</h3>
+                <div class="quicktool-grid">
+                    <button class="quicktool-btn">🎲 Roll Dice</button>
+                    <button class="quicktool-btn">📖 Monster Bestiary</button>
+                    <button class="quicktool-btn">✨ Spell Ref</button>
+                    <button class="quicktool-btn">💰 Loot Table</button>
+                    <button class="quicktool-btn">🎭 Gen NPC</button>
+                    <button class="quicktool-btn">⚔️ Apply Damage</button>
+                </div>
+            </div>
+
+            <!-- Session Notes -->
+            <div class="section-card">
+                <h3 class="section-title">📜 Session Notes</h3>
+                <textarea rows="4" placeholder="Scribe your notes here..."></textarea>
+            </div>
+
+            <!-- Encounter Tracker -->
+            <div class="section-card">
+                <h3 class="section-title">⚔️ Encounter Tracker</h3>
+                <div class="encounter-row">
+                    <div class="init-circle">14</div>
+                    <div class="entity-name">Goblin Scout</div>
+                    <div class="hp-bar-bg"><div id="hp-scout" class="hp-bar hp-green"></div></div>
+                    <div class="hp-text text-green">8 / 12</div>
+                </div>
+                <div class="encounter-row">
+                    <div class="init-circle">12</div>
+                    <div class="entity-name">Goblin Archer</div>
+                    <div class="hp-bar-bg"><div id="hp-archer" class="hp-bar hp-amber"></div></div>
+                    <div class="hp-text text-amber">6 / 10</div>
+                </div>
+                <div class="encounter-row">
+                    <div class="init-circle">9</div>
+                    <div class="entity-name">Goblin Shaman</div>
+                    <div class="hp-bar-bg"><div id="hp-shaman" class="hp-bar hp-amber"></div></div>
+                    <div class="hp-text text-amber">9 / 15</div>
+                </div>
+                <div class="encounter-row">
+                    <div class="init-circle">7</div>
+                    <div class="entity-name">Captive Wolf</div>
+                    <div class="hp-bar-bg"><div id="hp-wolf" class="hp-bar hp-red"></div></div>
+                    <div class="hp-text text-red">5 / 20</div>
+                </div>
+            </div>
+
+            <!-- Party Roster -->
+            <div class="section-card">
+                <h3 class="section-title">🛡️ Party Roster</h3>
+                <div class="party-row">
+                    <div class="entity-name">Aethelred</div>
+                    <div class="hp-bar-bg"><div id="hp-aethelred" class="hp-bar hp-green"></div></div>
+                    <div class="hp-text text-green">72 / 80</div>
+                </div>
+                <div class="party-row">
+                    <div class="entity-name">Lira</div>
+                    <div class="hp-bar-bg"><div id="hp-lira" class="hp-bar hp-amber"></div></div>
+                    <div class="hp-text text-amber">28 / 58</div>
+                </div>
+                <div class="party-row">
+                    <div class="entity-name">Torin</div>
+                    <div class="hp-bar-bg"><div id="hp-torin" class="hp-bar hp-green"></div></div>
+                    <div class="hp-text text-green">40 / 44</div>
+                </div>
+                <div class="party-row">
+                    <div class="entity-name">Zephyr</div>
+                    <div class="hp-bar-bg"><div id="hp-zephyr" class="hp-bar hp-red"></div></div>
+                    <div class="hp-text text-red">9 / 56</div>
+                </div>
+                <div class="party-row">
+                    <div class="entity-name">Mira</div>
+                    <div class="hp-bar-bg"><div id="hp-mira" class="hp-bar hp-green"></div></div>
+                    <div class="hp-text text-green">52 / 55</div>
+                </div>
+
+                <div class="world-map">
+                    <img src="/static/img/world_map.jpg" alt="World Map" onerror="this.style.display='none'">
+                    <div class="world-map-label">🗺️ WORLD MAP</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div>
+            <!-- Voice Studio -->
+            <div class="studio-card">
+                <h3 class="studio-title">🎙️ Voice Studio</h3>
+                <div class="waveform-bar"></div>
+                
+                <label for="voiceSelect">Choose Voice</label>
+                <select id="voiceSelect">
+                    <option value="alba">Alba (preset)</option>
+                    <option value="marius">Marius (preset)</option>
+                </select>
+
+                <div class="btn-row mt-12">
+                    <button class="btn-sm" onclick="loadVoices()">↻ Refresh</button>
+                    <button class="btn-sm">🔴 Record</button>
+                    <button class="btn-sm">📁 Upload</button>
+                </div>
+
+                <label for="ttsText" class="mt-12">Speak a line</label>
+                <textarea id="ttsText" rows="2" placeholder="Enter NPC dialogue here..."></textarea>
+
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label for="temperature">Temperature</label>
+                        <input type="range" id="temperature" min="0" max="1" step="0.05" value="0.65">
+                    </div>
+                    <div class="slider-container">
+                        <label for="pitch">Pitch</label>
+                        <input type="range" id="pitch" min="-5" max="5" step="0.5" value="0">
+                    </div>
+                </div>
+
+                <button class="btn-primary" onclick="speakText()">▶ Speak</button>
+                <audio id="ttsAudio" controls class="mt-12"></audio>
+            </div>
+
+            <!-- NPC Profile -->
+            <div class="section-card">
+                <h3 class="section-title">🎭 NPC Profile</h3>
+                <div class="npc-avatar">👹</div>
+                
+                <div class="two-col">
+                    <div>
+                        <label>Name</label>
+                        <input type="text" id="npcName" placeholder="Temple Guardian">
+                    </div>
+                    <div>
+                        <label>Role</label>
+                        <input type="text" placeholder="Undead Sentinel">
+                    </div>
+                </div>
+
+                <label for="npcVoice" class="mt-12">Voice</label>
+                <select id="npcVoice">
+                    <option value="alba">Alba (preset)</option>
+                </select>
+
+                <label for="npcPersonality" class="mt-12">Personality Notes</label>
+                <textarea id="npcPersonality" rows="3" placeholder="Stoic, ancient, speaks in riddles..."></textarea>
+
+                <p class="reveals-label">🎯 Reveals</p>
+                <div class="reveals">
+                    <span class="reveal-badge available">
+                        <span class="reveal-dot"></span>
+                        Hook line
+                    </span>
+                    <span class="reveal-badge conditional">
+                        <span class="reveal-dot"></span>
+                        Temple history
+                    </span>
+                    <span class="reveal-badge locked">
+                        <span class="reveal-dot"></span>
+                        🔒 Secret passage
+                    </span>
+                </div>
+            </div>
+
+            <!-- Co-GM Assistant -->
+            <div class="studio-card">
+                <h3 class="studio-title">🤖 Co-GM Assistant</h3>
+                <div class="chatbot" id="chatbot"></div>
+                
+                <div class="input-group">
+                    <input type="text" id="cogmInput" placeholder="Describe the situation...">
+                    <button class="btn-primary btn-send" onclick="sendCogmMessage()">Send</button>
+                </div>
+
+                <button class="btn-sm btn-full" onclick="speakLastReply()">🔊 Speak Last Reply as NPC</button>
+                <audio id="cogmAudio" controls class="mt-8"></audio>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load voices on page load
+        async function loadVoices() {
+            try {
+                const response = await fetch('/voices/list');
+                const voices = await response.json();
+                
+                const presets = ['alba', 'marius', 'javert', 'jean', 'fantine', 'cosette', 'eponine', 'azelma'];
+                const options = presets.map(v => `<option value="${v}">${v.charAt(0).toUpperCase() + v.slice(1)} (preset)</option>`);
+                
+                voices.forEach(v => {
+                    options.push(`<option value="${v.voice_id}">${v.name} (cloned) [${v.voice_id}]</option>`);
+                });
+                
+                document.getElementById('voiceSelect').innerHTML = options.join('');
+                document.getElementById('npcVoice').innerHTML = options.join('');
+            } catch (err) {
+                console.error('Failed to load voices:', err);
+            }
+        }
+
+        // TTS
+        async function speakText() {
+            const text = document.getElementById('ttsText').value;
+            const voice = document.getElementById('voiceSelect').value;
+            const temp = document.getElementById('temperature').value;
+            
+            if (!text.trim()) {
+                alert('Enter some text to speak');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('text', text);
+            formData.append('voice_id', voice);
+            formData.append('temperature', temp);
+
+            try {
+                const response = await fetch('/tts', { method: 'POST', body: formData });
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                document.getElementById('ttsAudio').src = url;
+                document.getElementById('ttsAudio').play();
+            } catch (err) {
+                alert('TTS failed: ' + err.message);
+            }
+        }
+
+        // Co-GM chat
+        let chatHistory = [];
+        
+        async function sendCogmMessage() {
+            const input = document.getElementById('cogmInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const npcName = document.getElementById('npcName').value || 'The NPC';
+            const personality = document.getElementById('npcPersonality').value || 'Neutral';
+
+            addChatMessage('user', message);
+            input.value = '';
+
+            try {
+                const response = await fetch('/ai/dialogue', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        npc_name: npcName,
+                        personality: personality,
+                        situation: message,
+                        conversation_history: chatHistory
+                    })
+                });
+
+                const data = await response.json();
+                addChatMessage('bot', data.dialogue);
+                
+                chatHistory.push({ role: 'user', content: message });
+                chatHistory.push({ role: 'assistant', content: data.dialogue });
+            } catch (err) {
+                addChatMessage('bot', '[Co-GM error: ' + err.message + ']');
+            }
+        }
+
+        function addChatMessage(role, content) {
+            const chatbot = document.getElementById('chatbot');
+            const msg = document.createElement('div');
+            msg.className = `chat-message ${role}`;
+            msg.textContent = content;
+            chatbot.appendChild(msg);
+            chatbot.scrollTop = chatbot.scrollHeight;
+        }
+
+        async function speakLastReply() {
+            const messages = document.querySelectorAll('.chat-message.bot');
+            if (messages.length === 0) {
+                alert('No Co-GM reply to speak yet');
+                return;
+            }
+
+            const lastReply = messages[messages.length - 1].textContent;
+            const voice = document.getElementById('npcVoice').value;
+
+            const formData = new FormData();
+            formData.append('text', lastReply);
+            formData.append('voice_id', voice);
+
+            try {
+                const response = await fetch('/tts', { method: 'POST', body: formData });
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                document.getElementById('cogmAudio').src = url;
+                document.getElementById('cogmAudio').play();
+            } catch (err) {
+                alert('TTS failed: ' + err.message);
+            }
+        }
+
+        // Enter key support
+        document.getElementById('cogmInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendCogmMessage();
+        });
+
+        // Load voices on startup
+        loadVoices();
+    </script>
+</body>
+</html>
