@@ -728,124 +728,179 @@ body, .gradio-container {
 }
 
 .header-banner {
-  background: linear-gradient(rgba(27,20,16,0.55), rgba(27,20,16,0.85)),
-              url('/static/img/live_header.jpg') center/cover no-repeat;
-  padding: 28px 24px;
+  background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
+              url('/static/img/forest_campfire.jpg') center/cover no-repeat;
+  padding: 40px 24px;
   text-align: center;
-  border-radius: 8px;
-  border: 2px solid var(--gold);
-  margin-bottom: 14px;
+  border-radius: 12px;
+  border: 4px solid var(--gold);
+  margin-bottom: 20px;
+  min-height: 150px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 
 .section-card {
-  background: var(--parchment) !important;
-  border: 2px solid var(--gold) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25) !important;
-  padding: 16px 18px !important;
-  margin-bottom: 12px !important;
+  background: rgba(243,226,197,0.95) !important;
+  border: 4px solid var(--gold) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+  padding: 20px !important;
+  margin-bottom: 16px !important;
+}
+
+.studio-card {
+  background: rgba(37,36,42,0.95) !important;
+  border: 4px solid var(--gold) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5) !important;
+  padding: 20px !important;
+  margin-bottom: 16px !important;
 }
 
 .section-title {
   font-family: 'Cinzel', serif !important;
-  font-size: 12px !important;
+  font-size: 14px !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
   letter-spacing: 2px !important;
   color: var(--ink) !important;
-  border-bottom: 2px solid var(--gold) !important;
-  padding-bottom: 7px !important;
-  margin: 0 0 12px 0 !important;
+  border-bottom: 3px solid var(--gold) !important;
+  padding-bottom: 8px !important;
+  margin: 0 0 16px 0 !important;
+}
+
+.studio-title {
+  font-family: 'Cinzel', serif !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 2px !important;
+  color: var(--gold) !important;
+  border-bottom: 3px solid var(--gold) !important;
+  padding-bottom: 8px !important;
+  margin: 0 0 16px 0 !important;
 }
 
 .quicktool-btn, .quicktool-btn:focus {
   background:     var(--parchment) !important;
-  border:         2px solid var(--gold) !important;
-  border-radius:  6px !important;
+  border:         3px solid var(--gold) !important;
+  border-radius:  8px !important;
   color:          var(--ink) !important;
   font-family:    'Cinzel', serif !important;
-  font-size:      10px !important;
+  font-size:      11px !important;
   font-weight:    700 !important;
   text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
-  min-height:     54px !important;
-  transition:     transform 0.15s, box-shadow 0.15s !important;
+  letter-spacing: 1px !important;
+  min-height:     72px !important;
+  transition:     transform 0.2s, box-shadow 0.2s !important;
   cursor:         pointer !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
 }
 .quicktool-btn:hover {
-  transform:  scale(1.05) !important;
-  box-shadow: 0 0 14px rgba(212,175,55,0.6), 0 3px 8px rgba(0,0,0,0.35) !important;
+  transform:  scale(1.08) !important;
+  box-shadow: 0 0 28px rgba(212,175,55,0.8), 0 4px 12px rgba(0,0,0,0.4) !important;
   background: #faecd6 !important;
 }
 
 /* Co-GM chatbot bubbles */
 .chatbot-parchment [data-testid="user"] > div {
   background: var(--parchment) !important;
-  border: 1px solid var(--gold) !important;
+  border: 2px solid var(--gold) !important;
   color: var(--ink) !important;
+  border-radius: 8px !important;
 }
 .chatbot-parchment [data-testid="bot"] > div {
   background: var(--charcoal) !important;
-  border: 1px solid var(--gold) !important;
-  color: var(--gold) !important;
+  border: 2px solid var(--gold) !important;
+  color: #f3e2c5 !important;
+  border-radius: 8px !important;
 }
 
 /* Input fields inside parchment cards */
-.section-card label span { color: var(--ink) !important; }
+.section-card label span { color: var(--ink) !important; font-weight: 600 !important; }
+.studio-card label span { color: var(--gold) !important; font-weight: 600 !important; }
 .section-card textarea,
 .section-card input[type=text],
 .section-card input[type=number] {
-  background: rgba(255,255,255,0.55) !important;
-  border: 1px solid var(--gold) !important;
+  background: rgba(255,255,255,0.65) !important;
+  border: 2px solid var(--gold) !important;
   color: var(--ink) !important;
+  border-radius: 6px !important;
+}
+.studio-card textarea,
+.studio-card input[type=text],
+.studio-card input[type=number] {
+  background: rgba(243,226,197,0.15) !important;
+  border: 2px solid var(--gold) !important;
+  color: var(--parchment) !important;
+  border-radius: 6px !important;
 }
 .section-card .wrap { background: transparent !important; }
+.studio-card .wrap { background: transparent !important; }
 """
 
 # ── Static HTML panels ────────────────────────────────────────────────────────
 
 _ENCOUNTER_HTML = """
 <style>
-.enc-row  { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+.enc-row  { display:flex; align-items:center; gap:12px; margin-bottom:10px; 
+            padding: 8px; background: rgba(255,255,255,0.4); border-radius: 8px;
+            border-left: 4px solid var(--gold); }
+.enc-init { font-family:'Cinzel',serif; font-size:14px; font-weight:900;
+            color:#d4af37; min-width:32px; text-align:center;
+            background: #2c1a0e; border-radius: 50%; width: 32px; height: 32px;
+            display: flex; align-items: center; justify-content: center; }
 .enc-name { font-family:'Cinzel',serif; font-size:12px; font-weight:700;
-            color:#2c1a0e; min-width:115px; }
-.enc-hp   { font-size:11px; color:#7a2020; min-width:38px;
-            text-align:right; font-weight:600; }
-.enc-bg   { flex:1; height:8px; background:#d4aa70; border-radius:4px; }
-.enc-bar  { height:100%; border-radius:4px; }
+            color:#2c1a0e; min-width:120px; }
+.enc-hp   { font-size:11px; min-width:42px;
+            text-align:right; font-weight:700; }
+.enc-bg   { flex:1; height:10px; background:#d4aa70; border-radius:5px; 
+            border: 1px solid rgba(44,26,14,0.3); }
+.enc-bar  { height:100%; border-radius:5px; transition: width 0.3s; }
 </style>
 <div>
   <div class="enc-row">
+    <div class="enc-init">14</div>
     <span class="enc-name">Goblin Scout</span>
-    <div class="enc-bg"><div class="enc-bar" style="width:67%;background:#7a2020"></div></div>
-    <span class="enc-hp">8 / 12</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:67%;background:#2a5020"></div></div>
+    <span class="enc-hp" style="color:#2a5020">8 / 12</span>
   </div>
   <div class="enc-row">
+    <div class="enc-init">12</div>
     <span class="enc-name">Goblin Archer</span>
-    <div class="enc-bg"><div class="enc-bar" style="width:60%;background:#7a2020"></div></div>
-    <span class="enc-hp">6 / 10</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:60%;background:#b07820"></div></div>
+    <span class="enc-hp" style="color:#b07820">6 / 10</span>
   </div>
   <div class="enc-row">
+    <div class="enc-init">9</div>
     <span class="enc-name">Goblin Shaman</span>
     <div class="enc-bg"><div class="enc-bar" style="width:60%;background:#b07820"></div></div>
-    <span class="enc-hp">9 / 15</span>
+    <span class="enc-hp" style="color:#b07820">9 / 15</span>
   </div>
   <div class="enc-row">
+    <div class="enc-init">7</div>
     <span class="enc-name">Captive Wolf</span>
-    <div class="enc-bg"><div class="enc-bar" style="width:55%;background:#b07820"></div></div>
-    <span class="enc-hp">11 / 20</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:25%;background:#7a2020"></div></div>
+    <span class="enc-hp" style="color:#7a2020">5 / 20</span>
   </div>
 </div>
 """
 
 _PARTY_HTML = """
 <style>
-.pc-row  { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-.pc-name { font-family:'Cinzel',serif; font-size:12px; font-weight:700;
-           color:#2c1a0e; min-width:90px; }
-.pc-hp   { font-size:11px; min-width:42px; text-align:right; font-weight:600; }
-.pc-bg   { flex:1; height:7px; background:#d4aa70; border-radius:4px; }
-.pc-bar  { height:100%; border-radius:4px; }
+.pc-row  { display:flex; align-items:center; gap:10px; margin-bottom:10px;
+           padding: 8px; background: rgba(255,255,255,0.4); border-radius: 8px;
+           border-left: 4px solid var(--gold); }
+.pc-name { font-family:'Cinzel',serif; font-size:13px; font-weight:700;
+           color:#2c1a0e; min-width:100px; text-transform: uppercase;
+           letter-spacing: 0.5px; }
+.pc-hp   { font-size:11px; min-width:50px; text-align:right; font-weight:700; }
+.pc-bg   { flex:1; height:8px; background:#d4aa70; border-radius:4px;
+           border: 1px solid rgba(44,26,14,0.3); }
+.pc-bar  { height:100%; border-radius:4px; transition: width 0.3s; }
 </style>
 <div>
   <div class="pc-row">
@@ -877,14 +932,45 @@ _PARTY_HTML = """
 """
 
 _REVEALS_HTML = """
-<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
-  <span style="background:#d4af37;color:#1b1410;padding:4px 10px;border-radius:12px;
-               font-size:11px;font-family:'Cinzel',serif;font-weight:700;">Hook line</span>
-  <span style="background:#d4af37;color:#1b1410;padding:4px 10px;border-radius:12px;
-               font-size:11px;font-family:'Cinzel',serif;font-weight:700;">Temple history</span>
-  <span style="background:#d4af37;color:#1b1410;padding:4px 10px;border-radius:12px;
-               font-size:11px;font-family:'Cinzel',serif;font-weight:700;">Secret passage</span>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;">
+  <span style="background:#2a5020;color:#fff;padding:6px 14px;border-radius:16px;
+               font-size:11px;font-family:'Cinzel',serif;font-weight:700;
+               display:flex;align-items:center;gap:6px;">
+    <span style="width:8px;height:8px;background:#4ade80;border-radius:50%;"></span>
+    Hook line
+  </span>
+  <span style="background:#b07820;color:#fff;padding:6px 14px;border-radius:16px;
+               font-size:11px;font-family:'Cinzel',serif;font-weight:700;
+               display:flex;align-items:center;gap:6px;">
+    <span style="width:8px;height:8px;background:#fbbf24;border-radius:50%;"></span>
+    Temple history
+  </span>
+  <span style="background:#7a2020;color:#fff;padding:6px 14px;border-radius:16px;
+               font-size:11px;font-family:'Cinzel',serif;font-weight:700;
+               display:flex;align-items:center;gap:6px;">
+    <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;"></span>
+    🔒 Secret passage
+  </span>
 </div>
+"""
+
+_NPC_AVATAR = """
+<div style="width:80px;height:80px;margin:0 auto 16px;border-radius:50%;
+            background:linear-gradient(135deg,#2c1a0e 0%,#1b1410 100%);
+            border:4px solid #d4af37;display:flex;align-items:center;justify-content:center;
+            font-size:40px;box-shadow:0 4px 12px rgba(0,0,0,0.4);">
+  👹
+</div>
+"""
+
+_WAVEFORM_BAR = """
+<div style="width:100%;height:4px;background:linear-gradient(90deg,#3ea18c 0%,#2dd4bf 50%,#3ea18c 100%);
+            border-radius:2px;margin:12px 0;box-shadow:0 0 12px rgba(62,161,140,0.6);
+            animation:pulse 2s infinite;">
+</div>
+<style>
+@keyframes pulse { 0%,100% { opacity:0.6; } 50% { opacity:1; } }
+</style>
 """
 
 # ── Gradio helper functions ───────────────────────────────────────────────────
@@ -930,13 +1016,10 @@ def _lb_speak(text: str, voice_choice: str):
 
 def _lb_cogm_respond(message: str, history: list,
                      npc_name: str, personality: str, _npc_voice: str):
-    """Add GM message, call Claude for Co-GM reply, return updated history.
-    History is a list of [user_msg, bot_msg] pairs (Gradio Chatbot default format).
-    """
+    """Add GM message, call Claude for Co-GM reply, return updated history."""
     message = (message or "").strip()
     if not message:
         return history, ""
-    # Convert tuple history to dict format for ai_service
     conv_hist = []
     for pair in (history or []):
         if pair[0]:
@@ -980,11 +1063,11 @@ def _build_live_demo():
         # ── Header ────────────────────────────────────────────────────────────
         gr.HTML("""
 <div class="header-banner">
-  <h1 style="font-family:'Cinzel',serif;color:#d4af37;font-size:28px;margin:0;
-             text-shadow:0 2px 10px rgba(0,0,0,0.8);letter-spacing:2px;">
-    GM Voice Studio – Live Board
+  <h1 style="font-family:'Cinzel',serif;color:#d4af37;font-size:36px;margin:0 0 8px;
+             text-shadow:0 2px 12px rgba(0,0,0,0.9);letter-spacing:3px;font-weight:900;">
+    GM VOICE STUDIO – LIVE BOARD
   </h1>
-  <p style="color:#f3e2c5;font-size:14px;margin:8px 0 0;letter-spacing:1px;">
+  <p style="color:#f3e2c5;font-size:16px;margin:0;letter-spacing:2px;font-weight:600;">
     Campaign: The Shattered Crown
   </p>
 </div>""")
@@ -996,7 +1079,7 @@ def _build_live_demo():
 
                 # Quick Tools
                 with gr.Group(elem_classes="section-card"):
-                    gr.HTML('<h3 class="section-title">Quick Tools</h3>')
+                    gr.HTML('<h3 class="section-title">⚔️ Quick Tools</h3>')
                     with gr.Row():
                         gr.Button("🎲 Roll Dice",        elem_classes="quicktool-btn")
                         gr.Button("📖 Monster Bestiary", elem_classes="quicktool-btn")
@@ -1004,25 +1087,35 @@ def _build_live_demo():
                     with gr.Row():
                         gr.Button("💰 Loot Table",   elem_classes="quicktool-btn")
                         gr.Button("🎭 Gen NPC",      elem_classes="quicktool-btn")
-                        gr.Button("💀 Apply Damage", elem_classes="quicktool-btn")
+                        gr.Button("⚔️ Apply Damage", elem_classes="quicktool-btn")
+
+                # Session Notes
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">📜 Session Notes</h3>')
+                    gr.Textbox(
+                        label="",
+                        placeholder="Scribe your notes here...",
+                        lines=4,
+                        show_label=False,
+                    )
 
                 # Encounter Tracker
                 with gr.Group(elem_classes="section-card"):
-                    gr.HTML('<h3 class="section-title">Encounter Tracker</h3>')
+                    gr.HTML('<h3 class="section-title">⚔️ Encounter Tracker</h3>')
                     gr.HTML(_ENCOUNTER_HTML)
 
                 # Party Roster + World Map
                 with gr.Group(elem_classes="section-card"):
-                    gr.HTML('<h3 class="section-title">Party Roster</h3>')
+                    gr.HTML('<h3 class="section-title">🛡️ Party Roster</h3>')
                     gr.HTML(_PARTY_HTML)
                     gr.HTML("""
-<div style="margin-top:14px;border-radius:6px;overflow:hidden;border:2px solid #d4af37;">
+<div style="margin-top:20px;border-radius:8px;overflow:hidden;border:4px solid #d4af37;">
   <img src="/static/img/world_map.jpg"
        onerror="this.style.display='none'"
        style="width:100%;display:block;" alt="World Map" />
-  <div style="background:rgba(27,20,16,0.75);color:#d4af37;font-family:'Cinzel',serif;
-              font-size:10px;text-align:center;padding:4px;letter-spacing:2px;">
-    WORLD MAP
+  <div style="background:rgba(27,20,16,0.85);color:#d4af37;font-family:'Cinzel',serif;
+              font-size:11px;text-align:center;padding:6px;letter-spacing:2px;font-weight:700;">
+    🗺️ WORLD MAP
   </div>
 </div>""")
 
@@ -1030,16 +1123,17 @@ def _build_live_demo():
             with gr.Column(scale=1):
 
                 # Voice Studio
-                with gr.Group(elem_classes="section-card"):
-                    gr.HTML('<h3 class="section-title">Voice Studio</h3>')
+                with gr.Group(elem_classes="studio-card"):
+                    gr.HTML('<h3 class="studio-title">🎙️ Voice Studio</h3>')
+                    gr.HTML(_WAVEFORM_BAR)
                     tts_voice = gr.Dropdown(
                         choices=_voices, value=_default_voice,
                         label="Choose Voice", interactive=True,
                     )
                     with gr.Row():
                         refresh_v_btn = gr.Button("↻ Refresh",    size="sm")
-                        gr.Button("🎤 Record Sample", size="sm")
-                        gr.Button("📁 Upload Audio",  size="sm")
+                        gr.Button("🔴 Record",  size="sm", variant="stop")
+                        gr.Button("📁 Upload",  size="sm")
                     tts_text = gr.Textbox(
                         label="Speak a line", lines=2,
                         placeholder="Enter NPC dialogue here…",
@@ -1047,32 +1141,33 @@ def _build_live_demo():
                     with gr.Row():
                         tts_temp = gr.Slider(0.0, 1.0, value=0.65, step=0.05,
                                              label="Temperature")
-                        gr.Slider(-5, 5, value=0, step=0.5, label="Pitch (semitones)")
+                        gr.Slider(-5, 5, value=0, step=0.5, label="Pitch")
                     speak_btn = gr.Button("▶ Speak", variant="primary")
                     tts_audio = gr.Audio(type="numpy", label="Output",
                                          autoplay=True, show_label=False)
 
                 # NPC Profile
                 with gr.Group(elem_classes="section-card"):
-                    gr.HTML('<h3 class="section-title">NPC Profile</h3>')
+                    gr.HTML('<h3 class="section-title">🎭 NPC Profile</h3>')
+                    gr.HTML(_NPC_AVATAR)
                     with gr.Row():
                         npc_name_box = gr.Textbox(label="Name",
                                                   placeholder="Temple Guardian", scale=1)
                         gr.Textbox(label="Role", placeholder="Undead Sentinel", scale=1)
-                    npc_voice_dd = gr.Dropdown(choices=_voices, label="Voice")
+                    npc_voice_dd = gr.Dropdown(choices=_voices, label="Voice", value=_default_voice)
                     npc_persona  = gr.Textbox(
                         label="Personality Notes", lines=3,
-                        placeholder="Stoic, ancient, speaks in riddles. Guards the inner sanctum.",
+                        placeholder="Stoic, ancient, speaks in riddles...",
                     )
-                    gr.HTML('<p style="font-size:11px;color:#2c1a0e;font-family:\'Cinzel\','
-                            'serif;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px;">Reveals</p>')
+                    gr.HTML('<p style="font-size:12px;color:#2c1a0e;font-family:\'Cinzel\',' 
+                            'serif;text-transform:uppercase;letter-spacing:1px;margin:12px 0 6px;font-weight:700;">🎯 Reveals</p>')
                     gr.HTML(_REVEALS_HTML)
 
                 # Co-GM Assistant
-                with gr.Group(elem_classes="section-card"):
-                    gr.HTML('<h3 class="section-title">Co-GM Assistant</h3>')
+                with gr.Group(elem_classes="studio-card"):
+                    gr.HTML('<h3 class="studio-title">🤖 Co-GM Assistant</h3>')
                     chatbot = gr.Chatbot(
-                        label="", height=280,
+                        label="", height=300,
                         elem_classes="chatbot-parchment",
                     )
                     with gr.Row():
@@ -1081,7 +1176,7 @@ def _build_live_demo():
                             lines=1, scale=4,
                         )
                         send_btn = gr.Button("Send", scale=1, variant="primary")
-                    speak_npc_btn = gr.Button("🔊 Speak Last Reply as NPC", size="sm")
+                    speak_npc_btn = gr.Button("🔊 Speak Last Reply as NPC", size="sm", variant="secondary")
                     cogm_audio = gr.Audio(type="numpy", label="",
                                           autoplay=True, show_label=False)
 
@@ -1109,6 +1204,11 @@ def _build_live_demo():
         speak_npc_btn.click(_lb_speak_last, [chatbot, npc_voice_dd], cogm_audio)
 
     return demo
+
+
+_live_demo = _build_live_demo()
+app = gr.mount_gradio_app(app, _live_demo, path="/live")
+
 
 
 _live_demo = _build_live_demo()
