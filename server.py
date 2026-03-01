@@ -722,9 +722,15 @@ CUSTOM_CSS = """
   --amber:     #b07820;
 }
 
-body, .gradio-container {
+/* Force entire Gradio container background */
+body, .gradio-container, .gradio-container .main, .gradio-container .contain {
   background: linear-gradient(135deg, #1b1410 0%, #25242a 50%, #1b1410 100%) !important;
-  min-height: 100vh;
+  min-height: 100vh !important;
+}
+
+/* Override Gradio's default dark theme */
+.dark {
+  background: linear-gradient(135deg, #1b1410 0%, #25242a 50%, #1b1410 100%) !important;
 }
 
 .header-banner {
@@ -742,105 +748,147 @@ body, .gradio-container {
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
 }
 
-.section-card {
+/* Force Group components to use parchment card styling */
+.gradio-container .gradio-group {
   background: rgba(243,226,197,0.95) !important;
-  border: 4px solid var(--gold) !important;
+  border: 4px solid #d4af37 !important;
   border-radius: 12px !important;
   box-shadow: 0 6px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.3) !important;
   padding: 20px !important;
   margin-bottom: 16px !important;
 }
 
-.studio-card {
+/* Dark studio cards - override for specific groups */
+.studio-card .gradio-group,
+#component-1048 .gradio-group /* Voice Studio */,
+#component-1076 .gradio-group /* Co-GM */ {
   background: rgba(37,36,42,0.95) !important;
-  border: 4px solid var(--gold) !important;
-  border-radius: 12px !important;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.5) !important;
-  padding: 20px !important;
-  margin-bottom: 16px !important;
+  border: 4px solid #d4af37 !important;
+}
+
+/* Title styling */
+.section-title, .studio-title {
+  font-family: 'Cinzel', serif !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 2px !important;
+  border-bottom: 3px solid #d4af37 !important;
+  padding-bottom: 8px !important;
+  margin: 0 0 16px 0 !important;
 }
 
 .section-title {
-  font-family: 'Cinzel', serif !important;
-  font-size: 14px !important;
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 2px !important;
-  color: var(--ink) !important;
-  border-bottom: 3px solid var(--gold) !important;
-  padding-bottom: 8px !important;
-  margin: 0 0 16px 0 !important;
+  color: #2c1a0e !important;
 }
 
 .studio-title {
-  font-family: 'Cinzel', serif !important;
-  font-size: 14px !important;
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 2px !important;
-  color: var(--gold) !important;
-  border-bottom: 3px solid var(--gold) !important;
-  padding-bottom: 8px !important;
-  margin: 0 0 16px 0 !important;
+  color: #d4af37 !important;
 }
 
-.quicktool-btn, .quicktool-btn:focus {
-  background:     var(--parchment) !important;
-  border:         3px solid var(--gold) !important;
-  border-radius:  8px !important;
-  color:          var(--ink) !important;
-  font-family:    'Cinzel', serif !important;
-  font-size:      11px !important;
-  font-weight:    700 !important;
+/* Quick Tool buttons */
+.gradio-container button.quicktool-btn {
+  background: #f3e2c5 !important;
+  border: 3px solid #d4af37 !important;
+  border-radius: 8px !important;
+  color: #2c1a0e !important;
+  font-family: 'Cinzel', serif !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
   text-transform: uppercase !important;
   letter-spacing: 1px !important;
-  min-height:     72px !important;
-  transition:     transform 0.2s, box-shadow 0.2s !important;
-  cursor:         pointer !important;
+  min-height: 72px !important;
+  height: 72px !important;
+  transition: transform 0.2s, box-shadow 0.2s !important;
+  cursor: pointer !important;
   box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
 }
-.quicktool-btn:hover {
-  transform:  scale(1.08) !important;
+
+.gradio-container button.quicktool-btn:hover {
+  transform: scale(1.08) !important;
   box-shadow: 0 0 28px rgba(212,175,55,0.8), 0 4px 12px rgba(0,0,0,0.4) !important;
   background: #faecd6 !important;
 }
 
-/* Co-GM chatbot bubbles */
-.chatbot-parchment [data-testid="user"] > div {
-  background: var(--parchment) !important;
-  border: 2px solid var(--gold) !important;
-  color: var(--ink) !important;
-  border-radius: 8px !important;
-}
-.chatbot-parchment [data-testid="bot"] > div {
-  background: var(--charcoal) !important;
-  border: 2px solid var(--gold) !important;
-  color: #f3e2c5 !important;
-  border-radius: 8px !important;
+/* Labels inside parchment cards */
+.gradio-group label span {
+  color: #2c1a0e !important;
+  font-weight: 600 !important;
+  font-family: 'Cinzel', serif !important;
 }
 
-/* Input fields inside parchment cards */
-.section-card label span { color: var(--ink) !important; font-weight: 600 !important; }
-.studio-card label span { color: var(--gold) !important; font-weight: 600 !important; }
-.section-card textarea,
-.section-card input[type=text],
-.section-card input[type=number] {
-  background: rgba(255,255,255,0.65) !important;
-  border: 2px solid var(--gold) !important;
-  color: var(--ink) !important;
+/* Labels inside studio cards */
+#component-1048 label span,
+#component-1076 label span {
+  color: #d4af37 !important;
+}
+
+/* Input fields in parchment cards */
+.gradio-group textarea,
+.gradio-group input[type=text],
+.gradio-group input[type=number],
+.gradio-group .svelte-1ed2p3z {
+  background: rgba(255,255,255,0.7) !important;
+  border: 2px solid #d4af37 !important;
+  color: #2c1a0e !important;
   border-radius: 6px !important;
 }
-.studio-card textarea,
-.studio-card input[type=text],
-.studio-card input[type=number] {
-  background: rgba(243,226,197,0.15) !important;
-  border: 2px solid var(--gold) !important;
-  color: var(--parchment) !important;
-  border-radius: 6px !important;
+
+/* Dropdowns */
+.gradio-group .svelte-1gfkn6j {
+  background: rgba(255,255,255,0.7) !important;
+  border: 2px solid #d4af37 !important;
+  color: #2c1a0e !important;
 }
-.section-card .wrap { background: transparent !important; }
-.studio-card .wrap { background: transparent !important; }
+
+/* Primary action buttons */
+.gradio-container button.primary {
+  background: #d4af37 !important;
+  color: #1b1410 !important;
+  border: 3px solid #d4af37 !important;
+  font-family: 'Cinzel', serif !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 1px !important;
+}
+
+.gradio-container button.primary:hover {
+  background: #b8951e !important;
+  box-shadow: 0 0 20px rgba(212,175,55,0.6) !important;
+}
+
+/* Co-GM chatbot - override Gradio's chat styling */
+.chatbot-parchment .message-wrap {
+  background: transparent !important;
+}
+
+.chatbot-parchment .user-row {
+  background: #f3e2c5 !important;
+  border: 2px solid #d4af37 !important;
+  color: #2c1a0e !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+}
+
+.chatbot-parchment .bot-row {
+  background: #25242a !important;
+  border: 2px solid #d4af37 !important;
+  color: #f3e2c5 !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+}
+
+/* Sliders */
+.gradio-group input[type=range] {
+  accent-color: #d4af37 !important;
+}
+
+/* Audio player */
+.gradio-group audio {
+  filter: sepia(0.3) hue-rotate(5deg) !important;
+}
 """
+
 
 # ── Static HTML panels ────────────────────────────────────────────────────────
 
