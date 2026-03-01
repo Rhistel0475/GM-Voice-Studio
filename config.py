@@ -57,3 +57,6 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
 AI_MODEL = os.environ.get("AI_MODEL", "claude-opus-4-6").strip() or "claude-opus-4-6"
 RATE_LIMIT_AI = os.environ.get("RATE_LIMIT_AI", "20/minute") or None
+# Adventure Import: parse uploaded adventure PDFs/DOCX/TXT with Claude
+RATE_LIMIT_PARSE = os.environ.get("RATE_LIMIT_PARSE", "5/minute") or None
+MAX_ADVENTURE_CHARS = int(os.environ.get("MAX_ADVENTURE_CHARS", "50000"))

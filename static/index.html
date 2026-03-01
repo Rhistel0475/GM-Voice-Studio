@@ -6,175 +6,425 @@
   <title>GM Voice Studio</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600&display=swap">
   <style>
-    /* RPG palette: warm dark base, amber/gold accents, readable text */
+    /* ===== Arcane / Mystical GM Screen Theme ===== */
     :root {
-      --rpg-bg: #1a1510;
-      --rpg-panel: #2d2620;
-      --rpg-border: #8b6914;
-      --rpg-accent: #c9a227;
-      --rpg-accent-light: #d4af37;
-      --rpg-text: #e8e0d5;
-      --rpg-text-muted: #a89888;
-      --rpg-input-bg: #252018;
-      --rpg-error-bg: #2a1818;
-      --rpg-error-border: #c94a4a;
-      --rpg-error-text: #e8a0a0;
+      --rpg-bg:        #080c18;
+      --rpg-panel:     #0d1128;
+      --rpg-panel-alt: #0f1530;
+      --rpg-text:      #c8d8f0;
+      --rpg-muted:     #6888aa;
+      --rpg-accent:    #00d4cc;
+      --rpg-accent2:   #7b4fff;
+      --rpg-border:    #1a4060;
+      --rpg-glow:      rgba(0,212,204,0.22);
+      --rpg-input-bg:  #060a16;
+      --rpg-error-bg:  #1a0820;
+      --rpg-error-border: #7b2fff;
+      --rpg-error-text: #ff80c0;
+      /* legacy aliases so inline styles still work */
+      --rpg-text-muted: #6888aa;
+      --rpg-accent-light: #33e8e0;
     }
+
+    @keyframes header-pulse {
+      0%,100% { text-shadow: 0 0 18px var(--rpg-glow), 0 0 40px rgba(0,212,204,0.12); }
+      50%      { text-shadow: 0 0 30px rgba(0,212,204,0.5), 0 0 60px rgba(0,212,204,0.2); }
+    }
+    @keyframes panel-pulse {
+      0%,100% { box-shadow: 0 4px 24px var(--rpg-glow); }
+      50%      { box-shadow: 0 4px 40px rgba(0,212,204,0.35); }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
     body {
       font-family: 'Crimson Text', Georgia, serif;
-      max-width: 800px;
-      margin: 40px auto;
-      padding: 20px;
-      background: var(--rpg-bg);
-      background-image: linear-gradient(180deg, #252018 0%, var(--rpg-bg) 100%);
+      margin: 0;
+      padding: 0;
+      background: radial-gradient(ellipse at 50% 30%, #0d1535 0%, #060810 100%);
+      background-attachment: fixed;
       color: var(--rpg-text);
+      min-height: 100vh;
     }
-    .container {
+
+    /* Arcane grid overlay on body */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,212,204,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,204,0.04) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* ===== Full-width Header ===== */
+    .gm-header {
+      position: relative;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 18px 30px 14px;
+      background: linear-gradient(180deg, #0a0f22 0%, #080c18 100%);
+      border-bottom: 1px solid var(--rpg-accent);
+      box-shadow: 0 4px 30px var(--rpg-glow);
+    }
+    .gm-rune {
+      font-size: 1.6em;
+      color: var(--rpg-accent);
+      opacity: 0.7;
+      animation: header-pulse 4s ease-in-out infinite;
+    }
+    .gm-header h1 {
+      margin: 0;
+      font-family: 'Cinzel', serif;
+      font-size: 1.9em;
+      font-weight: 700;
+      color: var(--rpg-accent);
+      letter-spacing: 0.1em;
+      border: none;
+      padding: 0;
+      animation: header-pulse 4s ease-in-out infinite;
+    }
+
+    /* ===== 3-Column GM Screen Layout ===== */
+    #gm-screen {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      min-height: calc(100vh - 70px);
+    }
+
+    .screen-panel {
+      flex: 1;
+      min-width: 0;
+      overflow-y: auto;
+      border-right: 1px solid var(--rpg-border);
       background: var(--rpg-panel);
-      padding: 25px;
-      border-radius: 10px;
-      border: 1px solid var(--rpg-border);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-      margin-bottom: 20px;
     }
-    textarea {
-      width: 100%;
-      padding: 10px;
-      border-radius: 5px;
-      border: 1px solid var(--rpg-border);
-      background: var(--rpg-input-bg);
-      color: var(--rpg-text);
-      font-family: inherit;
-      margin-bottom: 15px;
-      box-sizing: border-box;
-    }
-    textarea:focus {
-      outline: none;
-      border-color: var(--rpg-accent-light);
-      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.3);
-    }
-    select, input[type="file"] {
-      width: 100%;
-      padding: 10px;
-      margin-top: 5px;
-      margin-bottom: 15px;
-      background: var(--rpg-input-bg);
-      color: var(--rpg-text);
-      border: 1px solid var(--rpg-border);
-      border-radius: 5px;
-      box-sizing: border-box;
-    }
-    select:focus, input:focus {
-      outline: none;
-      border-color: var(--rpg-accent-light);
-      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.3);
-    }
-    .slider-group { display: flex; justify-content: space-between; margin-bottom: 15px; gap: 15px; }
-    .slider-container { flex: 1; }
-    .slider-container input { width: 100%; }
-    button {
-      width: 100%;
-      padding: 15px;
-      font-size: 18px;
-      font-family: 'Crimson Text', Georgia, serif;
+    .screen-panel:last-child { border-right: none; }
+
+    .panel-chrome {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 10px 16px;
+      font-family: 'Cinzel', serif;
+      font-size: 0.85em;
       font-weight: 600;
-      background: var(--rpg-accent);
-      color: #1a1510;
-      border: 1px solid var(--rpg-border);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: 0.2s;
+      letter-spacing: 0.12em;
+      color: var(--rpg-accent);
+      background: linear-gradient(180deg, #0a1428 0%, rgba(8,12,24,0.92) 100%);
+      border-bottom: 1px solid var(--rpg-border);
+      text-align: center;
+      animation: panel-pulse 5s ease-in-out infinite;
+      backdrop-filter: blur(4px);
     }
-    button:hover { background: var(--rpg-accent-light); border-color: var(--rpg-accent-light); }
-    button:focus {
-      outline: none;
-      border-color: var(--rpg-accent-light);
-      box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.4);
+
+    /* ===== Containers inside panels ===== */
+    .container {
+      padding: 18px 16px;
+      margin-bottom: 0;
+      border-bottom: 1px solid rgba(26,64,96,0.5);
+      background: transparent;
     }
-    button:disabled {
-      background: #3d352a;
-      color: var(--rpg-text-muted);
-      border-color: #5a5040;
-      cursor: not-allowed;
-    }
-    .player-container { margin-top: 25px; text-align: center; }
-    audio { width: 100%; }
+    .container:last-child { border-bottom: none; }
+
+    /* ===== Typography ===== */
     h1 {
       font-family: 'Cinzel', serif;
       color: var(--rpg-accent);
       letter-spacing: 0.05em;
-      border-bottom: 2px solid var(--rpg-border);
-      padding-bottom: 10px;
+      border-bottom: 1px solid var(--rpg-border);
+      padding-bottom: 8px;
+      margin-top: 0;
     }
     .section-title {
       font-family: 'Cinzel', serif;
       color: var(--rpg-accent);
-      margin-top: 20px;
-      margin-bottom: 10px;
-      font-size: 1.2em;
+      margin-top: 18px;
+      margin-bottom: 8px;
+      font-size: 1.05em;
       padding-left: 10px;
-      border-left: 3px solid var(--rpg-border);
+      border-left: 3px solid var(--rpg-accent);
     }
-    .consent-box { margin: 10px 0; padding: 10px; background: var(--rpg-input-bg); border-radius: 5px; border: 1px solid rgba(139, 105, 20, 0.4); }
-    .voice-id-out { margin-top: 10px; padding: 10px; background: var(--rpg-bg); border-radius: 5px; font-family: monospace; word-break: break-all; color: var(--rpg-text-muted); }
-    .voice-list { margin-top: 10px; }
-    .voice-item { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px; background: var(--rpg-input-bg); border-radius: 5px; border: 1px solid rgba(139, 105, 20, 0.3); }
-    .voice-item .label { flex: 1; }
-    .voice-item input.edit-name { width: 120px; padding: 4px; background: var(--rpg-bg); color: var(--rpg-text); border: 1px solid var(--rpg-border); border-radius: 4px; }
-    .voice-item button { padding: 4px 10px; cursor: pointer; border: 1px solid transparent; border-radius: 6px; font-size: 12px; }
-    .voice-item button.delete { background: #a04040; color: #e8e0d5; border-color: #8b3030; }
-    .voice-item button.set-default { background: var(--rpg-accent); color: #1a1510; border-color: var(--rpg-border); }
-    .default-star { color: var(--rpg-accent-light); margin-left: 4px; }
-    .narrate-char-over { color: var(--rpg-accent-light); }
-    .error-area {
-      margin-bottom: 15px;
+
+    /* ===== Inputs, Selects, Textareas ===== */
+    textarea {
+      width: 100%;
+      padding: 9px;
+      border-radius: 4px;
+      border: 1px solid var(--rpg-border);
+      background: var(--rpg-input-bg);
+      color: var(--rpg-text);
+      font-family: inherit;
+      margin-bottom: 12px;
+      resize: vertical;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--rpg-accent);
+      box-shadow: 0 0 10px var(--rpg-glow);
+    }
+    select, input[type="file"] {
+      width: 100%;
+      padding: 9px;
+      margin-top: 4px;
+      margin-bottom: 12px;
+      background: var(--rpg-input-bg);
+      color: var(--rpg-text);
+      border: 1px solid var(--rpg-border);
+      border-radius: 4px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    select:focus, input:focus {
+      outline: none;
+      border-color: var(--rpg-accent);
+      box-shadow: 0 0 10px var(--rpg-glow);
+    }
+    input[type="text"], input[type="password"], input[type="number"] {
+      background: var(--rpg-input-bg);
+      color: var(--rpg-text);
+      border: 1px solid var(--rpg-border);
+      border-radius: 4px;
+      padding: 9px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus {
+      outline: none;
+      border-color: var(--rpg-accent);
+      box-shadow: 0 0 10px var(--rpg-glow);
+    }
+
+    /* Range sliders */
+    .slider-group { display: flex; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
+    .slider-container { flex: 1; }
+    .slider-container input { width: 100%; accent-color: var(--rpg-accent); }
+
+    /* ===== Buttons ===== */
+    button {
+      width: 100%;
       padding: 12px;
+      font-size: 16px;
+      font-family: 'Crimson Text', Georgia, serif;
+      font-weight: 600;
+      background: transparent;
+      color: var(--rpg-accent);
+      border: 1px solid var(--rpg-accent);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+      letter-spacing: 0.03em;
+    }
+    button:hover {
+      background: var(--rpg-accent);
+      color: var(--rpg-bg);
+      box-shadow: 0 0 16px var(--rpg-glow);
+    }
+    button:focus {
+      outline: none;
+      border-color: var(--rpg-accent);
+      box-shadow: 0 0 12px var(--rpg-glow);
+    }
+    button:disabled {
+      background: transparent;
+      color: #2a4060;
+      border-color: #1a3050;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    /* ===== Audio / Player ===== */
+    .player-container { margin-top: 18px; text-align: center; }
+    audio { width: 100%; }
+
+    /* ===== Voice list ===== */
+    .voice-list { margin-top: 8px; }
+    .voice-item {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+      padding: 7px 8px; background: var(--rpg-input-bg);
+      border-radius: 4px; border: 1px solid rgba(0,212,204,0.15);
+    }
+    .voice-item .label { flex: 1; }
+    .voice-item input.edit-name {
+      width: 110px; padding: 3px 6px; background: var(--rpg-bg);
+      color: var(--rpg-text); border: 1px solid var(--rpg-border); border-radius: 3px;
+    }
+    .voice-item button { padding: 3px 8px; width: auto; font-size: 12px; }
+    .voice-item button.delete { background: #3a0a2a; color: #ff80c0; border-color: #7b2fff; }
+    .voice-item button.delete:hover { background: #7b2fff; color: #fff; }
+    .voice-item button.set-default { background: transparent; color: var(--rpg-accent); border-color: var(--rpg-accent); }
+    .voice-item button.set-default:hover { background: var(--rpg-accent); color: var(--rpg-bg); }
+    .default-star { color: var(--rpg-accent); margin-left: 4px; }
+    .voice-id-out {
+      margin-top: 8px; padding: 9px; background: var(--rpg-bg); border-radius: 4px;
+      font-family: monospace; word-break: break-all; color: var(--rpg-muted);
+      border: 1px solid var(--rpg-border); font-size: 0.85em;
+    }
+
+    /* ===== Consent / misc ===== */
+    .consent-box {
+      margin: 8px 0; padding: 9px; background: var(--rpg-input-bg);
+      border-radius: 4px; border: 1px solid rgba(0,212,204,0.2);
+    }
+    .narrate-char-over { color: #ff80c0; }
+
+    /* ===== Error area ===== */
+    .error-area {
+      margin-bottom: 0;
+      padding: 12px 20px;
       background: var(--rpg-error-bg);
-      border: 1px solid var(--rpg-error-border);
-      border-radius: 5px;
+      border-bottom: 1px solid var(--rpg-error-border);
       color: var(--rpg-error-text);
     }
-    /* Co-GM Assistant */
-    .npc-roster-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; min-height: 32px; align-items: center; }
+
+    /* ===== Co-GM Assistant ===== */
+    .npc-roster-bar { display: flex; gap: 7px; flex-wrap: wrap; margin-bottom: 10px; min-height: 30px; align-items: center; }
     .npc-chip {
-      padding: 4px 14px; border-radius: 16px; border: 1px solid var(--rpg-border);
-      background: var(--rpg-input-bg); color: var(--rpg-text); cursor: pointer;
-      font-family: 'Crimson Text', Georgia, serif; font-size: 0.95em; transition: 0.15s;
+      padding: 3px 12px; border-radius: 14px; border: 1px solid var(--rpg-accent2);
+      background: rgba(123,79,255,0.1); color: var(--rpg-text); cursor: pointer;
+      font-family: 'Crimson Text', Georgia, serif; font-size: 0.92em; transition: 0.15s;
     }
-    .npc-chip:hover { background: var(--rpg-panel); border-color: var(--rpg-accent); }
-    .npc-chip.active { background: var(--rpg-accent); color: #1a1510; border-color: var(--rpg-accent); }
-    .quick-prompt-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+    .npc-chip:hover { background: rgba(123,79,255,0.25); border-color: var(--rpg-accent2); }
+    .npc-chip.active { background: var(--rpg-accent2); color: #fff; border-color: var(--rpg-accent2); box-shadow: 0 0 10px rgba(123,79,255,0.5); }
+    .quick-prompt-bar { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
     .quick-prompt-chip {
-      padding: 5px 12px; border-radius: 16px; border: 1px solid var(--rpg-border);
-      background: var(--rpg-input-bg); color: var(--rpg-text-muted); cursor: pointer;
-      font-size: 0.88em; font-family: 'Crimson Text', Georgia, serif; transition: 0.15s;
+      padding: 4px 10px; border-radius: 14px; border: 1px solid var(--rpg-border);
+      background: rgba(0,212,204,0.06); color: var(--rpg-muted); cursor: pointer;
+      font-size: 0.85em; font-family: 'Crimson Text', Georgia, serif; transition: 0.15s;
     }
-    .quick-prompt-chip:hover { background: var(--rpg-panel); color: var(--rpg-text); border-color: var(--rpg-accent); }
+    .quick-prompt-chip:hover { background: rgba(0,212,204,0.18); color: var(--rpg-text); border-color: var(--rpg-accent); }
     .dialogue-log {
-      background: var(--rpg-bg); border: 1px solid var(--rpg-border); border-radius: 6px;
-      padding: 12px; min-height: 80px; max-height: 260px; overflow-y: auto;
-      margin-bottom: 12px; font-size: 0.95em; color: var(--rpg-text); line-height: 1.5;
+      background: var(--rpg-input-bg); border: 1px solid var(--rpg-border); border-radius: 4px;
+      padding: 10px; min-height: 80px; max-height: 280px; overflow-y: auto;
+      margin-bottom: 10px; font-size: 0.93em; color: var(--rpg-text); line-height: 1.5;
     }
-    .dialogue-log .log-entry { margin-bottom: 10px; }
-    .dialogue-log .log-npc { color: var(--rpg-accent-light); font-style: italic; font-weight: 600; }
-    .dialogue-log .log-gm { color: var(--rpg-text-muted); font-size: 0.88em; }
-    .cogm-status { font-size: 0.9em; color: var(--rpg-text-muted); min-height: 1.4em; margin-top: 8px; }
-    .btn-small { padding: 6px 14px; font-size: 14px; width: auto; }
-    .btn-danger { background: #a04040 !important; color: #e8e0d5 !important; border-color: #8b3030 !important; }
-    .btn-danger:hover { background: #c05050 !important; }
+    .dialogue-log .log-entry { margin-bottom: 8px; }
+    .dialogue-log .log-npc {
+      color: var(--rpg-accent); font-style: italic; font-weight: 600;
+      background: rgba(0,212,204,0.07); padding: 4px 8px; border-radius: 3px;
+      display: block; border-left: 2px solid var(--rpg-accent);
+    }
+    .dialogue-log .log-gm {
+      color: var(--rpg-muted); font-size: 0.86em;
+      background: rgba(123,79,255,0.07); padding: 3px 8px; border-radius: 3px;
+      display: block; border-left: 2px solid var(--rpg-accent2);
+    }
+    .cogm-status { font-size: 0.88em; color: var(--rpg-muted); min-height: 1.3em; margin-top: 6px; }
+    .btn-small { padding: 5px 12px; font-size: 13px; width: auto; }
+    .btn-danger { background: rgba(123,0,60,0.3) !important; color: #ff80c0 !important; border-color: #7b2fff !important; }
+    .btn-danger:hover { background: #7b2fff !important; color: #fff !important; }
+
+    /* ===== Scrollbars ===== */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: var(--rpg-bg); }
+    ::-webkit-scrollbar-thumb { background: var(--rpg-accent); border-radius: 3px; opacity: 0.7; }
+
+    /* ===== Tab Navigation ===== */
+    .gm-tabs {
+      position: relative; z-index: 9;
+      display: flex; flex-direction: row;
+      background: #060a16; border-bottom: 1px solid var(--rpg-border);
+    }
+    .gm-tab {
+      flex: 0 0 auto; width: auto; padding: 10px 32px;
+      font-family: 'Cinzel', serif; font-size: 0.88em; font-weight: 600;
+      letter-spacing: 0.08em; color: var(--rpg-muted);
+      background: transparent; border: none; border-bottom: 2px solid transparent;
+      border-radius: 0; cursor: pointer; transition: color 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .gm-tab:hover { color: var(--rpg-text); border-bottom-color: var(--rpg-border); box-shadow: none; }
+    .gm-tab.active { color: var(--rpg-accent); border-bottom-color: var(--rpg-accent); box-shadow: 0 2px 12px var(--rpg-glow); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    #tab-session.active { display: flex; flex-direction: column; }
+
+    /* ===== Prep Tab Layout ===== */
+    .prep-layout {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 0; min-height: calc(100vh - 115px);
+    }
+    .prep-panel { border-right: 1px solid var(--rpg-border); overflow-y: auto; }
+    .prep-panel:last-child { border-right: none; }
+
+    /* ===== Adventure Import ===== */
+    .import-mode-bar { display: flex; gap: 0; margin-bottom: 14px; border: 1px solid var(--rpg-border); border-radius: 4px; overflow: hidden; }
+    .import-mode-btn {
+      flex: 1; padding: 8px; font-family: 'Cinzel', serif; font-size: 0.82em;
+      background: transparent; color: var(--rpg-muted); border: none; border-radius: 0;
+      cursor: pointer; transition: 0.15s; letter-spacing: 0.05em;
+    }
+    .import-mode-btn:hover { background: rgba(0,212,204,0.08); color: var(--rpg-text); box-shadow: none; }
+    .import-mode-btn.active { background: rgba(0,212,204,0.15); color: var(--rpg-accent); border-bottom: 2px solid var(--rpg-accent); }
+    .parse-status { font-size: 0.88em; color: var(--rpg-muted); margin: 8px 0; min-height: 1.3em; }
+    @keyframes arcane-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .parse-spinner { display: inline-block; animation: arcane-spin 1.2s linear infinite; margin-right: 6px; }
+    .import-results { display: none; margin-top: 16px; }
+    .import-results.visible { display: block; }
+    .result-section-title {
+      font-family: 'Cinzel', serif; font-size: 0.95em; color: var(--rpg-accent);
+      margin: 12px 0 8px; padding-left: 8px; border-left: 3px solid var(--rpg-accent);
+    }
+    .result-cards { display: flex; flex-direction: column; gap: 7px; margin-bottom: 10px; }
+    .result-card {
+      background: var(--rpg-input-bg); border: 1px solid var(--rpg-border);
+      border-radius: 4px; padding: 9px; display: flex; gap: 9px; align-items: flex-start;
+      transition: border-color 0.15s;
+    }
+    .result-card.checked { border-color: var(--rpg-accent); background: rgba(0,212,204,0.05); }
+    .result-card input[type="checkbox"] { margin-top: 3px; accent-color: var(--rpg-accent); flex-shrink: 0; width: 15px; height: 15px; cursor: pointer; }
+    .result-card-body { flex: 1; min-width: 0; }
+    .result-card-title { font-family: 'Cinzel', serif; font-size: 0.88em; color: var(--rpg-text); margin-bottom: 3px; }
+    .result-card-detail { font-size: 0.83em; color: var(--rpg-muted); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; }
+    .result-card-badge { font-size: 0.72em; color: var(--rpg-accent2); border: 1px solid var(--rpg-accent2); border-radius: 3px; padding: 1px 5px; margin-left: 5px; vertical-align: middle; }
+
+    /* ===== Responsive: below 1100px stack panels ===== */
+    @media (max-width: 1100px) {
+      #gm-screen { flex-direction: column; }
+      .screen-panel { border-right: none; border-bottom: 1px solid var(--rpg-border); }
+      .screen-panel:last-child { border-bottom: none; }
+      /* Reorder: center (Co-GM) first, then left, then right */
+      .panel-center { order: -1; }
+    }
   </style>
     </head>
     <body>
-      <div id="error_area" class="error-area" role="alert" style="display: none; max-width: 800px; margin: 20px auto 0 auto;"></div>
-      <div id="api_key_wrap" class="container" style="display:none;">
-      <div class="section-title">API key</div>
-      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #a6adc8;">This server requires an API key. Enter it below (stored in memory only, not on disk).</p>
-      <label for="api_key_input"><strong>API key:</strong></label>
-      <input type="password" id="api_key_input" placeholder="Enter your API key" autocomplete="off" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px;">
-  </div>
-  <div class="container">
-      <h1>GM Voice Studio</h1>
-      <p>Clone character and NPC voices, then speak or narrate in-session.</p>
+      <div id="error_area" class="error-area" role="alert" style="display:none;"></div>
+
+      <header class="gm-header">
+        <span class="gm-rune">᛭</span>
+        <h1>GM Voice Studio</h1>
+        <span class="gm-rune">᛭</span>
+      </header>
+
+      <nav class="gm-tabs" role="tablist">
+        <button class="gm-tab active" data-tab="session" role="tab" aria-selected="true" aria-controls="tab-session">▶ Session</button>
+        <button class="gm-tab" data-tab="prep" role="tab" aria-selected="false" aria-controls="tab-prep">⚙ Prep</button>
+      </nav>
+
+      <div class="tab-content active" id="tab-session">
+      <div id="gm-screen">
+
+      <!-- ===== LEFT PANEL: Character Voices ===== -->
+      <div class="screen-panel panel-left">
+        <div class="panel-chrome">⚔ Character Voices ⚔</div>
+
+        <div id="api_key_wrap" class="container" style="display:none;">
+          <div class="section-title">API key</div>
+          <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-muted);">This server requires an API key. Enter it below (stored in memory only, not on disk).</p>
+          <label for="api_key_input"><strong>API key:</strong></label>
+          <input type="password" id="api_key_input" placeholder="Enter your API key" autocomplete="off" style="width:100%; padding:9px; margin-bottom:12px;">
+        </div>
+
+        <div class="container">
+          <p style="margin:0 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Clone character and NPC voices, then speak or narrate in-session.</p>
 
       <div class="section-title">Character / NPC voices</div>
       <div id="voice_list" class="voice-list" role="list"></div>
@@ -189,214 +439,292 @@
       <textarea id="text" rows="5" placeholder="Enter dialogue or a short line to speak as the selected character." aria-label="Dialogue or line to speak">The ancient door grinds open, revealing a chamber untouched for centuries.</textarea>
       <label for="tag"><strong>Language:</strong></label>
       <select id="tag" aria-label="Language"></select>
-      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: #a6adc8;">Pocket TTS is English only.</p>
+      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: var(--rpg-muted);">Pocket TTS is English only.</p>
       <label for="ref_audio"><strong>Or one-off clip (this request only):</strong></label>
       <input type="file" id="ref_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="One-off reference audio file">
 
       <div class="section-title">Voice style</div>
-      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: #a6adc8;">For cloned voices, try temperature 0.95–1.1 if output sounds robotic or pitch feels off.</p>
+      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-muted);">For cloned voices, try temperature 0.95–1.1 if output sounds robotic or pitch feels off.</p>
           <div class="slider-group" role="group" aria-label="Generation parameters">
               <div class="slider-container">
                   <label for="temp">Temperature (<span id="temp_val">0.95</span>)</label><br>
                   <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.95" aria-valuemin="0.1" aria-valuemax="1.5" aria-valuenow="0.95" aria-valuetext="0.95" oninput="var v=this.value; document.getElementById('temp_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
-                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: #a6adc8;">Higher = more varied, expressive; lower = more consistent and stable.</p>
+                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: var(--rpg-muted);">Higher = more varied, expressive; lower = more consistent and stable.</p>
               </div>
               <div class="slider-container">
                   <label for="topp">Top-p (<span id="topp_val">0.9</span>)</label><br>
                   <input type="range" id="topp" min="0.5" max="1.0" step="0.01" value="0.9" aria-valuemin="0.5" aria-valuemax="1" aria-valuenow="0.9" aria-valuetext="0.9" oninput="var v=this.value; document.getElementById('topp_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
-                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: #a6adc8;">Narrower = more focused choices; higher = more diversity in pronunciation.</p>
+                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: var(--rpg-muted);">Narrower = more focused choices; higher = more diversity in pronunciation.</p>
               </div>
               <div class="slider-container">
                   <label for="rep">Repetition Penalty (<span id="rep_val">1.15</span>)</label><br>
                   <input type="range" id="rep" min="1.0" max="1.5" step="0.01" value="1.15" aria-valuemin="1" aria-valuemax="1.5" aria-valuenow="1.15" aria-valuetext="1.15" oninput="var v=this.value; document.getElementById('rep_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
-                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: #a6adc8;">Higher = discourages repeating the same words or phrases; helps avoid loops.</p>
+                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: var(--rpg-muted);">Higher = discourages repeating the same words or phrases; helps avoid loops.</p>
               </div>
       </div>
 
       <button id="go" type="button">Generate Audio</button>
-      <button type="button" id="cancel_tts_btn" style="display: none; margin-top: 8px; padding: 8px 16px; font-size: 14px; width: auto; background: #45475a; color: #cdd6f4;">Cancel</button>
+          <button type="button" id="cancel_tts_btn" style="display:none; margin-top:8px; padding:6px 14px; font-size:14px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Cancel</button>
 
-      <div class="player-container">
-        <audio id="player" controls aria-label="Generated audio playback"></audio>
-        <button type="button" id="export_btn" style="margin-top: 10px; padding: 8px 16px; font-size: 14px; width: auto;" disabled aria-label="Export current audio as WAV">Export WAV</button>
-      </div>
-  </div>
+          <div class="player-container">
+            <audio id="player" controls aria-label="Generated audio playback"></audio>
+            <button type="button" id="export_btn" style="margin-top:8px; padding:6px 14px; font-size:13px; width:auto;" disabled aria-label="Export current audio as WAV">Export WAV</button>
+          </div>
+        </div><!-- end speak-a-line container -->
 
-  <div class="container">
-      <div class="section-title">Ambient Audio Mixer</div>
-      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-text-muted);">Layer looping atmospheric tracks beneath your NPC dialogue.</p>
-      <div class="slider-group">
-          <div class="slider-container">
-              <label>1930s City Rain (<span id="vol_rain_val">0</span>%)</label><br>
-              <input type="range" id="vol_rain" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_rain').volume = this.value; document.getElementById('vol_rain_val').innerText = Math.round(this.value * 100); if(this.value > 0) document.getElementById('audio_rain').play(); else document.getElementById('audio_rain').pause();">
+        <div class="container">
+          <p style="font-size:0.88em; color:var(--rpg-muted); margin:0;">
+            To create or import voices and parse adventure modules, switch to the
+            <button type="button" onclick="switchTab('prep')" style="width:auto; padding:3px 10px; font-size:0.88em; display:inline; vertical-align:baseline;">⚙ Prep</button>
+            tab.
+          </p>
+        </div>
+
+      </div><!-- end panel-left -->
+
+      <!-- ===== CENTER PANEL: Co-GM Assistant ===== -->
+      <div class="screen-panel panel-center">
+        <div class="panel-chrome">✦ Co-GM Assistant ✦</div>
+
+        <div class="container" id="cogm_panel">
+          <p style="margin:0 0 12px 0; font-size:0.88em; color:var(--rpg-muted);">
+            Set up an NPC profile, describe what's happening, and Claude writes an in-character line — spoken aloud in the NPC's cloned voice.
+          </p>
+
+          <div class="section-title">NPC Roster</div>
+          <div id="cogm_roster_bar" class="npc-roster-bar" role="list" aria-label="Saved NPCs"></div>
+          <div style="display:flex; gap:8px; margin-bottom:14px;">
+            <button type="button" class="btn-small" id="cogm_save_npc_btn">Save NPC</button>
+            <button type="button" class="btn-small btn-danger" id="cogm_delete_npc_btn">Delete NPC</button>
+          </div>
+
+          <div class="section-title">NPC Profile</div>
+          <div style="display:flex; gap:10px; margin-bottom:10px;">
+            <div style="flex:1;">
+              <label for="cogm_npc_name"><strong>Name:</strong></label>
+              <input type="text" id="cogm_npc_name" placeholder="e.g. Captain Aldric Vane" style="width:100%; padding:8px; margin-top:4px;">
+            </div>
+            <div style="flex:1;">
+              <label for="cogm_npc_voice"><strong>Voice:</strong></label>
+              <select id="cogm_npc_voice" aria-label="NPC voice" style="width:100%; padding:8px; margin-top:4px;">
+                <option value="">-- No voice --</option>
+              </select>
+            </div>
+          </div>
+          <label for="cogm_npc_personality"><strong>Personality / Notes:</strong></label>
+          <textarea id="cogm_npc_personality" rows="3"
+                    placeholder="e.g. Gruff veteran, fiercely loyal to the crown, hiding guilt over a past betrayal. Speaks tersely; rarely volunteers information."
+                    style="margin-top:4px;"></textarea>
+
+          <div class="section-title">Current Situation</div>
+          <label for="cogm_situation"><strong>What is happening right now?</strong></label>
+          <textarea id="cogm_situation" rows="2"
+                    placeholder="e.g. Players are demanding to pass the city gate after curfew and have just bribed the guard."
+                    style="margin-top:4px; margin-bottom:8px;"></textarea>
+
+          <div class="quick-prompt-bar" id="cogm_quick_prompts" role="group" aria-label="Quick situation prompts">
+            <button type="button" class="quick-prompt-chip" data-prompt="The players enter the room and see the NPC for the first time.">Players enter</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="The players are threatening the NPC with violence or serious consequences.">Threatened</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="The players are offering a bribe of gold or a valuable favor.">Bribed</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="The players have gained the NPC's trust and the NPC is about to reveal a closely guarded secret.">Reveal secret</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="Combat has just broken out. The NPC reacts to the sudden violence.">Combat begins</button>
+            <button type="button" class="quick-prompt-chip" data-prompt="The players are asking the NPC for directions, information, or local knowledge.">Asked for info</button>
+          </div>
+
+          <button type="button" id="cogm_generate_btn" style="margin-bottom:8px;">Speak as NPC</button>
+          <button type="button" id="cogm_cancel_btn" class="btn-small"
+                  style="display:none; margin-bottom:8px; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Cancel</button>
+          <div class="cogm-status" id="cogm_status" role="status" aria-live="polite"></div>
+
+          <div class="section-title" style="margin-top:14px; display:flex; align-items:center; gap:10px;">
+            Dialogue Log
+            <button type="button" class="btn-small btn-danger" id="cogm_clear_log_btn" style="font-size:12px; padding:3px 10px;">Clear</button>
+          </div>
+          <div id="cogm_dialogue_log" class="dialogue-log" role="log" aria-live="polite" aria-label="NPC dialogue history">
+            <span style="color:var(--rpg-muted); font-style:italic;">No dialogue yet. Configure the NPC above and click Speak as NPC.</span>
+          </div>
+
+          <div class="player-container" style="margin-top:10px;">
+            <audio id="cogm_player" controls aria-label="NPC dialogue audio"></audio>
+          </div>
+        </div><!-- end cogm_panel -->
+
+      </div><!-- end panel-center -->
+
+      <!-- ===== RIGHT PANEL: GM Tools ===== -->
+      <div class="screen-panel panel-right">
+        <div class="panel-chrome">⚗ GM Tools ⚗</div>
+
+        <div class="container">
+          <div class="section-title">Ambient Audio Mixer</div>
+          <p style="margin:0 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Layer looping atmospheric tracks beneath your NPC dialogue.</p>
+          <div class="slider-group">
+            <div class="slider-container">
+              <label>City Rain (<span id="vol_rain_val">0</span>%)</label><br>
+              <input type="range" id="vol_rain" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_rain').volume=this.value; document.getElementById('vol_rain_val').innerText=Math.round(this.value*100); if(this.value>0) document.getElementById('audio_rain').play(); else document.getElementById('audio_rain').pause();">
               <audio id="audio_rain" loop src="https://cdn.pixabay.com/audio/2021/08/04/audio_3484f3ccab.mp3"></audio>
-          </div>
-          <div class="slider-container">
-              <label>Muffled Speakeasy Jazz (<span id="vol_jazz_val">0</span>%)</label><br>
-              <input type="range" id="vol_jazz" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_jazz').volume = this.value; document.getElementById('vol_jazz_val').innerText = Math.round(this.value * 100); if(this.value > 0) document.getElementById('audio_jazz').play(); else document.getElementById('audio_jazz').pause();">
+            </div>
+            <div class="slider-container">
+              <label>Speakeasy Jazz (<span id="vol_jazz_val">0</span>%)</label><br>
+              <input type="range" id="vol_jazz" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_jazz').volume=this.value; document.getElementById('vol_jazz_val').innerText=Math.round(this.value*100); if(this.value>0) document.getElementById('audio_jazz').play(); else document.getElementById('audio_jazz').pause();">
               <audio id="audio_jazz" loop src="https://cdn.pixabay.com/audio/2022/01/18/audio_82c206db23.mp3"></audio>
-          </div>
-          <div class="slider-container">
-              <label>Arcane Vault Hum (<span id="vol_magic_val">0</span>%)</label><br>
-              <input type="range" id="vol_magic" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_magic').volume = this.value; document.getElementById('vol_magic_val').innerText = Math.round(this.value * 100); if(this.value > 0) document.getElementById('audio_magic').play(); else document.getElementById('audio_magic').pause();">
+            </div>
+            <div class="slider-container">
+              <label>Arcane Hum (<span id="vol_magic_val">0</span>%)</label><br>
+              <input type="range" id="vol_magic" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_magic').volume=this.value; document.getElementById('vol_magic_val').innerText=Math.round(this.value*100); if(this.value>0) document.getElementById('audio_magic').play(); else document.getElementById('audio_magic').pause();">
               <audio id="audio_magic" loop src="https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a73467.mp3"></audio>
+            </div>
           </div>
-      </div>
-  </div>
+        </div><!-- end ambient mixer -->
 
-  <!-- Co-GM Assistant Panel -->
-  <div class="container" id="cogm_panel">
-    <h1 style="font-size:1.4em;">Co-GM Assistant</h1>
-    <p style="margin:0 0 14px 0; font-size:0.9em; color:var(--rpg-text-muted);">
-      Set up an NPC profile, describe what's happening, and Claude writes an in-character line — spoken aloud in the NPC's cloned voice.
-    </p>
+        <div class="container">
+          <div class="section-title">Scene Script Library</div>
+          <p style="margin:0 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Save and load box-text descriptions for quick narration.</p>
+          <div style="display:flex; gap:8px; margin-bottom:12px;">
+            <select id="saved_scripts_sel" style="margin:0; flex:2;">
+              <option value="">-- Select a saved scene --</option>
+            </select>
+            <button type="button" id="load_script_btn" style="flex:1; padding:9px;">Load</button>
+            <button type="button" id="delete_script_btn" class="btn-danger" style="flex:0.6; padding:9px; width:auto;">Delete</button>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="save_script_name" placeholder="Scene Name" style="flex:2; padding:9px; margin:0;">
+            <button type="button" id="save_script_btn" style="flex:1.2; padding:9px;">Save Text</button>
+          </div>
+        </div><!-- end scene scripts -->
 
-    <!-- NPC Roster -->
-    <div class="section-title">NPC Roster</div>
-    <div id="cogm_roster_bar" class="npc-roster-bar" role="list" aria-label="Saved NPCs"></div>
-    <div style="display:flex; gap:8px; margin-bottom:16px;">
-      <button type="button" class="btn-small" id="cogm_save_npc_btn">Save NPC</button>
-      <button type="button" class="btn-small btn-danger" id="cogm_delete_npc_btn">Delete NPC</button>
-    </div>
-
-    <!-- NPC Quick Profile -->
-    <div class="section-title">NPC Profile</div>
-    <div style="display:flex; gap:10px; margin-bottom:10px;">
-      <div style="flex:1;">
-        <label for="cogm_npc_name"><strong>Name:</strong></label>
-        <input type="text" id="cogm_npc_name" placeholder="e.g. Captain Aldric Vane"
-               style="width:100%; padding:8px; margin-top:4px; box-sizing:border-box;
-                      background:var(--rpg-input-bg); color:var(--rpg-text);
-                      border:1px solid var(--rpg-border); border-radius:5px;">
-      </div>
-      <div style="flex:1;">
-        <label for="cogm_npc_voice"><strong>Voice:</strong></label>
-        <select id="cogm_npc_voice" aria-label="NPC voice"
-                style="width:100%; padding:9px; margin-top:4px; box-sizing:border-box;
-                       background:var(--rpg-input-bg); color:var(--rpg-text);
-                       border:1px solid var(--rpg-border); border-radius:5px;">
-          <option value="">-- No voice --</option>
-        </select>
-      </div>
-    </div>
-    <label for="cogm_npc_personality"><strong>Personality / Notes:</strong></label>
-    <textarea id="cogm_npc_personality" rows="3"
-              placeholder="e.g. Gruff veteran, fiercely loyal to the crown, hiding guilt over a past betrayal. Speaks tersely; rarely volunteers information."
-              style="margin-top:4px;"></textarea>
-
-    <!-- Situation -->
-    <div class="section-title">Current Situation</div>
-    <label for="cogm_situation"><strong>What is happening right now?</strong></label>
-    <textarea id="cogm_situation" rows="2"
-              placeholder="e.g. Players are demanding to pass the city gate after curfew and have just bribed the guard."
-              style="margin-top:4px; margin-bottom:8px;"></textarea>
-
-    <!-- Quick Prompt chips -->
-    <div class="quick-prompt-bar" id="cogm_quick_prompts" role="group" aria-label="Quick situation prompts">
-      <button type="button" class="quick-prompt-chip" data-prompt="The players enter the room and see the NPC for the first time.">Players enter</button>
-      <button type="button" class="quick-prompt-chip" data-prompt="The players are threatening the NPC with violence or serious consequences.">Threatened</button>
-      <button type="button" class="quick-prompt-chip" data-prompt="The players are offering a bribe of gold or a valuable favor.">Bribed</button>
-      <button type="button" class="quick-prompt-chip" data-prompt="The players have gained the NPC's trust and the NPC is about to reveal a closely guarded secret.">Reveal secret</button>
-      <button type="button" class="quick-prompt-chip" data-prompt="Combat has just broken out. The NPC reacts to the sudden violence.">Combat begins</button>
-      <button type="button" class="quick-prompt-chip" data-prompt="The players are asking the NPC for directions, information, or local knowledge.">Asked for info</button>
-    </div>
-
-    <!-- Generate button -->
-    <button type="button" id="cogm_generate_btn" style="margin-bottom:8px;">Speak as NPC</button>
-    <button type="button" id="cogm_cancel_btn" class="btn-small"
-            style="display:none; margin-bottom:8px; background:#45475a; color:#cdd6f4;">Cancel</button>
-    <div class="cogm-status" id="cogm_status" role="status" aria-live="polite"></div>
-
-    <!-- Dialogue Log -->
-    <div class="section-title" style="margin-top:14px; display:flex; align-items:center; gap:10px;">
-      Dialogue Log
-      <button type="button" class="btn-small btn-danger" id="cogm_clear_log_btn"
-              style="font-size:12px; padding:3px 10px;">Clear</button>
-    </div>
-    <div id="cogm_dialogue_log" class="dialogue-log" role="log" aria-live="polite" aria-label="NPC dialogue history">
-      <span style="color:var(--rpg-text-muted); font-style:italic;">No dialogue yet. Configure the NPC above and click Speak as NPC.</span>
-    </div>
-
-    <!-- Separate audio player for Co-GM output -->
-    <div class="player-container" style="margin-top:10px;">
-      <audio id="cogm_player" controls aria-label="NPC dialogue audio"></audio>
-    </div>
-  </div>
-
-  <div class="container">
-      <div class="section-title">Scene Script Library</div>
-      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-text-muted);">Save and load box-text descriptions for quick narration.</p>
-      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-          <select id="saved_scripts_sel" style="margin: 0; flex: 2;">
-            <option value="">-- Select a saved scene --</option>
+        <div class="container">
+          <div class="section-title">Narrate scene or script</div>
+          <p style="font-size:0.88em; color:var(--rpg-muted);">Uses the selected character voice. Paste scene text; it will be split into chunks and combined into one WAV.</p>
+          <label for="narrate_text"><strong>Script (max 5000 characters):</strong></label>
+          <textarea id="narrate_text" rows="8" placeholder="Paste script or long text..." aria-label="Script for narration" style="margin-bottom:5px;"></textarea>
+          <div id="narrate_char_count_wrap" style="margin-bottom:12px; font-size:0.88em; color:var(--rpg-muted);" role="status" aria-live="polite"><span id="narrate_char_count">0 / 5000 characters</span></div>
+          <label for="narrate_chunk_by"><strong>Chunk by:</strong></label>
+          <select id="narrate_chunk_by" aria-label="Chunk by" style="margin-bottom:5px;">
+            <option value="sentence">Sentence</option>
+            <option value="paragraph">Paragraph</option>
+            <option value="fixed">Fixed (N chars)</option>
           </select>
-          <button type="button" id="load_script_btn" style="flex: 1; padding: 10px;">Load to Narrator</button>
-          <button type="button" id="delete_script_btn" style="flex: 0.5; padding: 10px; background: #a04040; color: #e8e0d5;">Delete</button>
-      </div>
-      <div style="display: flex; gap: 10px;">
-          <input type="text" id="save_script_name" placeholder="Scene Name (e.g., The Black Cat Club, The Docks)" style="margin: 0; flex: 2; padding: 10px; background: var(--rpg-input-bg); color: var(--rpg-text); border: 1px solid var(--rpg-border); border-radius: 5px;">
-          <button type="button" id="save_script_btn" style="flex: 1.5; padding: 10px;">Save Current Text</button>
-      </div>
-  </div>
-
-  <div class="container">
-      <div class="section-title">Narrate scene or script</div>
-      <p>Uses the selected character voice above. Paste scene text or script; it will be split into chunks, each spoken in sequence, then combined into one WAV.</p>
-      <label for="narrate_text"><strong>Script (max 5000 characters):</strong></label>
-      <textarea id="narrate_text" rows="10" placeholder="Paste script or long text..." aria-label="Script for narration" style="width:100%; padding:10px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px; margin-bottom:5px;"></textarea>
-      <div id="narrate_char_count_wrap" style="margin-bottom:15px; font-size: 0.9em; color:#a6adc8;" role="status" aria-live="polite"><span id="narrate_char_count">0 / 5000 characters</span></div>
-      <label for="narrate_chunk_by"><strong>Chunk by:</strong></label>
-      <select id="narrate_chunk_by" aria-label="Chunk by" style="width:100%; padding:10px; margin-bottom:5px; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px; box-sizing:border-box;">
-        <option value="sentence">Sentence</option>
-        <option value="paragraph">Paragraph</option>
-        <option value="fixed">Fixed (N chars)</option>
-      </select>
-      <p style="margin: 0 0 15px 0; font-size: 0.9em; color: #a6adc8;"><strong>Sentence</strong>: split at sentence boundaries (after periods, question marks, exclamation). Best for natural phrasing.<br><strong>Paragraph</strong>: split at double line breaks. Keeps whole paragraphs together.<br><strong>Fixed (N chars)</strong>: split every N characters at word boundaries. Use when you need even chunk lengths.</p>
-      <div id="narrate_fixed_wrap" style="display:none; margin-bottom:15px;">
-        <label for="narrate_max_chars"><strong>Max characters per chunk:</strong></label>
-        <input type="number" id="narrate_max_chars" min="50" max="1500" value="500" aria-label="Max characters per chunk" style="width:100%; padding:10px; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px; box-sizing:border-box;">
-        <p style="margin: 4px 0 0 0; font-size: 0.9em; color: #a6adc8;">Larger values = fewer chunks and API calls; smaller = shorter segments, often with more natural breaks.</p>
-      </div>
+          <p style="margin:0 0 12px 0; font-size:0.85em; color:var(--rpg-muted);"><strong>Sentence</strong>: split at sentence boundaries. <strong>Paragraph</strong>: split at double line breaks. <strong>Fixed</strong>: split every N characters.</p>
+          <div id="narrate_fixed_wrap" style="display:none; margin-bottom:12px;">
+            <label for="narrate_max_chars"><strong>Max characters per chunk:</strong></label>
+            <input type="number" id="narrate_max_chars" min="50" max="1500" value="500" aria-label="Max characters per chunk" style="width:100%; padding:9px; margin-top:4px;">
+          </div>
           <button id="narrate_btn" type="button">Generate narration</button>
-          <button type="button" id="cancel_narrate_btn" style="display: none; margin-top: 8px; padding: 8px 16px; font-size: 14px; width: auto; background: #45475a; color: #cdd6f4;">Cancel</button>
-          <div id="narrate_status" style="margin-top:10px; color:#a6adc8;"></div>
-  </div>
+          <button type="button" id="cancel_narrate_btn" style="display:none; margin-top:8px; padding:6px 14px; font-size:14px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Cancel</button>
+          <div id="narrate_status" style="margin-top:8px; color:var(--rpg-muted); font-size:0.9em;"></div>
+        </div><!-- end narrate -->
 
-  <div class="container">
-      <div class="section-title">Create character / NPC voice</div>
-      <div class="consent-box">
-        <label><input type="checkbox" id="consent" /> I have the right to use this voice. I am the speaker or have their permission. I will not use it to impersonate without disclosure.</label>
-      </div>
-      <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
-      <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:#181825; color:#cdd6f4; border:1px solid #45475a; border-radius:5px;">
-      <label for="clone_voice_faction"><strong>Faction / Group (Optional):</strong></label>
-      <input type="text" id="clone_voice_faction" placeholder="e.g., The O'Bannion Syndicate, Silver Court Mages" aria-label="Faction or group" style="width:100%; padding:10px; margin-bottom:15px; box-sizing:border-box; background:var(--rpg-input-bg); color:var(--rpg-text); border:1px solid var(--rpg-border); border-radius:5px;">
-      <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
-      <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
-      <p style="margin: 8px 0 12px 0; font-size: 0.9em; color: #a6adc8;">Or record with your microphone: 15–25 s in a quiet room, speaking clearly with natural variation (helps avoid robotic or pitch-shifted clone).</p>
-      <div style="margin-bottom: 15px;">
-        <button type="button" id="record_start" disabled style="padding: 8px 16px; margin-right: 8px; background: #f38ba8; color: #1e1e2e; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">Start recording</button>
-        <button type="button" id="record_stop" disabled style="padding: 8px 16px; background: #45475a; color: #cdd6f4; border: none; border-radius: 5px; cursor: pointer;">Stop</button>
-        <span id="record_status" style="margin-left: 12px; color: #a6adc8;"></span>
-      </div>
-      <div id="record_playback_wrap" style="display: none; margin-bottom: 15px;">
-        <label style="font-size: 0.9em; color: #a6adc8;">Play recording before cloning:</label>
-        <audio id="record_playback" controls style="display: block; margin-top: 6px; width: 100%; max-width: 400px;"></audio>
-        <button type="button" id="record_rerecord" style="margin-top: 8px; padding: 6px 12px; background: #45475a; color: #cdd6f4; border: none; border-radius: 5px; cursor: pointer;">Re-record</button>
-      </div>
-      <label for="consent_scope"><strong>Consent scope:</strong></label>
-      <select id="consent_scope" aria-label="Consent scope">
-        <option value="tts">TTS only</option>
-        <option value="commercial">Commercial use</option>
-      </select>
-      <p style="margin: 4px 0 8px 0; font-size: 0.9em; color: #a6adc8;">TTS only: for personal or internal use. Commercial use: you may use this voice in paid or commercial projects.</p>
-      <p style="margin: 0 0 10px 0; font-size: 0.85em; color: #a6adc8;">Upload or record a clip above, check the consent box, then click Create voice.</p>
-      <button id="create_voice" type="button" disabled>Create voice</button>
-      <div id="voice_id_wrap" style="display:none; margin-top:10px;" role="status" aria-live="polite">
-        <div id="voice_id_out" class="voice-id-out"></div>
-        <button type="button" id="voice_id_copy_btn" style="margin-top:6px; padding:6px 12px; font-size:14px; width:auto;" aria-label="Copy voice or job ID">Copy ID</button>
-      </div>
-  </div>
+      </div><!-- end panel-right -->
+
+      </div><!-- end gm-screen -->
+      </div><!-- end tab-session -->
+
+      <!-- ===== PREP TAB ===== -->
+      <div class="tab-content" id="tab-prep">
+        <div class="prep-layout">
+
+          <!-- LEFT PREP PANEL: Adventure Import -->
+          <div class="prep-panel">
+            <div class="panel-chrome">📜 Adventure Import</div>
+            <div class="container">
+              <p style="font-size:0.88em; color:var(--rpg-muted); margin:0 0 14px 0;">
+                Upload a PDF, DOCX, or text adventure module. Claude will extract read-aloud passages and NPC profiles, then import them into your Scene Scripts and NPC Roster.
+              </p>
+
+              <div class="import-mode-bar" role="group" aria-label="Input mode">
+                <button type="button" class="import-mode-btn active" id="import_mode_file_btn" onclick="setImportMode('file')">📎 Upload File</button>
+                <button type="button" class="import-mode-btn" id="import_mode_text_btn" onclick="setImportMode('text')">✏ Paste Text</button>
+              </div>
+
+              <div id="import_file_wrap">
+                <label for="import_file"><strong>Adventure file (PDF, DOCX, TXT, MD):</strong></label>
+                <input type="file" id="import_file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="margin-bottom:12px;">
+              </div>
+
+              <div id="import_text_wrap" style="display:none;">
+                <label for="import_paste_text"><strong>Paste adventure text:</strong></label>
+                <textarea id="import_paste_text" rows="10" placeholder="Paste your adventure module text here..."></textarea>
+              </div>
+
+              <button type="button" id="parse_adventure_btn">Parse Adventure</button>
+              <div class="parse-status" id="parse_status" role="status" aria-live="polite"></div>
+
+              <!-- Results -->
+              <div class="import-results" id="import_results">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <span id="parse_summary" style="font-size:0.88em; color:var(--rpg-muted);"></span>
+                  <div style="display:flex; gap:8px;">
+                    <button type="button" class="btn-small" id="select_all_btn">Select All</button>
+                    <button type="button" class="btn-small" id="deselect_all_btn">Deselect All</button>
+                  </div>
+                </div>
+
+                <div id="import_npcs_section" style="display:none;">
+                  <div class="result-section-title">⚔ NPCs &amp; Characters</div>
+                  <div class="result-cards" id="import_npc_cards"></div>
+                </div>
+
+                <div id="import_scenes_section" style="display:none;">
+                  <div class="result-section-title">📖 Read-Aloud Passages</div>
+                  <div class="result-cards" id="import_scene_cards"></div>
+                </div>
+
+                <button type="button" id="import_selected_btn" style="margin-top:8px;">Import Selected to Session</button>
+                <div class="parse-status" id="import_status" role="status" aria-live="polite"></div>
+              </div>
+            </div><!-- end adventure import container -->
+          </div><!-- end left prep panel -->
+
+          <!-- RIGHT PREP PANEL: Create / Manage Voices -->
+          <div class="prep-panel">
+            <div class="panel-chrome">🎙 Voice Management</div>
+
+            <div class="container">
+              <div class="section-title">Manage Voices</div>
+              <p style="font-size:0.88em; color:var(--rpg-muted); margin:0 0 10px 0;">Rename or delete cloned voices.</p>
+              <div id="prep_voice_list" class="voice-list" role="list"></div>
+            </div>
+
+            <div class="container">
+              <div class="section-title">Create character / NPC voice</div>
+              <div class="consent-box">
+                <label><input type="checkbox" id="consent" /> I have the right to use this voice. I am the speaker or have their permission. I will not use it to impersonate without disclosure.</label>
+              </div>
+              <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
+              <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name" style="width:100%; padding:9px; margin-bottom:12px;">
+              <label for="clone_voice_faction"><strong>Faction / Group (Optional):</strong></label>
+              <input type="text" id="clone_voice_faction" placeholder="e.g., Silver Court Mages" aria-label="Faction or group" style="width:100%; padding:9px; margin-bottom:12px;">
+              <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
+              <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
+              <p style="margin:6px 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Or record with your microphone: 15–25 s in a quiet room, speaking clearly.</p>
+              <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button type="button" id="record_start" disabled style="padding:6px 14px; width:auto; background:rgba(255,80,120,0.2); color:#ff80c0; border:1px solid #ff80c0; font-weight:bold;">Start recording</button>
+                <button type="button" id="record_stop" disabled style="padding:6px 14px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Stop</button>
+                <span id="record_status" style="font-size:0.88em; color:var(--rpg-muted);"></span>
+              </div>
+              <div id="record_playback_wrap" style="display:none; margin-bottom:12px;">
+                <label style="font-size:0.88em; color:var(--rpg-muted);">Play recording before cloning:</label>
+                <audio id="record_playback" controls style="display:block; margin-top:5px; width:100%;"></audio>
+                <button type="button" id="record_rerecord" style="margin-top:6px; padding:5px 10px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Re-record</button>
+              </div>
+              <label for="consent_scope"><strong>Consent scope:</strong></label>
+              <select id="consent_scope" aria-label="Consent scope">
+                <option value="tts">TTS only</option>
+                <option value="commercial">Commercial use</option>
+              </select>
+              <p style="margin:4px 0 10px 0; font-size:0.86em; color:var(--rpg-muted);">Upload or record a clip above, check consent, then click Create voice.</p>
+              <button id="create_voice" type="button" disabled>Create voice</button>
+              <div id="voice_id_wrap" style="display:none; margin-top:10px;" role="status" aria-live="polite">
+                <div id="voice_id_out" class="voice-id-out"></div>
+                <button type="button" id="voice_id_copy_btn" style="margin-top:6px; padding:5px 12px; font-size:13px; width:auto;" aria-label="Copy voice or job ID">Copy ID</button>
+              </div>
+            </div><!-- end create voice -->
+
+          </div><!-- end right prep panel -->
+
+        </div><!-- end prep-layout -->
+      </div><!-- end tab-prep -->
 
   <script>
     const DEFAULT_VOICE_KEY = "kani_default_voice_id";
@@ -1279,10 +1607,235 @@
       refreshVoiceIdSelect();
       cogmRefreshVoiceSelect();
       cogmInit();
+      prepRefreshVoiceList();
     });
     loadLimits().then(function() {
       updateNarrateCharCount();
     });
+
+    // ===== TAB NAVIGATION =====
+    function switchTab(name) {
+      document.querySelectorAll('.tab-content').forEach(function(el) {
+        el.classList.remove('active');
+      });
+      document.querySelectorAll('.gm-tab').forEach(function(btn) {
+        btn.classList.toggle('active', btn.dataset.tab === name);
+        btn.setAttribute('aria-selected', btn.dataset.tab === name ? 'true' : 'false');
+      });
+      var target = document.getElementById('tab-' + name);
+      if (target) target.classList.add('active');
+    }
+    document.querySelectorAll('.gm-tab[data-tab]').forEach(function(btn) {
+      btn.addEventListener('click', function() { switchTab(this.dataset.tab); });
+    });
+
+    // ===== PREP TAB: Voice list mirror =====
+    function prepRefreshVoiceList() {
+      var src = document.getElementById('voice_list');
+      var dest = document.getElementById('prep_voice_list');
+      if (!src || !dest) return;
+      dest.innerHTML = src.innerHTML;
+      // Re-attach delete/rename listeners by cloning buttons
+      dest.querySelectorAll('button.delete').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var vid = this.closest('.voice-item') && this.closest('.voice-item').dataset.vid;
+          if (vid) deleteVoice(vid);
+        });
+      });
+    }
+
+    // Re-sync prep voice list whenever session voice list updates
+    var _origRefreshVoiceList = refreshVoiceList;
+    refreshVoiceList = function() {
+      _origRefreshVoiceList();
+      prepRefreshVoiceList();
+    };
+
+    // ===== ADVENTURE IMPORT =====
+    var _importMode = 'file';
+
+    function setImportMode(mode) {
+      _importMode = mode;
+      document.getElementById('import_file_wrap').style.display = mode === 'file' ? '' : 'none';
+      document.getElementById('import_text_wrap').style.display = mode === 'text' ? '' : 'none';
+      document.getElementById('import_mode_file_btn').classList.toggle('active', mode === 'file');
+      document.getElementById('import_mode_text_btn').classList.toggle('active', mode === 'text');
+    }
+
+    document.getElementById('parse_adventure_btn').addEventListener('click', async function() {
+      var statusEl = document.getElementById('parse_status');
+      var resultsEl = document.getElementById('import_results');
+      resultsEl.classList.remove('visible');
+      statusEl.innerHTML = '<span class="parse-spinner">✦</span> Parsing adventure…';
+      this.disabled = true;
+
+      var formData = new FormData();
+      if (_importMode === 'file') {
+        var fileInput = document.getElementById('import_file');
+        if (!fileInput.files.length) {
+          statusEl.textContent = 'Please select a file first.';
+          this.disabled = false;
+          return;
+        }
+        formData.append('file', fileInput.files[0]);
+      } else {
+        var pasteText = document.getElementById('import_paste_text').value.trim();
+        if (!pasteText) {
+          statusEl.textContent = 'Please paste some text first.';
+          this.disabled = false;
+          return;
+        }
+        formData.append('text', pasteText);
+      }
+
+      try {
+        var headers = {};
+        if (window._apiKey) headers['X-API-Key'] = window._apiKey;
+        var resp = await fetch('/ai/parse-adventure', { method: 'POST', headers: headers, body: formData });
+        if (!resp.ok) {
+          var err = await resp.json().catch(function() { return {detail: resp.statusText}; });
+          statusEl.textContent = 'Error: ' + (err.detail || resp.statusText);
+          this.disabled = false;
+          return;
+        }
+        var data = await resp.json();
+        statusEl.textContent = '';
+        renderParseResults(data);
+      } catch (e) {
+        statusEl.textContent = 'Request failed: ' + e.message;
+      }
+      this.disabled = false;
+    });
+
+    function renderParseResults(data) {
+      var resultsEl = document.getElementById('import_results');
+      var npcSection = document.getElementById('import_npcs_section');
+      var sceneSection = document.getElementById('import_scenes_section');
+      var npcCards = document.getElementById('import_npc_cards');
+      var sceneCards = document.getElementById('import_scene_cards');
+      var summary = document.getElementById('parse_summary');
+
+      var npcs = data.npcs || [];
+      var readAlouds = data.read_alouds || [];
+      var charCount = data.char_count || 0;
+
+      summary.textContent = npcs.length + ' NPC' + (npcs.length !== 1 ? 's' : '') +
+        ', ' + readAlouds.length + ' read-aloud' + (readAlouds.length !== 1 ? 's' : '') +
+        ' found (' + Math.round(charCount / 1000) + 'k chars processed)';
+
+      npcCards.innerHTML = '';
+      npcs.forEach(function(npc, i) {
+        var card = document.createElement('div');
+        card.className = 'result-card checked';
+        card.dataset.type = 'npc';
+        card.dataset.index = i;
+        var badge = npc.faction ? '<span class="result-card-badge">' + cogmEscapeHtml(npc.faction) + '</span>' : '';
+        var scene = npc.scene ? ' · ' + cogmEscapeHtml(npc.scene) : '';
+        card.innerHTML =
+          '<input type="checkbox" checked aria-label="Import ' + cogmEscapeHtml(npc.name) + '">' +
+          '<div class="result-card-body">' +
+          '<div class="result-card-title">' + cogmEscapeHtml(npc.name) + badge + '</div>' +
+          '<div class="result-card-detail">' + cogmEscapeHtml(npc.personality) + '<br><em style="color:var(--rpg-accent2);">' + cogmEscapeHtml(npc.description || '') + scene + '</em></div>' +
+          '</div>';
+        card.querySelector('input').addEventListener('change', function() {
+          card.classList.toggle('checked', this.checked);
+        });
+        npcCards.appendChild(card);
+      });
+      npcSection.style.display = npcs.length ? '' : 'none';
+
+      sceneCards.innerHTML = '';
+      readAlouds.forEach(function(ra, i) {
+        var card = document.createElement('div');
+        card.className = 'result-card checked';
+        card.dataset.type = 'scene';
+        card.dataset.index = i;
+        var scene = ra.scene ? '<span class="result-card-badge">' + cogmEscapeHtml(ra.scene) + '</span>' : '';
+        card.innerHTML =
+          '<input type="checkbox" checked aria-label="Import ' + cogmEscapeHtml(ra.title) + '">' +
+          '<div class="result-card-body">' +
+          '<div class="result-card-title">' + cogmEscapeHtml(ra.title) + scene + '</div>' +
+          '<div class="result-card-detail">' + cogmEscapeHtml(ra.text) + '</div>' +
+          '</div>';
+        card.querySelector('input').addEventListener('change', function() {
+          card.classList.toggle('checked', this.checked);
+        });
+        sceneCards.appendChild(card);
+      });
+      sceneSection.style.display = readAlouds.length ? '' : 'none';
+
+      // Store data for import
+      resultsEl._parseData = data;
+      resultsEl.classList.add('visible');
+    }
+
+    document.getElementById('select_all_btn').addEventListener('click', function() {
+      document.querySelectorAll('#import_results .result-card input[type="checkbox"]').forEach(function(cb) {
+        cb.checked = true;
+        cb.closest('.result-card').classList.add('checked');
+      });
+    });
+    document.getElementById('deselect_all_btn').addEventListener('click', function() {
+      document.querySelectorAll('#import_results .result-card input[type="checkbox"]').forEach(function(cb) {
+        cb.checked = false;
+        cb.closest('.result-card').classList.remove('checked');
+      });
+    });
+
+    document.getElementById('import_selected_btn').addEventListener('click', function() {
+      var resultsEl = document.getElementById('import_results');
+      var data = resultsEl._parseData;
+      if (!data) return;
+
+      var npcs = data.npcs || [];
+      var readAlouds = data.read_alouds || [];
+      var importedNpcs = 0, importedScenes = 0;
+
+      // Import checked NPCs into roster (roster is an array of {id, name, personality, voice_id})
+      var roster = cogmLoadRoster();
+      document.querySelectorAll('#import_npc_cards .result-card').forEach(function(card) {
+        if (!card.querySelector('input').checked) return;
+        var idx = parseInt(card.dataset.index);
+        var npc = npcs[idx];
+        if (!npc) return;
+        var id = cogmNpcId(npc.name);
+        if (roster.findIndex(function(n) { return n.id === id; }) >= 0) return; // skip duplicates
+        var personality = npc.personality || '';
+        if (npc.description) personality += ' ' + npc.description;
+        if (npc.faction) personality = '[' + npc.faction + '] ' + personality;
+        roster.push({ id: id, name: npc.name.trim(), personality: personality.trim(), voice_id: '' });
+        importedNpcs++;
+      });
+      cogmSaveRoster(roster);
+      cogmRenderRoster();
+
+      // Import checked read-alouds into scene scripts
+      var scripts = JSON.parse(localStorage.getItem('gm_scripts') || '{}');
+      document.querySelectorAll('#import_scene_cards .result-card').forEach(function(card) {
+        if (!card.querySelector('input').checked) return;
+        var idx = parseInt(card.dataset.index);
+        var ra = readAlouds[idx];
+        if (!ra) return;
+        var key = ra.title.trim();
+        // Avoid overwriting existing scripts; append suffix if collision
+        var finalKey = key;
+        var n = 2;
+        while (scripts[finalKey]) { finalKey = key + ' (' + n++ + ')'; }
+        scripts[finalKey] = ra.text;
+        importedScenes++;
+      });
+      localStorage.setItem('gm_scripts', JSON.stringify(scripts));
+      loadSavedScripts();
+
+      var statusEl = document.getElementById('import_status');
+      statusEl.textContent = 'Imported ' + importedNpcs + ' NPC' + (importedNpcs !== 1 ? 's' : '') +
+        ' and ' + importedScenes + ' scene' + (importedScenes !== 1 ? 's' : '') + '.';
+
+      if (importedNpcs > 0 || importedScenes > 0) {
+        setTimeout(function() { switchTab('session'); }, 800);
+      }
+    });
+
   </script>
 </body>
 </html>

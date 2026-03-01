@@ -24,6 +24,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from pathlib import Path
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -41,9 +42,11 @@ from config import (
     NARRATE_RESULT_PATH,
     PENDING_CLONE_PATH,
     PORT,
+    MAX_ADVENTURE_CHARS,
     RATE_LIMIT_AI,
     RATE_LIMIT_CLONE,
     RATE_LIMIT_GLOBAL,
+    RATE_LIMIT_PARSE,
     RATE_LIMIT_TTS,
     REQUIRE_API_KEY,
     SERVER_NAME,
@@ -602,6 +605,84 @@ async def ai_dialogue(
     return DialogueResponse(dialogue=dialogue, voice_id=body.voice_id or None)
 
 
+# --- AI: Adventure Import (parse read-alouds and NPCs from uploaded adventure) ---
+
+class ReadAloud(BaseModel):
+    title: str
+    text: str
+    scene: str = ""
+
+class ParsedNPC(BaseModel):
+    name: str
+    personality: str
+    faction: str = ""
+    description: str = ""
+    scene: str = ""
+
+class ParseAdventureResponse(BaseModel):
+    read_alouds: list[ReadAloud]
+    npcs: list[ParsedNPC]
+    char_count: int
+
+@app.post("/ai/parse-adventure", response_model=ParseAdventureResponse)
+@limiter.limit(RATE_LIMIT_PARSE or "1000/minute")
+async def parse_adventure_endpoint(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    text: str = Form(""),
+    _auth: None = Depends(verify_api_key),
+):
+    """
+    Upload a PDF, DOCX, or TXT adventure module (or paste text) and extract
+    read-aloud passages and NPC profiles using Claude.
+    Requires ANTHROPIC_API_KEY in .env and pdfplumber/python-docx for PDF/DOCX files.
+    """
+    raw_text = ""
+    tmp_path = None
+
+    if file and file.filename:
+        suffix = os.path.splitext(file.filename)[1] or ".txt"
+        body_bytes = await file.read()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(body_bytes)
+            tmp_path = tmp.name
+        try:
+            from ai_service import extract_text_from_file
+            raw_text = extract_text_from_file(tmp_path, suffix)
+        except RuntimeError as e:
+            increment("errors_total")
+            raise HTTPException(500, str(e))
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    elif text.strip():
+        raw_text = text.strip()
+    else:
+        raise HTTPException(400, "Provide a file upload or paste text in the 'text' field.")
+
+    if not raw_text.strip():
+        raise HTTPException(400, "No text could be extracted from the provided file.")
+
+    char_count = len(raw_text)
+    raw_text = raw_text[:MAX_ADVENTURE_CHARS]
+
+    from ai_service import parse_adventure
+    try:
+        result = parse_adventure(raw_text)
+    except RuntimeError as e:
+        increment("errors_total")
+        raise HTTPException(500, str(e))
+
+    increment("ai_dialogue_requests_total")
+    return ParseAdventureResponse(
+        read_alouds=[ReadAloud(**r) for r in result.get("read_alouds", [])],
+        npcs=[ParsedNPC(**n) for n in result.get("npcs", [])],
+        char_count=char_count,
+    )
+
+
 # --- Favicon (browsers request this automatically; 204 avoids 404 in logs) ---
 @app.get("/favicon.ico")
 def favicon():
@@ -609,11 +690,429 @@ def favicon():
 
 # --- Web UI: served from static file ---
 _STATIC_INDEX = Path(__file__).resolve().parent / "static" / "index.html"
+_STATIC_TEST  = Path(__file__).resolve().parent / "static" / "test_ui.html"
 
 @app.get("/", response_class=HTMLResponse)
 def index():
     return FileResponse(_STATIC_INDEX, media_type="text/html")
 
+@app.get("/test", response_class=HTMLResponse)
+def test_ui():
+    return FileResponse(_STATIC_TEST, media_type="text/html")
+
+
+app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static_files")
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GM Voice Studio – Live Board  (Gradio UI, mounted at /live)
+# ═══════════════════════════════════════════════════════════════════════════
+import gradio as gr
+
+CUSTOM_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --wood:      #1b1410;
+  --parchment: #f3e2c5;
+  --gold:      #d4af37;
+  --charcoal:  #25242a;
+  --ink:       #2c1a0e;
+  --red:       #7a2020;
+  --green:     #2a5020;
+  --amber:     #b07820;
+}
+
+body, .gradio-container {
+  background: linear-gradient(135deg, #1b1410 0%, #25242a 50%, #1b1410 100%) !important;
+  min-height: 100vh;
+}
+
+.header-banner {
+  background: linear-gradient(rgba(27,20,16,0.55), rgba(27,20,16,0.85)),
+              url('/static/img/live_header.jpg') center/cover no-repeat;
+  padding: 28px 24px;
+  text-align: center;
+  border-radius: 8px;
+  border: 2px solid var(--gold);
+  margin-bottom: 14px;
+}
+
+.section-card {
+  background: var(--parchment) !important;
+  border: 2px solid var(--gold) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.25) !important;
+  padding: 16px 18px !important;
+  margin-bottom: 12px !important;
+}
+
+.section-title {
+  font-family: 'Cinzel', serif !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 2px !important;
+  color: var(--ink) !important;
+  border-bottom: 2px solid var(--gold) !important;
+  padding-bottom: 7px !important;
+  margin: 0 0 12px 0 !important;
+}
+
+.quicktool-btn, .quicktool-btn:focus {
+  background:     var(--parchment) !important;
+  border:         2px solid var(--gold) !important;
+  border-radius:  6px !important;
+  color:          var(--ink) !important;
+  font-family:    'Cinzel', serif !important;
+  font-size:      10px !important;
+  font-weight:    700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  min-height:     54px !important;
+  transition:     transform 0.15s, box-shadow 0.15s !important;
+  cursor:         pointer !important;
+}
+.quicktool-btn:hover {
+  transform:  scale(1.05) !important;
+  box-shadow: 0 0 14px rgba(212,175,55,0.6), 0 3px 8px rgba(0,0,0,0.35) !important;
+  background: #faecd6 !important;
+}
+
+/* Co-GM chatbot bubbles */
+.chatbot-parchment [data-testid="user"] > div {
+  background: var(--parchment) !important;
+  border: 1px solid var(--gold) !important;
+  color: var(--ink) !important;
+}
+.chatbot-parchment [data-testid="bot"] > div {
+  background: var(--charcoal) !important;
+  border: 1px solid var(--gold) !important;
+  color: var(--gold) !important;
+}
+
+/* Input fields inside parchment cards */
+.section-card label span { color: var(--ink) !important; }
+.section-card textarea,
+.section-card input[type=text],
+.section-card input[type=number] {
+  background: rgba(255,255,255,0.55) !important;
+  border: 1px solid var(--gold) !important;
+  color: var(--ink) !important;
+}
+.section-card .wrap { background: transparent !important; }
+"""
+
+# ── Static HTML panels ────────────────────────────────────────────────────────
+
+_ENCOUNTER_HTML = """
+<style>
+.enc-row  { display:flex; align-items:center; gap:10px; margin-bottom:9px; }
+.enc-name { font-family:'Cinzel',serif; font-size:12px; font-weight:700;
+            color:#2c1a0e; min-width:115px; }
+.enc-hp   { font-size:11px; color:#7a2020; min-width:38px;
+            text-align:right; font-weight:600; }
+.enc-bg   { flex:1; height:8px; background:#d4aa70; border-radius:4px; }
+.enc-bar  { height:100%; border-radius:4px; }
+</style>
+<div>
+  <div class="enc-row">
+    <span class="enc-name">Goblin Scout</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:67%;background:#7a2020"></div></div>
+    <span class="enc-hp">8 / 12</span>
+  </div>
+  <div class="enc-row">
+    <span class="enc-name">Goblin Archer</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:60%;background:#7a2020"></div></div>
+    <span class="enc-hp">6 / 10</span>
+  </div>
+  <div class="enc-row">
+    <span class="enc-name">Goblin Shaman</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:60%;background:#b07820"></div></div>
+    <span class="enc-hp">9 / 15</span>
+  </div>
+  <div class="enc-row">
+    <span class="enc-name">Captive Wolf</span>
+    <div class="enc-bg"><div class="enc-bar" style="width:55%;background:#b07820"></div></div>
+    <span class="enc-hp">11 / 20</span>
+  </div>
+</div>
+"""
+
+_PARTY_HTML = """
+<style>
+.pc-row  { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.pc-name { font-family:'Cinzel',serif; font-size:12px; font-weight:700;
+           color:#2c1a0e; min-width:90px; }
+.pc-hp   { font-size:11px; min-width:42px; text-align:right; font-weight:600; }
+.pc-bg   { flex:1; height:7px; background:#d4aa70; border-radius:4px; }
+.pc-bar  { height:100%; border-radius:4px; }
+</style>
+<div>
+  <div class="pc-row">
+    <span class="pc-name">Aethelred</span>
+    <div class="pc-bg"><div class="pc-bar" style="width:90%;background:#2a5020"></div></div>
+    <span class="pc-hp" style="color:#2a5020">72 / 80</span>
+  </div>
+  <div class="pc-row">
+    <span class="pc-name">Lira</span>
+    <div class="pc-bg"><div class="pc-bar" style="width:48%;background:#b07820"></div></div>
+    <span class="pc-hp" style="color:#b07820">28 / 58</span>
+  </div>
+  <div class="pc-row">
+    <span class="pc-name">Torin</span>
+    <div class="pc-bg"><div class="pc-bar" style="width:91%;background:#2a5020"></div></div>
+    <span class="pc-hp" style="color:#2a5020">40 / 44</span>
+  </div>
+  <div class="pc-row">
+    <span class="pc-name">Zephyr</span>
+    <div class="pc-bg"><div class="pc-bar" style="width:16%;background:#7a2020"></div></div>
+    <span class="pc-hp" style="color:#7a2020">9 / 56</span>
+  </div>
+  <div class="pc-row">
+    <span class="pc-name">Mira</span>
+    <div class="pc-bg"><div class="pc-bar" style="width:95%;background:#2a5020"></div></div>
+    <span class="pc-hp" style="color:#2a5020">52 / 55</span>
+  </div>
+</div>
+"""
+
+_REVEALS_HTML = """
+<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">
+  <span style="background:#d4af37;color:#1b1410;padding:4px 10px;border-radius:12px;
+               font-size:11px;font-family:'Cinzel',serif;font-weight:700;">Hook line</span>
+  <span style="background:#d4af37;color:#1b1410;padding:4px 10px;border-radius:12px;
+               font-size:11px;font-family:'Cinzel',serif;font-weight:700;">Temple history</span>
+  <span style="background:#d4af37;color:#1b1410;padding:4px 10px;border-radius:12px;
+               font-size:11px;font-family:'Cinzel',serif;font-weight:700;">Secret passage</span>
+</div>
+"""
+
+# ── Gradio helper functions ───────────────────────────────────────────────────
+
+def _lb_parse_voice(choice: Optional[str]) -> Optional[str]:
+    """'Alba (preset)' → 'alba'  |  'Dragon Queen (cloned) [id]' → 'id'."""
+    if not choice:
+        return None
+    if "[" in choice and choice.endswith("]"):
+        return choice.split("[")[-1].rstrip("]").strip()
+    return choice.split("(")[0].strip().lower() or None
+
+
+def _lb_get_voices() -> list:
+    presets = [f"{v.title()} (preset)"
+               for v in ["alba", "marius", "javert", "jean",
+                          "fantine", "cosette", "eponine", "azelma"]]
+    try:
+        from voice_store import list_voices as _lv
+        cloned = [f"{v['name']} (cloned) [{v['voice_id']}]" for v in _lv()]
+    except Exception:
+        cloned = []
+    return presets + cloned
+
+
+def _lb_speak(text: str, voice_choice: str):
+    """TTS — returns (sample_rate, audio_ndarray) for gr.Audio."""
+    text = (text or "").strip()
+    if not text:
+        raise gr.Error("Enter some text to speak.")
+    voice_id = _lb_parse_voice(voice_choice)
+    if not voice_id:
+        raise gr.Error("Select a voice first.")
+    try:
+        from tts_service import generate as _tts
+        arr, sr = _tts(text, speaker_emb_path=voice_id)
+        return (sr, arr)
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
+    except RuntimeError as exc:
+        raise gr.Error(str(exc)) from exc
+
+
+def _lb_cogm_respond(message: str, history: list,
+                     npc_name: str, personality: str, _npc_voice: str):
+    """Add GM message, call Claude for Co-GM reply, return updated history.
+    History is a list of [user_msg, bot_msg] pairs (Gradio Chatbot default format).
+    """
+    message = (message or "").strip()
+    if not message:
+        return history, ""
+    # Convert tuple history to dict format for ai_service
+    conv_hist = []
+    for pair in (history or []):
+        if pair[0]:
+            conv_hist.append({"role": "user",      "content": pair[0]})
+        if pair[1]:
+            conv_hist.append({"role": "assistant", "content": pair[1]})
+    try:
+        from ai_service import generate_dialogue
+        reply = generate_dialogue(
+            npc_name=npc_name.strip() or "The NPC",
+            personality=personality.strip() or "Neutral",
+            situation=message,
+            conversation_history=conv_hist,
+        )
+    except Exception as exc:
+        reply = f"[Co-GM error: {exc}]"
+    updated = list(history or []) + [[message, reply]]
+    return updated, ""
+
+
+def _lb_speak_last(history: list, npc_voice: str):
+    """Speak the most recent Co-GM (bot) reply via TTS."""
+    for pair in reversed(history or []):
+        if pair[1]:
+            return _lb_speak(pair[1], npc_voice)
+    raise gr.Error("No Co-GM reply to speak yet.")
+
+
+# ── Build Gradio Blocks demo ──────────────────────────────────────────────────
+
+def _build_live_demo():
+    _voices = _lb_get_voices()
+    _default_voice = _voices[0] if _voices else None
+
+    with gr.Blocks(
+        css=CUSTOM_CSS,
+        title="GM Voice Studio – Live Board",
+        analytics_enabled=False,
+    ) as demo:
+
+        # ── Header ────────────────────────────────────────────────────────────
+        gr.HTML("""
+<div class="header-banner">
+  <h1 style="font-family:'Cinzel',serif;color:#d4af37;font-size:28px;margin:0;
+             text-shadow:0 2px 10px rgba(0,0,0,0.8);letter-spacing:2px;">
+    GM Voice Studio – Live Board
+  </h1>
+  <p style="color:#f3e2c5;font-size:14px;margin:8px 0 0;letter-spacing:1px;">
+    Campaign: The Shattered Crown
+  </p>
+</div>""")
+
+        with gr.Row(equal_height=False):
+
+            # ══════════════ LEFT COLUMN (GM controls) ═══════════════
+            with gr.Column(scale=2):
+
+                # Quick Tools
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">Quick Tools</h3>')
+                    with gr.Row():
+                        gr.Button("🎲 Roll Dice",        elem_classes="quicktool-btn")
+                        gr.Button("📖 Monster Bestiary", elem_classes="quicktool-btn")
+                        gr.Button("✨ Spell Ref",         elem_classes="quicktool-btn")
+                    with gr.Row():
+                        gr.Button("💰 Loot Table",   elem_classes="quicktool-btn")
+                        gr.Button("🎭 Gen NPC",      elem_classes="quicktool-btn")
+                        gr.Button("💀 Apply Damage", elem_classes="quicktool-btn")
+
+                # Encounter Tracker
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">Encounter Tracker</h3>')
+                    gr.HTML(_ENCOUNTER_HTML)
+
+                # Party Roster + World Map
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">Party Roster</h3>')
+                    gr.HTML(_PARTY_HTML)
+                    gr.HTML("""
+<div style="margin-top:14px;border-radius:6px;overflow:hidden;border:2px solid #d4af37;">
+  <img src="/static/img/world_map.jpg"
+       onerror="this.style.display='none'"
+       style="width:100%;display:block;" alt="World Map" />
+  <div style="background:rgba(27,20,16,0.75);color:#d4af37;font-family:'Cinzel',serif;
+              font-size:10px;text-align:center;padding:4px;letter-spacing:2px;">
+    WORLD MAP
+  </div>
+</div>""")
+
+            # ══════════════ RIGHT COLUMN (Voice + Co-GM) ═════════════
+            with gr.Column(scale=1):
+
+                # Voice Studio
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">Voice Studio</h3>')
+                    tts_voice = gr.Dropdown(
+                        choices=_voices, value=_default_voice,
+                        label="Choose Voice", interactive=True,
+                    )
+                    with gr.Row():
+                        refresh_v_btn = gr.Button("↻ Refresh",    size="sm")
+                        gr.Button("🎤 Record Sample", size="sm")
+                        gr.Button("📁 Upload Audio",  size="sm")
+                    tts_text = gr.Textbox(
+                        label="Speak a line", lines=2,
+                        placeholder="Enter NPC dialogue here…",
+                    )
+                    with gr.Row():
+                        tts_temp = gr.Slider(0.0, 1.0, value=0.65, step=0.05,
+                                             label="Temperature")
+                        gr.Slider(-5, 5, value=0, step=0.5, label="Pitch (semitones)")
+                    speak_btn = gr.Button("▶ Speak", variant="primary")
+                    tts_audio = gr.Audio(type="numpy", label="Output",
+                                         autoplay=True, show_label=False)
+
+                # NPC Profile
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">NPC Profile</h3>')
+                    with gr.Row():
+                        npc_name_box = gr.Textbox(label="Name",
+                                                  placeholder="Temple Guardian", scale=1)
+                        gr.Textbox(label="Role", placeholder="Undead Sentinel", scale=1)
+                    npc_voice_dd = gr.Dropdown(choices=_voices, label="Voice")
+                    npc_persona  = gr.Textbox(
+                        label="Personality Notes", lines=3,
+                        placeholder="Stoic, ancient, speaks in riddles. Guards the inner sanctum.",
+                    )
+                    gr.HTML('<p style="font-size:11px;color:#2c1a0e;font-family:\'Cinzel\','
+                            'serif;text-transform:uppercase;letter-spacing:1px;margin:8px 0 4px;">Reveals</p>')
+                    gr.HTML(_REVEALS_HTML)
+
+                # Co-GM Assistant
+                with gr.Group(elem_classes="section-card"):
+                    gr.HTML('<h3 class="section-title">Co-GM Assistant</h3>')
+                    chatbot = gr.Chatbot(
+                        label="", height=280,
+                        elem_classes="chatbot-parchment",
+                    )
+                    with gr.Row():
+                        msg_box  = gr.Textbox(
+                            show_label=False, placeholder="Describe the situation…",
+                            lines=1, scale=4,
+                        )
+                        send_btn = gr.Button("Send", scale=1, variant="primary")
+                    speak_npc_btn = gr.Button("🔊 Speak Last Reply as NPC", size="sm")
+                    cogm_audio = gr.Audio(type="numpy", label="",
+                                          autoplay=True, show_label=False)
+
+        # ── Event wiring ──────────────────────────────────────────────────────
+        speak_btn.click(_lb_speak, [tts_text, tts_voice], tts_audio)
+
+        refresh_v_btn.click(
+            lambda: gr.update(choices=_lb_get_voices()),
+            outputs=tts_voice,
+        )
+
+        def _send(msg, hist, name, persona, voice):
+            return _lb_cogm_respond(msg, hist, name, persona, voice)
+
+        send_btn.click(
+            _send,
+            [msg_box, chatbot, npc_name_box, npc_persona, npc_voice_dd],
+            [chatbot, msg_box],
+        )
+        msg_box.submit(
+            _send,
+            [msg_box, chatbot, npc_name_box, npc_persona, npc_voice_dd],
+            [chatbot, msg_box],
+        )
+        speak_npc_btn.click(_lb_speak_last, [chatbot, npc_voice_dd], cogm_audio)
+
+    return demo
+
+
+_live_demo = _build_live_demo()
+app = gr.mount_gradio_app(app, _live_demo, path="/live")
 
 if __name__ == "__main__":
     import uvicorn
