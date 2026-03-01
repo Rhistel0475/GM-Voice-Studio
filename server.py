@@ -1257,11 +1257,6 @@ def _build_live_demo():
 _live_demo = _build_live_demo()
 app = gr.mount_gradio_app(app, _live_demo, path="/live")
 
-
-
-_live_demo = _build_live_demo()
-app = gr.mount_gradio_app(app, _live_demo, path="/live")
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=SERVER_NAME, port=PORT)

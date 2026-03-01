@@ -1,8 +1,9 @@
 
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GM Voice Studio</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600&display=swap">
   <style>
@@ -124,6 +125,7 @@
       border-bottom: 1px solid var(--rpg-border);
       text-align: center;
       animation: panel-pulse 5s ease-in-out infinite;
+      -webkit-backdrop-filter: blur(4px);
       backdrop-filter: blur(4px);
     }
 
@@ -393,10 +395,108 @@
       /* Reorder: center (Co-GM) first, then left, then right */
       .panel-center { order: -1; }
     }
+
+    /* ── Utility / override classes (replaces inline styles) ── */
+    .hidden          { display: none; }
+    .mt-4            { margin-top: 4px; }
+    .mt-6            { margin-top: 6px; }
+    .mt-8            { margin-top: 8px; }
+    .mt-10           { margin-top: 10px; }
+    .mb-5            { margin-bottom: 5px; }
+    .mb-8            { margin-bottom: 8px; }
+    .mb-10           { margin-bottom: 10px; }
+    .mb-12           { margin-bottom: 12px; }
+    .mb-14           { margin-bottom: 14px; }
+    .flex-row        { display: flex; }
+    .flex-row-8      { display: flex; gap: 8px; }
+    .flex-row-10     { display: flex; gap: 10px; }
+    .flex-row-sb     { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .flex-row-wrap   { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .flex-1          { flex: 1; }
+    .flex-2          { flex: 2; margin: 0; }
+    .input-full      { width: 100%; padding: 9px; }
+    .input-full-mb12 { width: 100%; padding: 9px; margin-bottom: 12px; }
+    .input-sm        { width: 100%; padding: 8px; margin-top: 4px; }
+    .muted-hint      { font-size: 0.88em; color: var(--rpg-muted); margin: 0; }
+    .muted-hint-mb10 { font-size: 0.88em; color: var(--rpg-muted); margin: 0 0 10px 0; }
+    .muted-hint-mb12 { font-size: 0.88em; color: var(--rpg-muted); margin: 0 0 12px 0; }
+    .muted-hint-mb14 { font-size: 0.88em; color: var(--rpg-muted); margin: 0 0 14px 0; }
+    .muted-hint-mt4  { font-size: 0.85em; color: var(--rpg-muted); margin: 4px 0 0 0; }
+    .muted-hint-mt6  { margin: 4px 0 10px 0; font-size: 0.88em; color: var(--rpg-muted); }
+    .muted-span      { font-size: 0.88em; color: var(--rpg-muted); }
+    .italic-muted    { color: var(--rpg-muted); font-style: italic; }
+    .btn-inline      { width: auto; padding: 3px 10px; font-size: 0.88em; display: inline; vertical-align: baseline; }
+    .flex-row-ac-mt14 { margin-top: 14px; display: flex; align-items: center; gap: 10px; }
+
+    /* Elements that start hidden (JS shows/hides via .style.display) */
+    #error_area,
+    #api_key_wrap,
+    #import_text_wrap,
+    #import_npcs_section,
+    #import_scenes_section { display: none; }
+
+    #narrate_fixed_wrap,
+    #record_playback_wrap  { display: none; margin-bottom: 12px; }
+
+    #voice_id_wrap         { display: none; margin-top: 10px; }
+
+    /* Cancel / secondary action buttons (hidden by default) */
+    #cancel_tts_btn,
+    #cancel_narrate_btn {
+      display: none;
+      margin-top: 8px;
+      padding: 6px 14px;
+      font-size: 14px;
+      width: auto;
+      background: transparent;
+      color: var(--rpg-muted);
+      border: 1px solid var(--rpg-border);
+    }
+    #cogm_cancel_btn {
+      display: none;
+      margin-bottom: 8px;
+      background: transparent;
+      color: var(--rpg-muted);
+      border: 1px solid var(--rpg-border);
+    }
+
+    /* Specific form elements */
+    #api_key_input         { width: 100%; padding: 9px; margin-bottom: 12px; }
+    #set_default_btn       { margin-top: 4px; padding: 6px 12px; font-size: 14px; }
+    #export_btn            { margin-top: 8px; padding: 6px 14px; font-size: 13px; width: auto; }
+    #cogm_npc_name         { width: 100%; padding: 8px; margin-top: 4px; }
+    #cogm_npc_voice        { width: 100%; padding: 8px; margin-top: 4px; }
+    #cogm_npc_personality  { margin-top: 4px; }
+    #cogm_situation        { margin-top: 4px; margin-bottom: 8px; }
+    #cogm_generate_btn     { margin-bottom: 8px; }
+    #player-container,
+    .player-container      { margin-top: 10px; }
+    #saved_scripts_sel     { margin: 0; flex: 2; }
+    #load_script_btn       { flex: 1; padding: 9px; }
+    #delete_script_btn     { flex: 0.6; padding: 9px; width: auto; }
+    #save_script_name      { flex: 2; padding: 9px; margin: 0; }
+    #save_script_btn       { flex: 1.2; padding: 9px; }
+    #narrate_text          { margin-bottom: 5px; }
+    #narrate_char_count_wrap { margin-bottom: 12px; font-size: 0.88em; color: var(--rpg-muted); }
+    #narrate_chunk_by      { margin-bottom: 5px; }
+    #narrate_max_chars     { width: 100%; padding: 9px; margin-top: 4px; }
+    #narrate_status        { margin-top: 8px; color: var(--rpg-muted); font-size: 0.9em; }
+    #import_file           { margin-bottom: 12px; }
+    #parse_summary         { font-size: 0.88em; color: var(--rpg-muted); }
+    #import_selected_btn   { margin-top: 8px; }
+    #clone_voice_name,
+    #clone_voice_faction   { width: 100%; padding: 9px; margin-bottom: 12px; }
+    #record_playback       { display: block; margin-top: 5px; width: 100%; }
+    #record_start          { padding: 6px 14px; width: auto; background: rgba(255,80,120,0.2); color: #ff80c0; border: 1px solid #ff80c0; font-weight: bold; }
+    #record_stop           { padding: 6px 14px; width: auto; background: transparent; color: var(--rpg-muted); border: 1px solid var(--rpg-border); }
+    #record_rerecord       { margin-top: 6px; padding: 5px 10px; width: auto; background: transparent; color: var(--rpg-muted); border: 1px solid var(--rpg-border); }
+    #record_status         { font-size: 0.88em; color: var(--rpg-muted); }
+    #voice_id_copy_btn     { margin-top: 6px; padding: 5px 12px; font-size: 13px; width: auto; }
+    #cogm_clear_log_btn    { font-size: 12px; padding: 3px 10px; }
   </style>
     </head>
     <body>
-      <div id="error_area" class="error-area" role="alert" style="display:none;"></div>
+      <div id="error_area" class="error-area" role="alert"></div>
 
       <header class="gm-header">
         <span class="gm-rune">᛭</span>
@@ -405,8 +505,8 @@
       </header>
 
       <nav class="gm-tabs" role="tablist">
-        <button class="gm-tab active" data-tab="session" role="tab" aria-selected="true" aria-controls="tab-session">▶ Session</button>
-        <button class="gm-tab" data-tab="prep" role="tab" aria-selected="false" aria-controls="tab-prep">⚙ Prep</button>
+        <button type="button" class="gm-tab active" data-tab="session" role="tab" aria-selected="true" aria-controls="tab-session">▶ Session</button>
+        <button type="button" class="gm-tab" data-tab="prep" role="tab" aria-selected="false" aria-controls="tab-prep">⚙ Prep</button>
       </nav>
 
       <div class="tab-content active" id="tab-session">
@@ -416,15 +516,15 @@
       <div class="screen-panel panel-left">
         <div class="panel-chrome">⚔ Character Voices ⚔</div>
 
-        <div id="api_key_wrap" class="container" style="display:none;">
+        <div id="api_key_wrap" class="container">
           <div class="section-title">API key</div>
-          <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-muted);">This server requires an API key. Enter it below (stored in memory only, not on disk).</p>
+          <p class="muted-hint-mb10">This server requires an API key. Enter it below (stored in memory only, not on disk).</p>
           <label for="api_key_input"><strong>API key:</strong></label>
-          <input type="password" id="api_key_input" placeholder="Enter your API key" autocomplete="off" style="width:100%; padding:9px; margin-bottom:12px;">
+          <input type="password" id="api_key_input" placeholder="Enter your API key" autocomplete="off">
         </div>
 
         <div class="container">
-          <p style="margin:0 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Clone character and NPC voices, then speak or narrate in-session.</p>
+          <p class="muted-hint-mb10">Clone character and NPC voices, then speak or narrate in-session.</p>
 
       <div class="section-title">Character / NPC voices</div>
       <div id="voice_list" class="voice-list" role="list"></div>
@@ -432,50 +532,50 @@
       <select id="voice_id_sel" aria-label="Character or NPC voice">
         <option value="">-- Select a character voice (required) --</option>
       </select>
-      <button type="button" id="set_default_btn" style="margin-top: 4px; padding: 6px 12px; font-size: 14px;">Set selected as default</button>
+      <button type="button" id="set_default_btn">Set selected as default</button>
 
       <div class="section-title">Speak a line</div>
       <label for="text"><strong>Dialogue or line:</strong></label>
       <textarea id="text" rows="5" placeholder="Enter dialogue or a short line to speak as the selected character." aria-label="Dialogue or line to speak">The ancient door grinds open, revealing a chamber untouched for centuries.</textarea>
       <label for="tag"><strong>Language:</strong></label>
       <select id="tag" aria-label="Language"></select>
-      <p style="margin: 0 0 12px 0; font-size: 0.9em; color: var(--rpg-muted);">Pocket TTS is English only.</p>
+      <p class="muted-hint-mb12">Pocket TTS is English only.</p>
       <label for="ref_audio"><strong>Or one-off clip (this request only):</strong></label>
       <input type="file" id="ref_audio" accept="audio/wav, audio/mp3, audio/ogg" aria-label="One-off reference audio file">
 
       <div class="section-title">Voice style</div>
-      <p style="margin: 0 0 10px 0; font-size: 0.9em; color: var(--rpg-muted);">For cloned voices, try temperature 0.95–1.1 if output sounds robotic or pitch feels off.</p>
+      <p class="muted-hint-mb10">For cloned voices, try temperature 0.95–1.1 if output sounds robotic or pitch feels off.</p>
           <div class="slider-group" role="group" aria-label="Generation parameters">
               <div class="slider-container">
                   <label for="temp">Temperature (<span id="temp_val">0.95</span>)</label><br>
                   <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.95" aria-valuemin="0.1" aria-valuemax="1.5" aria-valuenow="0.95" aria-valuetext="0.95" oninput="var v=this.value; document.getElementById('temp_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
-                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: var(--rpg-muted);">Higher = more varied, expressive; lower = more consistent and stable.</p>
+                  <p class="muted-hint-mt4">Higher = more varied, expressive; lower = more consistent and stable.</p>
               </div>
               <div class="slider-container">
                   <label for="topp">Top-p (<span id="topp_val">0.9</span>)</label><br>
                   <input type="range" id="topp" min="0.5" max="1.0" step="0.01" value="0.9" aria-valuemin="0.5" aria-valuemax="1" aria-valuenow="0.9" aria-valuetext="0.9" oninput="var v=this.value; document.getElementById('topp_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
-                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: var(--rpg-muted);">Narrower = more focused choices; higher = more diversity in pronunciation.</p>
+                  <p class="muted-hint-mt4">Narrower = more focused choices; higher = more diversity in pronunciation.</p>
               </div>
               <div class="slider-container">
                   <label for="rep">Repetition Penalty (<span id="rep_val">1.15</span>)</label><br>
                   <input type="range" id="rep" min="1.0" max="1.5" step="0.01" value="1.15" aria-valuemin="1" aria-valuemax="1.5" aria-valuenow="1.15" aria-valuetext="1.15" oninput="var v=this.value; document.getElementById('rep_val').innerText=v; this.setAttribute('aria-valuenow',v); this.setAttribute('aria-valuetext',v);">
-                  <p style="margin: 4px 0 0 0; font-size: 0.85em; color: var(--rpg-muted);">Higher = discourages repeating the same words or phrases; helps avoid loops.</p>
+                  <p class="muted-hint-mt4">Higher = discourages repeating the same words or phrases; helps avoid loops.</p>
               </div>
       </div>
 
       <button id="go" type="button">Generate Audio</button>
-          <button type="button" id="cancel_tts_btn" style="display:none; margin-top:8px; padding:6px 14px; font-size:14px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Cancel</button>
+          <button type="button" id="cancel_tts_btn">Cancel</button>
 
           <div class="player-container">
             <audio id="player" controls aria-label="Generated audio playback"></audio>
-            <button type="button" id="export_btn" style="margin-top:8px; padding:6px 14px; font-size:13px; width:auto;" disabled aria-label="Export current audio as WAV">Export WAV</button>
+            <button type="button" id="export_btn" disabled aria-label="Export current audio as WAV">Export WAV</button>
           </div>
         </div><!-- end speak-a-line container -->
 
         <div class="container">
-          <p style="font-size:0.88em; color:var(--rpg-muted); margin:0;">
+          <p class="muted-hint">
             To create or import voices and parse adventure modules, switch to the
-            <button type="button" onclick="switchTab('prep')" style="width:auto; padding:3px 10px; font-size:0.88em; display:inline; vertical-align:baseline;">⚙ Prep</button>
+            <button type="button" onclick="switchTab('prep')" class="btn-inline">⚙ Prep</button>
             tab.
           </p>
         </div>
@@ -487,40 +587,38 @@
         <div class="panel-chrome">✦ Co-GM Assistant ✦</div>
 
         <div class="container" id="cogm_panel">
-          <p style="margin:0 0 12px 0; font-size:0.88em; color:var(--rpg-muted);">
+          <p class="muted-hint-mb12">
             Set up an NPC profile, describe what's happening, and Claude writes an in-character line — spoken aloud in the NPC's cloned voice.
           </p>
 
           <div class="section-title">NPC Roster</div>
           <div id="cogm_roster_bar" class="npc-roster-bar" role="list" aria-label="Saved NPCs"></div>
-          <div style="display:flex; gap:8px; margin-bottom:14px;">
+          <div class="flex-row-8 mb-14">
             <button type="button" class="btn-small" id="cogm_save_npc_btn">Save NPC</button>
             <button type="button" class="btn-small btn-danger" id="cogm_delete_npc_btn">Delete NPC</button>
           </div>
 
           <div class="section-title">NPC Profile</div>
-          <div style="display:flex; gap:10px; margin-bottom:10px;">
-            <div style="flex:1;">
+          <div class="flex-row-10 mb-10">
+            <div class="flex-1">
               <label for="cogm_npc_name"><strong>Name:</strong></label>
-              <input type="text" id="cogm_npc_name" placeholder="e.g. Captain Aldric Vane" style="width:100%; padding:8px; margin-top:4px;">
+              <input type="text" id="cogm_npc_name" placeholder="e.g. Captain Aldric Vane">
             </div>
-            <div style="flex:1;">
+            <div class="flex-1">
               <label for="cogm_npc_voice"><strong>Voice:</strong></label>
-              <select id="cogm_npc_voice" aria-label="NPC voice" style="width:100%; padding:8px; margin-top:4px;">
+              <select id="cogm_npc_voice" aria-label="NPC voice">
                 <option value="">-- No voice --</option>
               </select>
             </div>
           </div>
           <label for="cogm_npc_personality"><strong>Personality / Notes:</strong></label>
           <textarea id="cogm_npc_personality" rows="3"
-                    placeholder="e.g. Gruff veteran, fiercely loyal to the crown, hiding guilt over a past betrayal. Speaks tersely; rarely volunteers information."
-                    style="margin-top:4px;"></textarea>
+                    placeholder="e.g. Gruff veteran, fiercely loyal to the crown, hiding guilt over a past betrayal. Speaks tersely; rarely volunteers information."></textarea>
 
           <div class="section-title">Current Situation</div>
           <label for="cogm_situation"><strong>What is happening right now?</strong></label>
           <textarea id="cogm_situation" rows="2"
-                    placeholder="e.g. Players are demanding to pass the city gate after curfew and have just bribed the guard."
-                    style="margin-top:4px; margin-bottom:8px;"></textarea>
+                    placeholder="e.g. Players are demanding to pass the city gate after curfew and have just bribed the guard."></textarea>
 
           <div class="quick-prompt-bar" id="cogm_quick_prompts" role="group" aria-label="Quick situation prompts">
             <button type="button" class="quick-prompt-chip" data-prompt="The players enter the room and see the NPC for the first time.">Players enter</button>
@@ -531,20 +629,19 @@
             <button type="button" class="quick-prompt-chip" data-prompt="The players are asking the NPC for directions, information, or local knowledge.">Asked for info</button>
           </div>
 
-          <button type="button" id="cogm_generate_btn" style="margin-bottom:8px;">Speak as NPC</button>
-          <button type="button" id="cogm_cancel_btn" class="btn-small"
-                  style="display:none; margin-bottom:8px; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Cancel</button>
+          <button type="button" id="cogm_generate_btn">Speak as NPC</button>
+          <button type="button" id="cogm_cancel_btn" class="btn-small">Cancel</button>
           <div class="cogm-status" id="cogm_status" role="status" aria-live="polite"></div>
 
-          <div class="section-title" style="margin-top:14px; display:flex; align-items:center; gap:10px;">
+          <div class="section-title flex-row-ac-mt14">
             Dialogue Log
-            <button type="button" class="btn-small btn-danger" id="cogm_clear_log_btn" style="font-size:12px; padding:3px 10px;">Clear</button>
+            <button type="button" class="btn-small btn-danger" id="cogm_clear_log_btn">Clear</button>
           </div>
           <div id="cogm_dialogue_log" class="dialogue-log" role="log" aria-live="polite" aria-label="NPC dialogue history">
-            <span style="color:var(--rpg-muted); font-style:italic;">No dialogue yet. Configure the NPC above and click Speak as NPC.</span>
+            <span class="italic-muted">No dialogue yet. Configure the NPC above and click Speak as NPC.</span>
           </div>
 
-          <div class="player-container" style="margin-top:10px;">
+          <div class="player-container">
             <audio id="cogm_player" controls aria-label="NPC dialogue audio"></audio>
           </div>
         </div><!-- end cogm_panel -->
@@ -557,20 +654,20 @@
 
         <div class="container">
           <div class="section-title">Ambient Audio Mixer</div>
-          <p style="margin:0 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Layer looping atmospheric tracks beneath your NPC dialogue.</p>
+          <p class="muted-hint-mb10">Layer looping atmospheric tracks beneath your NPC dialogue.</p>
           <div class="slider-group">
             <div class="slider-container">
-              <label>City Rain (<span id="vol_rain_val">0</span>%)</label><br>
+              <label for="vol_rain">City Rain (<span id="vol_rain_val">0</span>%)</label><br>
               <input type="range" id="vol_rain" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_rain').volume=this.value; document.getElementById('vol_rain_val').innerText=Math.round(this.value*100); if(this.value>0) document.getElementById('audio_rain').play(); else document.getElementById('audio_rain').pause();">
               <audio id="audio_rain" loop src="https://cdn.pixabay.com/audio/2021/08/04/audio_3484f3ccab.mp3"></audio>
             </div>
             <div class="slider-container">
-              <label>Speakeasy Jazz (<span id="vol_jazz_val">0</span>%)</label><br>
+              <label for="vol_jazz">Speakeasy Jazz (<span id="vol_jazz_val">0</span>%)</label><br>
               <input type="range" id="vol_jazz" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_jazz').volume=this.value; document.getElementById('vol_jazz_val').innerText=Math.round(this.value*100); if(this.value>0) document.getElementById('audio_jazz').play(); else document.getElementById('audio_jazz').pause();">
               <audio id="audio_jazz" loop src="https://cdn.pixabay.com/audio/2022/01/18/audio_82c206db23.mp3"></audio>
             </div>
             <div class="slider-container">
-              <label>Arcane Hum (<span id="vol_magic_val">0</span>%)</label><br>
+              <label for="vol_magic">Arcane Hum (<span id="vol_magic_val">0</span>%)</label><br>
               <input type="range" id="vol_magic" min="0" max="1" step="0.05" value="0" oninput="document.getElementById('audio_magic').volume=this.value; document.getElementById('vol_magic_val').innerText=Math.round(this.value*100); if(this.value>0) document.getElementById('audio_magic').play(); else document.getElementById('audio_magic').pause();">
               <audio id="audio_magic" loop src="https://cdn.pixabay.com/audio/2022/03/10/audio_c8c8a73467.mp3"></audio>
             </div>
@@ -579,40 +676,40 @@
 
         <div class="container">
           <div class="section-title">Scene Script Library</div>
-          <p style="margin:0 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Save and load box-text descriptions for quick narration.</p>
-          <div style="display:flex; gap:8px; margin-bottom:12px;">
-            <select id="saved_scripts_sel" style="margin:0; flex:2;">
+          <p class="muted-hint-mb10">Save and load box-text descriptions for quick narration.</p>
+          <div class="flex-row-8 mb-12">
+            <select id="saved_scripts_sel" aria-label="Saved scenes">
               <option value="">-- Select a saved scene --</option>
             </select>
-            <button type="button" id="load_script_btn" style="flex:1; padding:9px;">Load</button>
-            <button type="button" id="delete_script_btn" class="btn-danger" style="flex:0.6; padding:9px; width:auto;">Delete</button>
+            <button type="button" id="load_script_btn">Load</button>
+            <button type="button" id="delete_script_btn" class="btn-danger">Delete</button>
           </div>
-          <div style="display:flex; gap:8px;">
-            <input type="text" id="save_script_name" placeholder="Scene Name" style="flex:2; padding:9px; margin:0;">
-            <button type="button" id="save_script_btn" style="flex:1.2; padding:9px;">Save Text</button>
+          <div class="flex-row-8">
+            <input type="text" id="save_script_name" placeholder="Scene Name">
+            <button type="button" id="save_script_btn">Save Text</button>
           </div>
         </div><!-- end scene scripts -->
 
         <div class="container">
           <div class="section-title">Narrate scene or script</div>
-          <p style="font-size:0.88em; color:var(--rpg-muted);">Uses the selected character voice. Paste scene text; it will be split into chunks and combined into one WAV.</p>
+          <p class="muted-hint">Uses the selected character voice. Paste scene text; it will be split into chunks and combined into one WAV.</p>
           <label for="narrate_text"><strong>Script (max 5000 characters):</strong></label>
-          <textarea id="narrate_text" rows="8" placeholder="Paste script or long text..." aria-label="Script for narration" style="margin-bottom:5px;"></textarea>
-          <div id="narrate_char_count_wrap" style="margin-bottom:12px; font-size:0.88em; color:var(--rpg-muted);" role="status" aria-live="polite"><span id="narrate_char_count">0 / 5000 characters</span></div>
+          <textarea id="narrate_text" rows="8" placeholder="Paste script or long text..." aria-label="Script for narration"></textarea>
+          <div id="narrate_char_count_wrap" role="status" aria-live="polite"><span id="narrate_char_count">0 / 5000 characters</span></div>
           <label for="narrate_chunk_by"><strong>Chunk by:</strong></label>
-          <select id="narrate_chunk_by" aria-label="Chunk by" style="margin-bottom:5px;">
+          <select id="narrate_chunk_by" aria-label="Chunk by">
             <option value="sentence">Sentence</option>
             <option value="paragraph">Paragraph</option>
             <option value="fixed">Fixed (N chars)</option>
           </select>
-          <p style="margin:0 0 12px 0; font-size:0.85em; color:var(--rpg-muted);"><strong>Sentence</strong>: split at sentence boundaries. <strong>Paragraph</strong>: split at double line breaks. <strong>Fixed</strong>: split every N characters.</p>
-          <div id="narrate_fixed_wrap" style="display:none; margin-bottom:12px;">
+          <p class="muted-hint-mb12"><strong>Sentence</strong>: split at sentence boundaries. <strong>Paragraph</strong>: split at double line breaks. <strong>Fixed</strong>: split every N characters.</p>
+          <div id="narrate_fixed_wrap">
             <label for="narrate_max_chars"><strong>Max characters per chunk:</strong></label>
-            <input type="number" id="narrate_max_chars" min="50" max="1500" value="500" aria-label="Max characters per chunk" style="width:100%; padding:9px; margin-top:4px;">
+            <input type="number" id="narrate_max_chars" min="50" max="1500" value="500" aria-label="Max characters per chunk">
           </div>
           <button id="narrate_btn" type="button">Generate narration</button>
-          <button type="button" id="cancel_narrate_btn" style="display:none; margin-top:8px; padding:6px 14px; font-size:14px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Cancel</button>
-          <div id="narrate_status" style="margin-top:8px; color:var(--rpg-muted); font-size:0.9em;"></div>
+          <button type="button" id="cancel_narrate_btn">Cancel</button>
+          <div id="narrate_status"></div>
         </div><!-- end narrate -->
 
       </div><!-- end panel-right -->
@@ -628,7 +725,7 @@
           <div class="prep-panel">
             <div class="panel-chrome">📜 Adventure Import</div>
             <div class="container">
-              <p style="font-size:0.88em; color:var(--rpg-muted); margin:0 0 14px 0;">
+              <p class="muted-hint-mb14">
                 Upload a PDF, DOCX, or text adventure module. Claude will extract read-aloud passages and NPC profiles, then import them into your Scene Scripts and NPC Roster.
               </p>
 
@@ -639,10 +736,10 @@
 
               <div id="import_file_wrap">
                 <label for="import_file"><strong>Adventure file (PDF, DOCX, TXT, MD):</strong></label>
-                <input type="file" id="import_file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" style="margin-bottom:12px;">
+                <input type="file" id="import_file" accept=".pdf,.docx,.txt,.md,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
               </div>
 
-              <div id="import_text_wrap" style="display:none;">
+              <div id="import_text_wrap">
                 <label for="import_paste_text"><strong>Paste adventure text:</strong></label>
                 <textarea id="import_paste_text" rows="10" placeholder="Paste your adventure module text here..."></textarea>
               </div>
@@ -652,25 +749,25 @@
 
               <!-- Results -->
               <div class="import-results" id="import_results">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                  <span id="parse_summary" style="font-size:0.88em; color:var(--rpg-muted);"></span>
-                  <div style="display:flex; gap:8px;">
+                <div class="flex-row-sb">
+                  <span id="parse_summary"></span>
+                  <div class="flex-row-8">
                     <button type="button" class="btn-small" id="select_all_btn">Select All</button>
                     <button type="button" class="btn-small" id="deselect_all_btn">Deselect All</button>
                   </div>
                 </div>
 
-                <div id="import_npcs_section" style="display:none;">
+                <div id="import_npcs_section">
                   <div class="result-section-title">⚔ NPCs &amp; Characters</div>
                   <div class="result-cards" id="import_npc_cards"></div>
                 </div>
 
-                <div id="import_scenes_section" style="display:none;">
+                <div id="import_scenes_section">
                   <div class="result-section-title">📖 Read-Aloud Passages</div>
                   <div class="result-cards" id="import_scene_cards"></div>
                 </div>
 
-                <button type="button" id="import_selected_btn" style="margin-top:8px;">Import Selected to Session</button>
+                <button type="button" id="import_selected_btn">Import Selected to Session</button>
                 <div class="parse-status" id="import_status" role="status" aria-live="polite"></div>
               </div>
             </div><!-- end adventure import container -->
@@ -682,7 +779,7 @@
 
             <div class="container">
               <div class="section-title">Manage Voices</div>
-              <p style="font-size:0.88em; color:var(--rpg-muted); margin:0 0 10px 0;">Rename or delete cloned voices.</p>
+              <p class="muted-hint-mb10">Rename or delete cloned voices.</p>
               <div id="prep_voice_list" class="voice-list" role="list"></div>
             </div>
 
@@ -692,32 +789,32 @@
                 <label><input type="checkbox" id="consent" /> I have the right to use this voice. I am the speaker or have their permission. I will not use it to impersonate without disclosure.</label>
               </div>
               <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
-              <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name" style="width:100%; padding:9px; margin-bottom:12px;">
+              <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name">
               <label for="clone_voice_faction"><strong>Faction / Group (Optional):</strong></label>
-              <input type="text" id="clone_voice_faction" placeholder="e.g., Silver Court Mages" aria-label="Faction or group" style="width:100%; padding:9px; margin-bottom:12px;">
+              <input type="text" id="clone_voice_faction" placeholder="e.g., Silver Court Mages" aria-label="Faction or group">
               <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
               <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
-              <p style="margin:6px 0 10px 0; font-size:0.88em; color:var(--rpg-muted);">Or record with your microphone: 15–25 s in a quiet room, speaking clearly.</p>
-              <div style="margin-bottom:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <button type="button" id="record_start" disabled style="padding:6px 14px; width:auto; background:rgba(255,80,120,0.2); color:#ff80c0; border:1px solid #ff80c0; font-weight:bold;">Start recording</button>
-                <button type="button" id="record_stop" disabled style="padding:6px 14px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Stop</button>
-                <span id="record_status" style="font-size:0.88em; color:var(--rpg-muted);"></span>
+              <p class="muted-hint-mt6">Or record with your microphone: 15–25 s in a quiet room, speaking clearly.</p>
+              <div class="flex-row-wrap mb-12">
+                <button type="button" id="record_start" disabled>Start recording</button>
+                <button type="button" id="record_stop" disabled>Stop</button>
+                <span id="record_status"></span>
               </div>
-              <div id="record_playback_wrap" style="display:none; margin-bottom:12px;">
-                <label style="font-size:0.88em; color:var(--rpg-muted);">Play recording before cloning:</label>
-                <audio id="record_playback" controls style="display:block; margin-top:5px; width:100%;"></audio>
-                <button type="button" id="record_rerecord" style="margin-top:6px; padding:5px 10px; width:auto; background:transparent; color:var(--rpg-muted); border:1px solid var(--rpg-border);">Re-record</button>
+              <div id="record_playback_wrap">
+                <label class="muted-span">Play recording before cloning:</label>
+                <audio id="record_playback" controls></audio>
+                <button type="button" id="record_rerecord">Re-record</button>
               </div>
               <label for="consent_scope"><strong>Consent scope:</strong></label>
               <select id="consent_scope" aria-label="Consent scope">
                 <option value="tts">TTS only</option>
                 <option value="commercial">Commercial use</option>
               </select>
-              <p style="margin:4px 0 10px 0; font-size:0.86em; color:var(--rpg-muted);">Upload or record a clip above, check consent, then click Create voice.</p>
+              <p class="muted-hint-mt6">Upload or record a clip above, check consent, then click Create voice.</p>
               <button id="create_voice" type="button" disabled>Create voice</button>
-              <div id="voice_id_wrap" style="display:none; margin-top:10px;" role="status" aria-live="polite">
+              <div id="voice_id_wrap" role="status" aria-live="polite">
                 <div id="voice_id_out" class="voice-id-out"></div>
-                <button type="button" id="voice_id_copy_btn" style="margin-top:6px; padding:5px 12px; font-size:13px; width:auto;" aria-label="Copy voice or job ID">Copy ID</button>
+                <button type="button" id="voice_id_copy_btn" aria-label="Copy voice or job ID">Copy ID</button>
               </div>
             </div><!-- end create voice -->
 
