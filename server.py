@@ -696,6 +696,10 @@ _STATIC_TEST  = Path(__file__).resolve().parent / "static" / "test_ui.html"
 def test_ui():
     return FileResponse(_STATIC_TEST, media_type="text/html")
 
+@app.get("/", response_class=HTMLResponse)
+def index():
+    return FileResponse(_STATIC_INDEX, media_type="text/html")
+
 @app.get("/live", response_class=HTMLResponse)
 def live_board():
     live_html = Path(__file__).resolve().parent / "static" / "live.html"

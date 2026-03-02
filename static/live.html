@@ -34,36 +34,18 @@
         }
 
         .header-banner {
-            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)),
-                        url('/static/img/forest_campfire.jpg') center/cover no-repeat;
-            padding: 40px 24px;
-            text-align: center;
             border-radius: 12px;
             border: 4px solid var(--gold);
             margin-bottom: 20px;
-            min-height: 150px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
+            overflow: hidden;
             box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            line-height: 0;
         }
 
-        .header-banner h1 {
-            font-family: 'Cinzel', serif;
-            color: var(--gold);
-            font-size: 36px;
-            margin: 0 0 8px;
-            text-shadow: 0 2px 12px rgba(0,0,0,0.9);
-            letter-spacing: 3px;
-            font-weight: 900;
-        }
-
-        .header-banner p {
-            color: var(--parchment);
-            font-size: 16px;
-            margin: 0;
-            letter-spacing: 2px;
-            font-weight: 600;
+        .header-banner img {
+            width: 100%;
+            height: auto;
+            display: block;
         }
 
         .main-grid {
@@ -136,6 +118,15 @@
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
             box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .quicktool-img {
+            width: 100%;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 4px;
+            display: block;
+            margin-bottom: 4px;
         }
 
         .quicktool-btn:hover {
@@ -478,8 +469,7 @@
 </head>
 <body>
     <div class="header-banner">
-        <h1>GM VOICE STUDIO – LIVE BOARD</h1>
-        <p>Campaign: The Shattered Crown</p>
+        <img src="/static/img/game_master_dashboard_1920x300.png" alt="GM Voice Studio – Live Board">
     </div>
 
     <div class="main-grid">
@@ -489,12 +479,12 @@
             <div class="section-card">
                 <h3 class="section-title">⚔️ Quick Tools</h3>
                 <div class="quicktool-grid">
-                    <button class="quicktool-btn">🎲 Roll Dice</button>
-                    <button class="quicktool-btn">📖 Monster Bestiary</button>
-                    <button class="quicktool-btn">✨ Spell Ref</button>
-                    <button class="quicktool-btn">💰 Loot Table</button>
-                    <button class="quicktool-btn">🎭 Gen NPC</button>
-                    <button class="quicktool-btn">⚔️ Apply Damage</button>
+                    <button type="button" class="quicktool-btn">🎲 Roll Dice</button>
+                    <button type="button" class="quicktool-btn">📖 Monster Bestiary</button>
+                    <button type="button" class="quicktool-btn">✨ Spell Ref</button>
+                    <button type="button" class="quicktool-btn"><img src="/static/img/Loottable.png" alt="" class="quicktool-img">Loot Table</button>
+                    <button type="button" class="quicktool-btn">🎭 Gen NPC</button>
+                    <button type="button" class="quicktool-btn">⚔️ Apply Damage</button>
                 </div>
             </div>
 
@@ -583,9 +573,9 @@
                 </select>
 
                 <div class="btn-row mt-12">
-                    <button class="btn-sm" onclick="loadVoices()">↻ Refresh</button>
-                    <button class="btn-sm">🔴 Record</button>
-                    <button class="btn-sm">📁 Upload</button>
+                    <button type="button" class="btn-sm" onclick="loadVoices()">↻ Refresh</button>
+                    <button type="button" class="btn-sm">🔴 Record</button>
+                    <button type="button" class="btn-sm">📁 Upload</button>
                 </div>
 
                 <label for="ttsText" class="mt-12">Speak a line</label>
@@ -602,7 +592,7 @@
                     </div>
                 </div>
 
-                <button class="btn-primary" onclick="speakText()">▶ Speak</button>
+                <button type="button" class="btn-primary" onclick="speakText()">▶ Speak</button>
                 <audio id="ttsAudio" controls class="mt-12"></audio>
             </div>
 
@@ -654,10 +644,10 @@
                 
                 <div class="input-group">
                     <input type="text" id="cogmInput" placeholder="Describe the situation...">
-                    <button class="btn-primary btn-send" onclick="sendCogmMessage()">Send</button>
+                    <button type="button" class="btn-primary btn-send" onclick="sendCogmMessage()">Send</button>
                 </div>
 
-                <button class="btn-sm btn-full" onclick="speakLastReply()">🔊 Speak Last Reply as NPC</button>
+                <button type="button" class="btn-sm btn-full" onclick="speakLastReply()">🔊 Speak Last Reply as NPC</button>
                 <audio id="cogmAudio" controls class="mt-8"></audio>
             </div>
         </div>
