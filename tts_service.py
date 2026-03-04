@@ -1,6 +1,7 @@
 """
-TTS service: thin interface over Pocket TTS (Kyutai).
-Callers get (audio_array, sample_rate). English-only; supports preset voices and cloned voices (.safetensors).
+TTS service: thin interface over KaniTTS-2 (nineninesix.ai).
+Callers get (audio_array, sample_rate). English-only; supports cloned voices (.pt tensors).
+No preset named voices — pass speaker_emb_path=None for a random voice.
 """
 import logging
 import os
@@ -10,12 +11,12 @@ from typing import Optional
 
 import numpy as np
 import soundfile as sf
+import torch
 
-from config import AUDIO_CACHE_SIZE, HF_TOKEN
+from config import AUDIO_CACHE_SIZE
 
-# Pocket TTS: English only; preset voice names from Kyutai
+KANI_SAMPLE_RATE = 22050
 DEFAULT_LANGUAGE_TAGS = ["en"]
-POCKET_PRESET_VOICES = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
 
 _model = None
 _audio_cache: list[str] = []
@@ -24,40 +25,10 @@ _audio_cache: list[str] = []
 def _get_tts():
     global _model
     if _model is None:
-        # So gated models (e.g. voice cloning) can be downloaded
-        if HF_TOKEN:
-            os.environ["HF_TOKEN"] = HF_TOKEN
-            os.environ["HUGGING_FACE_HUB_TOKEN"] = HF_TOKEN
-        # Ensure ALL hf_hub_download calls get our token (Pocket TTS doesn't pass it).
-        _inject_hf_token()
-        from pocket_tts import TTSModel
-        logging.info("Loading Pocket TTS...")
-        _model = TTSModel.load_model()
+        from kani_tts import KaniTTS
+        logging.info("Loading KaniTTS-2...")
+        _model = KaniTTS("nineninesix/kani-tts-2-en")
     return _model
-
-
-def _inject_hf_token():
-    """Make huggingface_hub use our token for every download (required for gated kyutai/pocket-tts)."""
-    import huggingface_hub.hub_mixin as hub_mixin
-    from huggingface_hub import hf_hub_download as _real_hf_hub_download
-
-    token = HF_TOKEN or os.environ.get("HUGGING_FACE_HUB_TOKEN") or os.environ.get("HF_TOKEN")
-    if not token:
-        logging.warning("HF_TOKEN not set; voice cloning download may fail for gated repos.")
-
-    def _hf_hub_download(*args, **kwargs):
-        # Inject token so gated repos (e.g. kyutai/pocket-tts) work
-        if token and (kwargs.get("token") is None or kwargs.get("token") is False):
-            kwargs["token"] = token
-        elif not token and "token" not in kwargs:
-            kwargs["token"] = True  # use cached CLI token
-        return _real_hf_hub_download(*args, **kwargs)
-
-    hub_mixin.hf_hub_download = _hf_hub_download
-    # pocket_tts.utils.utils does "from huggingface_hub import hf_hub_download"
-    # so we must patch the name they'll import (the module's binding)
-    import huggingface_hub
-    huggingface_hub.hf_hub_download = _hf_hub_download
 
 
 def is_model_loaded() -> bool:
@@ -69,7 +40,13 @@ def get_supported_language_tags() -> list[str]:
 
 
 def get_preset_voices() -> list[str]:
-    return list(POCKET_PRESET_VOICES)
+    """KaniTTS-2 has no named preset voices; returns empty list."""
+    return []
+
+
+def _is_preset_voice(voice_id: str) -> bool:
+    """KaniTTS-2 has no named preset voices; always returns False."""
+    return False
 
 
 def _evict_old_audio():
@@ -81,44 +58,43 @@ def _evict_old_audio():
             pass
 
 
-def _is_preset_voice(voice_id: str) -> bool:
-    return voice_id and voice_id.strip().lower() in [v.lower() for v in POCKET_PRESET_VOICES]
-
-
 def generate(
     text: str,
     language_tag: Optional[str] = "en",
     speaker_emb_path: Optional[str] = None,
-    temperature: float = 0.65,
-    top_p: float = 0.80,
-    repetition_penalty: float = 1.15,
+    temperature: float = 1.0,
+    top_p: float = 0.95,
+    repetition_penalty: float = 1.1,
 ) -> tuple[np.ndarray, int]:
-    """Generate speech. speaker_emb_path: path to .safetensors file or preset voice name (e.g. alba). language_tag ignored (English only)."""
+    """Generate speech.
+    speaker_emb_path: path to a .pt speaker embedding file produced by clone_voice().
+    Pass None for a random/default voice. language_tag is ignored (English only).
+    """
     text = (text or "").strip()
     if not text:
         raise ValueError("Text is required")
-    if not speaker_emb_path or not speaker_emb_path.strip():
-        raise ValueError("Pocket TTS requires a voice to be selected (preset or cloned).")
+
+    if speaker_emb_path and speaker_emb_path.strip():
+        p = Path(speaker_emb_path.strip())
+        if not p.exists():
+            raise ValueError("Voice not found. Select a cloned voice or leave voice unset for random.")
+        emb = torch.load(str(p), weights_only=True)
+    else:
+        emb = None
 
     model = _get_tts()
-    voice_ref = speaker_emb_path.strip()
-    # Preset name or path to .safetensors (or any path Pocket accepts)
-    if not _is_preset_voice(voice_ref) and not Path(voice_ref).exists():
-        raise ValueError("Voice not found. Select a built-in voice or a cloned voice.")
-
     try:
-        voice_state = model.get_state_for_audio_prompt(voice_ref)
-        audio = model.generate_audio(voice_state, text)
-        if hasattr(audio, "numpy"):
-            arr = audio.numpy()
+        kwargs = dict(temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty)
+        if emb is not None:
+            audio, _out_text = model(text, speaker_emb=emb, **kwargs)
         else:
-            arr = np.array(audio.cpu())
-        sr = model.sample_rate
+            audio, _out_text = model(text, **kwargs)
+        arr = np.array(audio) if not isinstance(audio, np.ndarray) else audio
     except Exception as e:
         logging.exception("TTS generate failed")
         raise RuntimeError(f"Generation failed: {e!s}") from e
 
-    return arr, sr
+    return arr, KANI_SAMPLE_RATE
 
 
 def generate_to_file(

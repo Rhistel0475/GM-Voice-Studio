@@ -1,0 +1,8 @@
+# Co-DM RAG pipeline. Install after requirements.txt:
+#   pip install -r requirements-rag.txt
+langchain>=0.3.0
+langchain-openai>=0.2.0
+langchain-pinecone>=0.2.0
+openai>=1.50.0
+pinecone>=5.0.0
+pypdf>=4.0.0

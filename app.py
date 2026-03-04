@@ -12,7 +12,7 @@ from config import SERVER_NAME
 PORT = int(os.environ.get("PORT", os.environ.get("GRADIO_SERVER_PORT", "7861")))
 from tts_service import generate_to_file
 
-# Pocket TTS: English only; default preset voice
+# Kani TTS: English only; default preset voice
 LANG_TAGS = ["en"]
 DEFAULT_VOICE = "alba"
 

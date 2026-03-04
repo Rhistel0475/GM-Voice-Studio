@@ -9,11 +9,11 @@ from celery import Celery
 from config import CELERY_BROKER_URL
 
 app = Celery(
-    "kani_tts",
+    "pocket_tts",
     broker=CELERY_BROKER_URL or "memory://",
     backend=CELERY_BROKER_URL or "cache+memory://",
 )
-app.conf.task_default_queue = "kani_tts"
+app.conf.task_default_queue = "pocket_tts"
 app.conf.result_expires = 86400  # 24h
 
 

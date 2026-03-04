@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GM Voice Studio</title>
+  <title>GM Voice Studio Preview</title>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600&display=swap">
   <style>
     /* ══════════════════════════════════════════════════════
@@ -627,6 +627,53 @@
     #save_script_name  { margin: 0; flex: 2; }
     #save_script_btn   { flex: 1.5; padding: 9px; width: auto; }
 
+    .asset-shelf {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .asset-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 9px;
+      border-radius: 6px;
+      border: 1px solid rgba(110, 88, 56, 0.75);
+      background: linear-gradient(180deg, rgba(33, 25, 18, 0.92), rgba(19, 14, 10, 0.95));
+      font-size: 0.82rem;
+    }
+    .asset-row .asset-main {
+      flex: 1;
+      min-width: 0;
+    }
+    .asset-row .asset-name {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #e4d3b0;
+    }
+    .asset-row .asset-meta {
+      display: block;
+      font-size: 0.76rem;
+      color: var(--text-muted);
+    }
+    .asset-pill {
+      font-family: 'Cinzel', serif;
+      font-size: 0.56rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #89d9e5;
+      border: 1px solid rgba(99, 189, 203, 0.55);
+      border-radius: 999px;
+      padding: 3px 7px 2px;
+      flex-shrink: 0;
+    }
+
     /* ═══════════════════════════════════════════════
        UTILITY BUTTONS
     ═══════════════════════════════════════════════ */
@@ -664,6 +711,1100 @@
       color: var(--text);
       box-shadow: inset 0 2px 8px rgba(0,0,0,0.45);
     }
+
+    /* ═══════════════════════════════════════════════
+       PREVIEW OVERRIDES — high-fidelity redesign pass
+    ═══════════════════════════════════════════════ */
+    body {
+      background:
+        radial-gradient(circle at 50% -20%, rgba(50, 120, 170, 0.18), transparent 45%),
+        radial-gradient(circle at 14% 25%, rgba(255, 200, 110, 0.07), transparent 32%),
+        radial-gradient(circle at 85% 78%, rgba(90, 60, 32, 0.22), transparent 42%),
+        #080709;
+      padding-top: 20px;
+    }
+
+    .device {
+      border-radius: 28px;
+      border: 5px solid #0f121a;
+      box-shadow:
+        0 0 0 2px rgba(95, 72, 42, 0.7),
+        0 0 0 3px rgba(31, 194, 208, 0.25),
+        inset 0 0 0 1px rgba(140, 107, 68, 0.5),
+        0 26px 80px rgba(0, 0, 0, 0.9);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .device::after {
+      content: "PREVIEW";
+      position: absolute;
+      top: 12px;
+      right: 16px;
+      z-index: 9;
+      font-family: 'Cinzel', serif;
+      font-size: 0.64rem;
+      letter-spacing: 0.14em;
+      color: #7de2ef;
+      border: 1px solid rgba(84, 189, 206, 0.65);
+      border-radius: 12px;
+      padding: 3px 9px;
+      background: rgba(8, 24, 33, 0.65);
+      box-shadow: 0 0 10px rgba(53, 174, 192, 0.35);
+    }
+
+    .device-header {
+      min-height: 66px;
+      padding: 3px 14px;
+      background: linear-gradient(180deg, #2c2f3f 0%, #151826 62%, #10131d 100%);
+      border-bottom: 2px solid rgba(74, 178, 195, 0.24);
+    }
+
+    .dh-title {
+      font-size: 0.54rem;
+      letter-spacing: 0.18em;
+    }
+
+    .header-runes {
+      font-size: 0.5rem;
+      letter-spacing: 0.18em;
+      opacity: 0.85;
+    }
+
+    .logo-text {
+      font-size: 1.78rem;
+      color: #d7a846;
+      letter-spacing: 0.14em;
+      text-shadow:
+        0 0 28px rgba(227, 170, 47, 0.55),
+        0 2px 7px rgba(0, 0, 0, 0.82);
+    }
+
+    .logo-gem {
+      letter-spacing: 0.55em;
+      margin-top: 5px;
+      color: #5fd0df;
+    }
+
+    .content-area {
+      padding: 10px 12px 14px;
+      background:
+        linear-gradient(180deg, rgba(255, 198, 93, 0.05), transparent 28%),
+        #1b160f;
+    }
+
+    .container {
+      border-radius: 8px;
+      border: 1px solid #5c4829;
+      box-shadow:
+        inset 0 0 0 1px rgba(149, 116, 73, 0.24),
+        0 3px 8px rgba(0, 0, 0, 0.34);
+      background: linear-gradient(180deg, #2a2217, #201910 58%);
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      border-bottom: 1px solid rgba(90, 72, 42, 0.85);
+      background:
+        linear-gradient(180deg, rgba(76, 160, 183, 0.22), rgba(37, 33, 23, 0.95) 75%);
+      color: #f0dfbf;
+      letter-spacing: 0.08em;
+      font-size: 0.62rem;
+      padding: 7px 12px;
+      margin: -12px -12px 10px;
+    }
+
+    #tab-generate .panel-grid {
+      grid-template-columns: 1.62fr 1fr;
+      gap: 10px;
+    }
+
+    #tab-generate .panel-col {
+      display: grid;
+      gap: 10px;
+      align-content: start;
+    }
+
+    #tab-generate .panel-col:first-child .container:first-child {
+      min-height: 206px;
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(39, 80, 101, 0.25), rgba(33, 25, 18, 0.94) 52%),
+        radial-gradient(circle at 78% 20%, rgba(88, 177, 197, 0.26), transparent 42%),
+        linear-gradient(135deg, #2f2418 0%, #252015 45%, #1c1710 100%);
+    }
+
+    #tab-generate .panel-col:first-child .container:first-child::before {
+      content: "CURRENT SESSION • SHATTERED CROWN";
+      display: block;
+      font-family: 'Cinzel', serif;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      color: #d8c6a0;
+      margin: 26px 0 8px;
+      text-align: center;
+      opacity: 0.9;
+    }
+
+    #tab-generate .panel-col:first-child .container:first-child .section-title {
+      margin-bottom: 6px;
+    }
+
+    #tab-generate .panel-col:first-child .container:first-child label,
+    #tab-generate .panel-col:first-child .container:first-child select,
+    #tab-generate .panel-col:first-child .container:first-child button,
+    #tab-generate .panel-col:first-child .container:first-child #voice_list {
+      position: relative;
+      z-index: 1;
+    }
+
+    #tab-generate .panel-col:last-child .container:first-child {
+      min-height: 358px;
+    }
+
+    #tab-generate .panel-col:last-child .container:last-child {
+      min-height: 272px;
+      background:
+        linear-gradient(180deg, rgba(92, 139, 90, 0.14), rgba(30, 25, 15, 0.96) 65%),
+        linear-gradient(135deg, #302717, #1f190f);
+    }
+
+    .hero-panel .section-title,
+    .party-panel .section-title,
+    .tracker-panel .section-title,
+    .narrate-panel .section-title {
+      text-shadow: 0 0 10px rgba(58, 191, 210, 0.22);
+    }
+
+    .hero-art {
+      height: 72px;
+      border: 1px solid rgba(104, 161, 180, 0.45);
+      border-radius: 6px;
+      margin: 0 0 10px;
+      background:
+        linear-gradient(180deg, rgba(93, 151, 169, 0.23), rgba(31, 24, 17, 0.84)),
+        radial-gradient(circle at 70% 15%, rgba(90, 184, 203, 0.34), transparent 40%),
+        linear-gradient(120deg, #3e4334, #445239 32%, #5f5d3c 52%, #2d2a1d 85%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-art::after {
+      content: "⛰  Riverhold Valley  •  The Sunken Temple";
+      position: absolute;
+      left: 8px;
+      bottom: 6px;
+      right: 8px;
+      font-size: 0.68rem;
+      color: #ead7ae;
+      letter-spacing: 0.03em;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .device-footer {
+      min-height: 68px;
+      background: linear-gradient(180deg, #151822 0%, #10131a 100%);
+      border-top: 1px solid rgba(80, 183, 199, 0.26);
+      padding: 6px 9px 7px;
+      display: grid;
+      grid-template-columns: 1fr 1fr auto 1fr 1fr 1fr;
+      gap: 5px;
+      align-items: center;
+    }
+
+    .tab-btn {
+      min-height: 50px;
+      border-radius: 6px;
+      border: 1px solid rgba(84, 67, 44, 0.64);
+      background: linear-gradient(180deg, rgba(58, 45, 29, 0.42), rgba(18, 16, 13, 0.82));
+    }
+
+    .tab-btn .tab-icon {
+      font-size: 0.86rem;
+    }
+
+    .tab-btn .tab-label {
+      font-family: 'Cinzel', serif;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      font-size: 0.6rem;
+    }
+
+    .tab-btn.active {
+      box-shadow:
+        inset 0 0 0 1px rgba(126, 98, 61, 0.8),
+        0 0 12px rgba(62, 200, 216, 0.24);
+    }
+
+    .footer-gem {
+      width: 34px;
+      height: 34px;
+      font-size: 0.92rem;
+      border: 1px solid rgba(68, 188, 206, 0.56);
+      box-shadow: 0 0 10px rgba(68, 188, 206, 0.35);
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(105, 223, 240, 0.35), rgba(16, 34, 45, 0.9));
+    }
+
+    .dock-btn {
+      border: 1px solid rgba(88, 70, 45, 0.75);
+      background: linear-gradient(180deg, rgba(71, 54, 34, 0.5), rgba(24, 20, 15, 0.85));
+      color: #a08b6e;
+      border-radius: 6px;
+      min-height: 50px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 3px;
+      font-family: 'Cinzel', serif;
+      font-size: 0.54rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      opacity: 0.88;
+      user-select: none;
+    }
+
+    .dock-btn .tab-icon {
+      color: #58c8d8;
+      opacity: 0.72;
+      font-size: 0.82rem;
+    }
+
+    .hero-meta {
+      margin: 2px 0 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.78rem;
+      color: #dbc9a3;
+      letter-spacing: 0.04em;
+    }
+
+    .hero-controls {
+      background: rgba(20, 16, 12, 0.72);
+      border: 1px solid rgba(111, 87, 57, 0.6);
+      border-radius: 6px;
+      padding: 8px 9px 1px;
+    }
+
+    .roster-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin-bottom: 8px;
+    }
+
+    .roster-card {
+      border: 1px solid rgba(102, 160, 176, 0.35);
+      border-radius: 6px;
+      padding: 7px 8px;
+      background: linear-gradient(180deg, rgba(43, 64, 74, 0.5), rgba(32, 26, 18, 0.9));
+      position: relative;
+    }
+
+    .roster-card::after {
+      content: "●";
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      color: #6ad38b;
+      font-size: 0.62rem;
+      text-shadow: 0 0 8px rgba(106, 211, 139, 0.45);
+    }
+
+    .roster-name {
+      font-family: 'Cinzel', serif;
+      font-size: 0.73rem;
+      letter-spacing: 0.05em;
+      color: #e8d9bc;
+      display: block;
+    }
+
+    .roster-role {
+      font-size: 0.74rem;
+      color: #b8cbd1;
+    }
+
+    .quick-tools-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+      margin: 4px 0 9px;
+    }
+
+    .tool-chip {
+      border: 1px solid rgba(108, 87, 58, 0.75);
+      border-radius: 5px;
+      padding: 7px;
+      font-size: 0.72rem;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #d9c49d;
+      background: linear-gradient(180deg, rgba(93, 72, 45, 0.45), rgba(34, 27, 19, 0.85));
+    }
+
+    .tool-chip span {
+      display: block;
+      font-size: 0.98rem;
+      margin-bottom: 2px;
+      color: #74cfdf;
+    }
+
+    .tracker-list {
+      margin: 0 0 8px;
+      padding: 8px 8px 8px 20px;
+      border: 1px solid rgba(110, 88, 58, 0.6);
+      border-radius: 6px;
+      background: rgba(23, 19, 13, 0.8);
+      color: #e8dcc0;
+      font-size: 0.8rem;
+      line-height: 1.45;
+      list-style: decimal-leading-zero;
+    }
+
+    .tracker-list li {
+      padding-left: 2px;
+      margin-bottom: 2px;
+    }
+
+    .world-map-card {
+      margin-top: 8px;
+      border: 1px solid rgba(93, 132, 98, 0.58);
+      border-radius: 6px;
+      padding: 9px;
+      font-size: 0.76rem;
+      line-height: 1.45;
+      color: #d8d5b4;
+      background:
+        radial-gradient(circle at 35% 40%, rgba(120, 170, 106, 0.25), transparent 55%),
+        linear-gradient(180deg, rgba(66, 90, 58, 0.36), rgba(29, 33, 22, 0.85));
+      position: relative;
+      overflow: hidden;
+    }
+
+    .world-map-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(180, 210, 165, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(180, 210, 165, 0.08) 1px, transparent 1px);
+      background-size: 22px 22px;
+      pointer-events: none;
+    }
+
+    .world-map-card strong {
+      font-family: 'Cinzel', serif;
+      letter-spacing: 0.06em;
+      color: #efdcaa;
+    }
+
+    @media (max-width: 1040px) {
+      #tab-generate .panel-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-meta {
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .device-footer {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+
+      .footer-gem,
+      .dock-btn:nth-child(2),
+      .dock-btn:last-child {
+        display: none;
+      }
+    }
+
+    /* ═══════════════════════════════════════════════
+       DM SCREEN REFORGE — stronger tablet panel style
+    ═══════════════════════════════════════════════ */
+    :root {
+      --dm-wood-a: #2d2217;
+      --dm-wood-b: #1c150f;
+      --dm-brass: #c39a58;
+      --dm-brass-dark: #6f532f;
+      --dm-cyan: #65d3e3;
+      --dm-cyan-dim: rgba(101, 211, 227, 0.24);
+      --dm-shadow: rgba(0, 0, 0, 0.7);
+    }
+
+    @keyframes runePulse {
+      0%, 100% { opacity: 0.46; text-shadow: 0 0 0 rgba(98, 213, 229, 0); }
+      50% { opacity: 1; text-shadow: 0 0 10px rgba(98, 213, 229, 0.6); }
+    }
+
+    @keyframes panelRise {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes crestFloat {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(-2px); }
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 50% 0%, rgba(109, 175, 223, 0.16), transparent 32%),
+        radial-gradient(circle at 88% 75%, rgba(164, 123, 61, 0.14), transparent 36%),
+        radial-gradient(circle at 10% 72%, rgba(74, 143, 100, 0.12), transparent 30%);
+    }
+
+    .device {
+      max-width: 1280px;
+      border: 6px solid #10131b;
+      border-radius: 30px;
+      background:
+        linear-gradient(180deg, #1d212d, #11141d 30%, #0d1018);
+      box-shadow:
+        0 0 0 1px rgba(212, 170, 103, 0.45),
+        0 0 0 4px rgba(31, 184, 201, 0.18),
+        inset 0 0 0 1px rgba(223, 183, 121, 0.35),
+        0 35px 95px rgba(0, 0, 0, 0.88);
+    }
+
+    .device::before {
+      content: "";
+      position: absolute;
+      inset: 10px;
+      border-radius: 22px;
+      border: 1px solid rgba(126, 188, 201, 0.2);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .device-header {
+      min-height: 70px;
+      border-bottom: 1px solid rgba(90, 186, 202, 0.34);
+      background:
+        linear-gradient(180deg, #2d3041 0%, #171c2a 60%, #121624 100%);
+      box-shadow: inset 0 -1px 0 rgba(201, 160, 93, 0.24);
+    }
+
+    .dh-center {
+      animation: crestFloat 3.2s ease-in-out infinite;
+    }
+
+    .logo-text {
+      font-size: 1.92rem;
+      letter-spacing: 0.16em;
+      color: #e2b35f;
+      text-shadow:
+        0 0 30px rgba(239, 185, 72, 0.45),
+        0 3px 8px rgba(0, 0, 0, 0.9);
+    }
+
+    .logo-gem {
+      margin-top: 6px;
+      letter-spacing: 0.6em;
+      color: var(--dm-cyan);
+      text-shadow: 0 0 12px rgba(101, 211, 227, 0.65);
+    }
+
+    .rune-strip {
+      background:
+        linear-gradient(180deg, #10141d, #0f1821 42%, #11141d);
+      box-shadow: inset 0 0 16px rgba(74, 151, 165, 0.2);
+    }
+
+    .rune-strip span {
+      animation: runePulse 4s ease-in-out infinite;
+    }
+
+    .rune-strip span:nth-child(2n) { animation-delay: 0.5s; }
+    .rune-strip span:nth-child(3n) { animation-delay: 1s; }
+
+    .content-area {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(211, 160, 81, 0.06), transparent 35%),
+        linear-gradient(135deg, rgba(32, 55, 67, 0.18), transparent 46%),
+        #19130d;
+      padding: 12px 14px 16px;
+    }
+
+    .container {
+      border-radius: 10px;
+      border: 1px solid #6e5432;
+      background:
+        linear-gradient(180deg, rgba(67, 54, 35, 0.82), rgba(31, 24, 16, 0.94) 60%),
+        linear-gradient(135deg, #2a1f15, #1d1610);
+      box-shadow:
+        inset 0 0 0 1px rgba(196, 152, 85, 0.24),
+        inset 0 16px 26px rgba(126, 85, 35, 0.08),
+        0 6px 14px var(--dm-shadow);
+      animation: panelRise 0.4s ease-out both;
+    }
+
+    .container::before,
+    .container::after {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border: 1px solid rgba(196, 152, 85, 0.7);
+      border-radius: 2px;
+      background: linear-gradient(180deg, #745633, #412f1e);
+      box-shadow: 0 0 6px rgba(18, 10, 4, 0.65);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .container::before { top: 6px; left: 6px; }
+    .container::after { top: 6px; right: 6px; }
+
+    .section-title {
+      color: #f2dfbc;
+      border-top: 1px solid rgba(93, 74, 45, 0.75);
+      border-bottom: 1px solid rgba(93, 74, 45, 0.75);
+      background:
+        linear-gradient(180deg, rgba(73, 151, 174, 0.25), rgba(42, 34, 24, 0.96) 78%);
+      text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+    }
+
+    #tab-generate .panel-grid {
+      grid-template-columns: 1.75fr 1fr;
+      gap: 12px;
+    }
+
+    .hero-art {
+      height: 96px;
+      border: 1px solid rgba(103, 168, 188, 0.52);
+      box-shadow: inset 0 0 0 1px rgba(234, 210, 164, 0.25);
+      background:
+        radial-gradient(circle at 78% 24%, rgba(109, 200, 217, 0.35), transparent 40%),
+        linear-gradient(180deg, rgba(95, 145, 159, 0.35), rgba(39, 31, 22, 0.88)),
+        linear-gradient(128deg, #4b5a42, #6b6a45 42%, #3e3a2b 66%, #2d241b);
+    }
+
+    .hero-controls,
+    .world-map-card,
+    #npc_output,
+    .voice-item,
+    .consent-box,
+    .voice-id-out {
+      border-radius: 7px;
+      border: 1px solid rgba(112, 88, 54, 0.8);
+      box-shadow: inset 0 0 0 1px rgba(31, 22, 15, 0.42);
+      background: linear-gradient(180deg, rgba(26, 20, 14, 0.9), rgba(16, 12, 9, 0.96));
+    }
+
+    .roster-card,
+    .tool-chip,
+    .tab-btn,
+    button {
+      border-radius: 7px;
+      border: 1px solid rgba(126, 94, 54, 0.82);
+    }
+
+    .tab-btn {
+      background: linear-gradient(180deg, rgba(78, 58, 36, 0.56), rgba(24, 19, 13, 0.86));
+    }
+
+    .tab-btn.active {
+      border-color: rgba(114, 205, 218, 0.58);
+      box-shadow:
+        inset 0 0 0 1px rgba(170, 131, 78, 0.88),
+        0 0 16px rgba(90, 201, 218, 0.22);
+    }
+
+    textarea,
+    select,
+    input[type="file"],
+    input[type="text"],
+    input[type="password"],
+    input[type="number"] {
+      border-radius: 6px;
+      border: 1px solid rgba(108, 86, 56, 0.88);
+      background:
+        linear-gradient(180deg, rgba(33, 25, 18, 0.94), rgba(18, 14, 10, 0.98));
+    }
+
+    #npc_output {
+      line-height: 1.6;
+      border-top: 1px solid rgba(96, 182, 198, 0.6);
+    }
+
+    .device-footer {
+      border-top: 1px solid rgba(90, 186, 202, 0.3);
+      box-shadow: inset 0 1px 0 rgba(198, 156, 89, 0.22);
+    }
+
+    @media (max-width: 1040px) {
+      .device {
+        border-width: 4px;
+        border-radius: 18px;
+      }
+
+      .rune-strip {
+        width: 18px;
+      }
+
+      #tab-generate .panel-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .rune-strip {
+        display: none;
+      }
+
+      .device-main {
+        display: block;
+      }
+
+      .device-header {
+        min-height: 62px;
+      }
+
+      .logo-text {
+        font-size: 1.36rem;
+      }
+
+      .header-runes,
+      .dh-title {
+        display: none;
+      }
+    }
+
+    /* ===== DM Screen Match Pass 2 ===== */
+    body {
+      align-items: center;
+      padding-top: 14px;
+      padding-bottom: 14px;
+    }
+
+    .device {
+      max-width: 1320px;
+      border-radius: 34px;
+      box-shadow:
+        0 0 0 2px rgba(16, 15, 18, 0.95),
+        0 0 0 6px rgba(29, 197, 215, 0.12),
+        inset 0 0 0 1px rgba(203, 161, 93, 0.33),
+        0 44px 100px rgba(0, 0, 0, 0.86);
+    }
+
+    .device-header {
+      min-height: 74px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .device-header::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 6px;
+      width: 340px;
+      height: 56px;
+      transform: translateX(-50%);
+      border: 1px solid rgba(173, 134, 74, 0.7);
+      border-radius: 14px;
+      background:
+        radial-gradient(circle at 50% 15%, rgba(226, 178, 87, 0.22), transparent 48%),
+        linear-gradient(180deg, rgba(56, 45, 30, 0.7), rgba(29, 25, 20, 0.5));
+      box-shadow:
+        inset 0 0 0 1px rgba(104, 86, 57, 0.7),
+        0 0 16px rgba(95, 208, 223, 0.14);
+      pointer-events: none;
+    }
+
+    .dh-left .nav-btn,
+    .dh-right .help-btn {
+      border-radius: 6px;
+      border-color: rgba(80, 187, 204, 0.7);
+      background: linear-gradient(180deg, rgba(16, 51, 70, 0.85), rgba(10, 31, 43, 0.95));
+      box-shadow: inset 0 0 0 1px rgba(70, 184, 200, 0.24);
+    }
+
+    .dh-left .nav-btn {
+      min-width: 42px;
+      font-size: 0.8rem;
+      padding-top: 5px;
+      padding-bottom: 5px;
+    }
+
+    .dh-title {
+      letter-spacing: 0.24em;
+      font-size: 0.56rem;
+    }
+
+    .dh-center {
+      z-index: 3;
+    }
+
+    .logo-text {
+      font-size: 2.08rem;
+      letter-spacing: 0.13em;
+    }
+
+    .logo-gem {
+      font-size: 0.5rem;
+      letter-spacing: 0.7em;
+      margin-top: 4px;
+    }
+
+    .content-area::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(to right, rgba(206, 165, 93, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(206, 165, 93, 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      opacity: 0.35;
+    }
+
+    #tab-generate .panel-grid {
+      gap: 13px;
+      grid-template-columns: 1.68fr 1fr;
+    }
+
+    .panel-col {
+      gap: 12px;
+    }
+
+    .container {
+      padding: 13px;
+      border-radius: 12px;
+    }
+
+    .container > .section-title:first-child {
+      margin: -13px -13px 11px;
+      padding-top: 8px;
+      padding-bottom: 8px;
+      letter-spacing: 0.14em;
+      font-size: 0.7rem;
+      text-align: center;
+      position: relative;
+    }
+
+    .container > .section-title:first-child::before,
+    .container > .section-title:first-child::after {
+      content: "";
+      position: absolute;
+      top: 6px;
+      width: 10px;
+      height: 10px;
+      border: 1px solid rgba(215, 173, 102, 0.7);
+      border-radius: 3px;
+      background: linear-gradient(180deg, #866036, #4a3520);
+      box-shadow: 0 0 8px rgba(8, 6, 5, 0.7);
+    }
+
+    .container > .section-title:first-child::before { left: 6px; }
+    .container > .section-title:first-child::after { right: 6px; }
+
+    .section-title {
+      letter-spacing: 0.1em;
+      font-size: 0.64rem;
+    }
+
+    #tab-generate .panel-col:first-child .container:first-child::before {
+      content: "CURRENT SESSION";
+      font-size: 0.65rem;
+      letter-spacing: 0.16em;
+      color: rgba(213, 189, 146, 0.88);
+      position: absolute;
+      top: 30px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      z-index: 1;
+    }
+
+    .hero-meta {
+      margin-top: 12px;
+      margin-bottom: 8px;
+      font-size: 0.8rem;
+      border: 1px solid rgba(90, 76, 51, 0.74);
+      border-radius: 6px;
+      padding: 5px 8px;
+      background: linear-gradient(90deg, rgba(33, 25, 18, 0.82), rgba(54, 70, 66, 0.45), rgba(33, 25, 18, 0.82));
+    }
+
+    .hero-art {
+      height: 104px;
+      border-radius: 7px;
+    }
+
+    .hero-art::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 25% 72%, rgba(213, 189, 140, 0.2), transparent 46%),
+        linear-gradient(130deg, rgba(42, 52, 44, 0.68), rgba(93, 101, 69, 0.5) 52%, rgba(39, 33, 24, 0.78) 82%);
+      pointer-events: none;
+    }
+
+    .voice-item {
+      min-height: 44px;
+      padding-left: 12px;
+      padding-right: 8px;
+    }
+
+    .voice-item .label {
+      letter-spacing: 0.04em;
+    }
+
+    .roster-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .roster-card {
+      min-height: 56px;
+      padding: 8px 8px 8px 56px;
+      overflow: hidden;
+    }
+
+    .roster-card::before {
+      content: "";
+      position: absolute;
+      left: 9px;
+      top: 8px;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 1px solid rgba(217, 182, 120, 0.6);
+      background:
+        radial-gradient(circle at 35% 30%, rgba(218, 221, 228, 0.35), rgba(78, 97, 114, 0.32) 42%, rgba(30, 28, 24, 0.8) 75%);
+      box-shadow: inset 0 0 0 1px rgba(44, 39, 30, 0.8), 0 0 8px rgba(98, 191, 206, 0.22);
+    }
+
+    .tool-chip {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .tracker-list {
+      border-radius: 8px;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .world-map-card {
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 20% 45%, rgba(157, 193, 126, 0.25), transparent 52%),
+        radial-gradient(circle at 74% 34%, rgba(197, 167, 116, 0.22), transparent 42%),
+        linear-gradient(180deg, rgba(77, 91, 59, 0.36), rgba(28, 32, 22, 0.88));
+    }
+
+    .world-map-card::after {
+      content: "";
+      position: absolute;
+      inset: 8px;
+      border: 1px dashed rgba(218, 196, 152, 0.26);
+      border-radius: 6px;
+      pointer-events: none;
+    }
+
+    button {
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-shadow: 0 1px 0 rgba(0, 0, 0, 0.75);
+    }
+
+    .hint,
+    .hint-muted,
+    .hint-note,
+    .hint-sm {
+      color: rgba(205, 181, 141, 0.63);
+    }
+
+    .device-footer {
+      min-height: 72px;
+      padding-top: 7px;
+      padding-bottom: 8px;
+      grid-template-columns: 1fr 1fr auto 1fr;
+    }
+
+    .tab-btn .tab-label {
+      font-size: 0.58rem;
+      letter-spacing: 0.1em;
+    }
+
+    @media (max-width: 1040px) {
+      #tab-generate .panel-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .device-footer {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+
+      .footer-gem {
+        display: none;
+      }
+    }
+
+    @media (max-width: 780px) {
+      .device {
+        border-radius: 16px;
+      }
+
+      .logo-text {
+        font-size: 1.32rem;
+      }
+
+      .container > .section-title:first-child {
+        font-size: 0.62rem;
+        letter-spacing: 0.1em;
+      }
+
+      .roster-card {
+        min-height: 48px;
+        padding-left: 50px;
+      }
+
+      .roster-card::before {
+        width: 32px;
+        height: 32px;
+      }
+    }
+
+    /* ===== Landscape DM Screen Lock (no page scroll) ===== */
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      padding: 8px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .device {
+      width: min(99vw, 1700px);
+      max-width: none;
+      height: calc(100vh - 16px);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .device-main {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .content-area {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    #error_area,
+    #api_key_wrap {
+      flex-shrink: 0;
+    }
+
+    #api_key_wrap {
+      max-height: 22vh;
+      overflow: auto;
+    }
+
+    .tab-panel {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .tab-panel.active {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .tab-panel .panel-grid {
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .panel-col {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .panel-col .container {
+      min-height: 0;
+      overflow: auto;
+    }
+
+    #tab-generate .container,
+    #tab-atmosphere .container,
+    #tab-setup .container {
+      margin-bottom: 0;
+    }
+
+    #narrate_text {
+      min-height: 120px;
+      max-height: 20vh;
+    }
+
+    #text {
+      min-height: 92px;
+      max-height: 15vh;
+    }
+
+    #npc_output {
+      max-height: 22vh;
+    }
+
+    .asset-shelf {
+      max-height: 24vh;
+    }
+
+    .device-footer {
+      flex-shrink: 0;
+    }
+
+    @media (max-height: 860px) {
+      .logo-text {
+        font-size: 1.72rem;
+      }
+
+      .device-header {
+        min-height: 64px;
+      }
+
+      .device-footer {
+        min-height: 62px;
+      }
+
+      .container > .section-title:first-child {
+        font-size: 0.62rem;
+        padding-top: 7px;
+        padding-bottom: 7px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -679,7 +1820,7 @@
         <span class="dh-title">Dungeon Master's Companion</span>
       </div>
       <div class="dh-center">
-        <span class="logo-text">GM-VS</span>
+        <span class="logo-text">CO-DM</span>
         <span class="logo-gem">◆ ◆ ◆</span>
       </div>
       <div class="dh-right">
@@ -729,18 +1870,25 @@
             <!-- LEFT COL: Voice management + Narrate -->
             <div class="panel-col">
 
-              <div class="container">
-                <div class="section-title">Character / NPC Voices</div>
-                <div id="voice_list" class="voice-list" role="list"></div>
-                <label for="voice_id_sel"><strong>Speak as:</strong></label>
-                <select id="voice_id_sel" aria-label="Character or NPC voice">
-                  <option value="">-- Select a character voice --</option>
-                </select>
-                <button type="button" id="set_default_btn">Set as Default</button>
+              <div class="container hero-panel">
+                <div class="section-title">Current Campaign: The Shattered Crown</div>
+                <div class="hero-meta">
+                  <span>Next Session: 2 days</span>
+                  <span>Location: Sunken Temple</span>
+                </div>
+                <div class="hero-art" aria-hidden="true"></div>
+                <div class="hero-controls">
+                  <div id="voice_list" class="voice-list" role="list"></div>
+                  <label for="voice_id_sel"><strong>Active Character Voice:</strong></label>
+                  <select id="voice_id_sel" aria-label="Character or NPC voice">
+                    <option value="">-- Select a character voice --</option>
+                  </select>
+                  <button type="button" id="set_default_btn">Set as Default Voice</button>
+                </div>
               </div>
 
-              <div class="container">
-                <div class="section-title">Narrate Scene or Script</div>
+              <div class="container narrate-panel">
+                <div class="section-title">Session Notes & Narration Console</div>
                 <p class="hint">Uses the selected voice. Long text is split into chunks, spoken in sequence, combined into one WAV.</p>
                 <label for="narrate_text"><strong>Script (max 5000 characters):</strong></label>
                 <textarea id="narrate_text" rows="7" placeholder="Paste script or long text..." aria-label="Script for narration"></textarea>
@@ -771,7 +1919,18 @@
             <!-- RIGHT COL: Speak a Line + NPC Generator -->
             <div class="panel-col">
 
-              <div class="container">
+              <div class="container party-panel">
+                <div class="section-title">Party Roster & Quick Tools</div>
+                <div class="roster-grid">
+                  <div class="roster-card"><span class="roster-name">Aethelred</span><span class="roster-role">Fighter</span></div>
+                  <div class="roster-card"><span class="roster-name">Lira</span><span class="roster-role">Rogue</span></div>
+                  <div class="roster-card"><span class="roster-name">Torin</span><span class="roster-role">Cleric</span></div>
+                  <div class="roster-card"><span class="roster-name">Zephyr</span><span class="roster-role">Wizard</span></div>
+                </div>
+                <div class="quick-tools-row">
+                  <div class="tool-chip"><span>🎲</span>Dice Roller</div>
+                  <div class="tool-chip"><span>📘</span>Session Notes</div>
+                </div>
                 <div class="section-title">Speak a Line</div>
                 <label for="text"><strong>Dialogue:</strong></label>
                 <textarea id="text" rows="4" placeholder="Enter dialogue or a short line to speak as the selected character." aria-label="Dialogue or line to speak">The ancient door grinds open, revealing a chamber untouched for centuries.</textarea>
@@ -816,8 +1975,15 @@
                 </div>
               </div>
 
-              <div class="container">
-                <div class="section-title">Generate NPC Profile</div>
+              <div class="container tracker-panel">
+                <div class="section-title">Encounter Tracker & NPC Forge</div>
+                <ol class="tracker-list">
+                  <li>Orc Leader — 18 HP</li>
+                  <li>Aethelred — Ready</li>
+                  <li>Lira — Hidden</li>
+                  <li>Torin — Concentrating</li>
+                  <li>Zephyr — Arcane Ward</li>
+                </ol>
                 <p class="hint">Generate a full NPC profile streamed live from Claude.</p>
                 <div class="npc-grid">
                   <div>
@@ -842,20 +2008,15 @@
                 <div id="npc_error"></div>
                 <pre id="npc_output"></pre>
                 <button type="button" id="npc_speak_btn">Speak as NPC</button>
+                <div class="world-map-card">
+                  <strong>World Map:</strong> Dragon's Peak • Whispering Forest • Riverhold<br>
+                  Rumors point to movement beneath the Sunken Temple near Riverhold.
+                </div>
               </div>
 
-            </div><!-- /right col -->
-          </div><!-- /panel-grid -->
-        </div><!-- /tab-generate -->
-
-        <!-- ═══════════ ATMOSPHERE TAB ═══════════ -->
-        <div id="tab-atmosphere" class="tab-panel">
-          <div class="panel-grid">
-
-            <div class="panel-col">
-              <div class="container">
-                <div class="section-title">Ambient Audio Mixer</div>
-                <p class="hint-muted">Layer looping atmospheric tracks beneath your NPC dialogue.</p>
+              <div class="container ambience-panel">
+                <div class="section-title">Live Atmosphere Mixer</div>
+                <p class="hint-muted">Run ambience during live play without leaving the DM screen.</p>
                 <div class="slider-group">
                   <div class="slider-container">
                     <label for="vol_rain">City Rain (<span id="vol_rain_val">0</span>%)</label>
@@ -877,9 +2038,48 @@
                   </div>
                 </div>
               </div>
+
+            </div><!-- /right col -->
+          </div><!-- /panel-grid -->
+        </div><!-- /tab-generate -->
+
+        <!-- ═══════════ PREP TAB ═══════════ -->
+        <div id="tab-atmosphere" class="tab-panel">
+          <div class="panel-grid">
+
+            <div class="panel-col">
+              <div class="container">
+                <div class="section-title">Session Prep Board</div>
+                <p class="hint-muted">Build your next session using assets staged in the Upload Vault tab.</p>
+                <label for="prep_goal"><strong>Session Goal:</strong></label>
+                <input type="text" id="prep_goal" placeholder="e.g. Infiltrate the Sunken Temple vault">
+                <label for="prep_beats"><strong>Planned Scene Beats:</strong></label>
+                <textarea id="prep_beats" rows="5" placeholder="1) Arrival and rumor hook&#10;2) Gatekeeper negotiation&#10;3) Trap corridor reveal"></textarea>
+                <label for="prep_asset_pick"><strong>Pull from Upload Vault:</strong></label>
+                <select id="prep_asset_pick" aria-label="Select uploaded asset for prep">
+                  <option value="">-- Select an uploaded asset --</option>
+                </select>
+                <div class="script-row-bottom">
+                  <button type="button" id="prep_insert_asset_btn">Insert Asset Into Notes</button>
+                  <button type="button" id="prep_clear_btn" class="btn-secondary">Clear</button>
+                </div>
+              </div>
+
+              <div class="container">
+                <div class="section-title">Prep Notes</div>
+                <textarea id="prep_notes" rows="8" placeholder="Session outline, encounter notes, fallback plans..."></textarea>
+                <button type="button" id="prep_save_btn">Save Prep Snapshot</button>
+                <p id="prep_status" class="hint-sm"></p>
+              </div>
             </div>
 
             <div class="panel-col">
+              <div class="container">
+                <div class="section-title">Asset Shelf (From Uploads)</div>
+                <p class="hint-muted">These are items registered in the Upload Vault tab.</p>
+                <div id="prep_asset_shelf" class="asset-shelf"></div>
+              </div>
+
               <div class="container">
                 <div class="section-title">Scene Script Library</div>
                 <p class="hint-muted">Save and load box-text descriptions for quick narration.</p>
@@ -900,42 +2100,69 @@
           </div><!-- /panel-grid -->
         </div><!-- /tab-atmosphere -->
 
-        <!-- ═══════════ SETUP TAB ═══════════ -->
+        <!-- ═══════════ UPLOADS TAB ═══════════ -->
         <div id="tab-setup" class="tab-panel">
 
-          <div class="container">
-            <div class="section-title">Create Character / NPC Voice</div>
-            <div class="consent-box">
-              <label><input type="checkbox" id="consent"> I have the right to use this voice. I am the speaker or have their permission. I will not use it to impersonate without disclosure.</label>
+          <div class="panel-grid">
+            <div class="panel-col">
+              <div class="container">
+                <div class="section-title">Upload Vault</div>
+                <p class="hint-muted">Stage source materials here, then use them in the Prep tab.</p>
+                <label for="upload_kind"><strong>Asset Type:</strong></label>
+                <select id="upload_kind" aria-label="Upload asset type">
+                  <option value="rulebook">Rulebook / Mechanics</option>
+                  <option value="lore">Lore / Session Notes</option>
+                  <option value="map">Map / Visual Aid</option>
+                  <option value="audio">Ambience / Audio</option>
+                  <option value="npc">NPC Reference</option>
+                </select>
+                <label for="upload_files"><strong>Select files:</strong></label>
+                <input type="file" id="upload_files" multiple>
+                <div class="script-row-bottom">
+                  <button type="button" id="upload_add_btn">Add To Vault</button>
+                  <button type="button" id="upload_clear_btn" class="btn-secondary">Clear Vault</button>
+                </div>
+                <p class="hint-sm" id="upload_status"></p>
+                <div id="upload_vault_list" class="asset-shelf"></div>
+              </div>
             </div>
-            <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
-            <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name">
-            <label for="clone_voice_faction"><strong>Faction / Group (optional):</strong></label>
-            <input type="text" id="clone_voice_faction" placeholder="e.g., The O'Bannion Syndicate, Silver Court Mages" aria-label="Faction or group">
-            <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
-            <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
-            <p class="hint">Or record with your microphone: 15–25 s in a quiet room, speaking naturally.</p>
-            <div class="record-btn-row">
-              <button type="button" id="record_start" disabled>Start Recording</button>
-              <button type="button" id="record_stop" disabled>Stop</button>
-              <span id="record_status"></span>
-            </div>
-            <div id="record_playback_wrap">
-              <label class="playback-label">Play recording before cloning:</label>
-              <audio id="record_playback" controls></audio>
-              <button type="button" id="record_rerecord" class="btn-secondary">Re-record</button>
-            </div>
-            <label for="consent_scope"><strong>Consent scope:</strong></label>
-            <select id="consent_scope" aria-label="Consent scope">
-              <option value="tts">TTS only</option>
-              <option value="commercial">Commercial use</option>
-            </select>
-            <p class="hint">TTS only: personal or internal. Commercial: paid or commercial projects.</p>
-            <p class="hint-sm">Upload or record a clip, check the consent box, then click Create Voice.</p>
-            <button id="create_voice" type="button" disabled>Create Voice</button>
-            <div id="voice_id_wrap" role="status" aria-live="polite">
-              <div id="voice_id_out" class="voice-id-out"></div>
-              <button type="button" id="voice_id_copy_btn" aria-label="Copy voice or job ID">Copy ID</button>
+
+            <div class="panel-col">
+              <div class="container">
+                <div class="section-title">Create Character / NPC Voice</div>
+                <div class="consent-box">
+                  <label><input type="checkbox" id="consent"> I have the right to use this voice. I am the speaker or have their permission. I will not use it to impersonate without disclosure.</label>
+                </div>
+                <label for="clone_voice_name"><strong>Character or NPC name:</strong></label>
+                <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name">
+                <label for="clone_voice_faction"><strong>Faction / Group (optional):</strong></label>
+                <input type="text" id="clone_voice_faction" placeholder="e.g., The O'Bannion Syndicate, Silver Court Mages" aria-label="Faction or group">
+                <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
+                <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
+                <p class="hint">Or record with your microphone: 15–25 s in a quiet room, speaking naturally.</p>
+                <div class="record-btn-row">
+                  <button type="button" id="record_start" disabled>Start Recording</button>
+                  <button type="button" id="record_stop" disabled>Stop</button>
+                  <span id="record_status"></span>
+                </div>
+                <div id="record_playback_wrap">
+                  <label class="playback-label">Play recording before cloning:</label>
+                  <audio id="record_playback" controls></audio>
+                  <button type="button" id="record_rerecord" class="btn-secondary">Re-record</button>
+                </div>
+                <label for="consent_scope"><strong>Consent scope:</strong></label>
+                <select id="consent_scope" aria-label="Consent scope">
+                  <option value="tts">TTS only</option>
+                  <option value="commercial">Commercial use</option>
+                </select>
+                <p class="hint">TTS only: personal or internal. Commercial: paid or commercial projects.</p>
+                <p class="hint-sm">Upload or record a clip, check the consent box, then click Create Voice.</p>
+                <button id="create_voice" type="button" disabled>Create Voice</button>
+                <div id="voice_id_wrap" role="status" aria-live="polite">
+                  <div id="voice_id_out" class="voice-id-out"></div>
+                  <button type="button" id="voice_id_copy_btn" aria-label="Copy voice or job ID">Copy ID</button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -967,17 +2194,17 @@
     ════════════════════════════════════ -->
     <div class="device-footer">
       <button type="button" class="tab-btn active" data-tab="generate">
-        <span class="tab-icon">⚔</span>
-        <span class="tab-label">Generate</span>
+        <span class="tab-icon">◆</span>
+        <span class="tab-label">DM Screen</span>
       </button>
       <button type="button" class="tab-btn" data-tab="atmosphere">
-        <span class="tab-icon">♪</span>
-        <span class="tab-label">Atmosphere</span>
+        <span class="tab-icon">📜</span>
+        <span class="tab-label">Prep</span>
       </button>
       <div class="footer-gem">◆</div>
       <button type="button" class="tab-btn" data-tab="setup">
-        <span class="tab-icon">✦</span>
-        <span class="tab-label">Setup</span>
+        <span class="tab-icon">⚒</span>
+        <span class="tab-label">Uploads</span>
       </button>
     </div>
 
@@ -1002,10 +2229,132 @@
 
     // ── App state ───────────────────────────────────────────────
     const DEFAULT_VOICE_KEY = "kani_default_voice_id";
+    const UPLOAD_VAULT_KEY = "co_dm_upload_vault";
+    const PREP_SNAPSHOT_KEY = "co_dm_prep_snapshot";
     let voiceListData = [];
     let presetVoices = [];
     let maxNarrateChars = 5000;
     let requireApiKey = false;
+
+    function readUploadVault() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(UPLOAD_VAULT_KEY) || "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function writeUploadVault(items) {
+      localStorage.setItem(UPLOAD_VAULT_KEY, JSON.stringify((items || []).slice(0, 300)));
+    }
+
+    function formatBytes(n) {
+      if (!n || n < 1024) return (n || 0) + " B";
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+      return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    function renderUploadVault() {
+      const list = document.getElementById("upload_vault_list");
+      if (!list) return;
+      const items = readUploadVault();
+      list.innerHTML = "";
+      if (!items.length) {
+        list.innerHTML = '<p class="hint-sm">No assets in vault yet. Add files above.</p>';
+        return;
+      }
+      items.forEach(function(item) {
+        const row = document.createElement("div");
+        row.className = "asset-row";
+
+        const pill = document.createElement("span");
+        pill.className = "asset-pill";
+        pill.textContent = (item.kind || "asset").toUpperCase();
+
+        const main = document.createElement("div");
+        main.className = "asset-main";
+        const name = document.createElement("span");
+        name.className = "asset-name";
+        name.textContent = item.name || "Unnamed file";
+        const meta = document.createElement("span");
+        meta.className = "asset-meta";
+        meta.textContent = formatBytes(item.size || 0) + " • " + (item.addedAt || "");
+        main.appendChild(name);
+        main.appendChild(meta);
+
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn-secondary";
+        removeBtn.textContent = "Remove";
+        removeBtn.onclick = function() {
+          const updated = readUploadVault().filter(function(x) { return x.id !== item.id; });
+          writeUploadVault(updated);
+          renderUploadVault();
+          renderPrepAssetShelf();
+        };
+
+        row.appendChild(pill);
+        row.appendChild(main);
+        row.appendChild(removeBtn);
+        list.appendChild(row);
+      });
+    }
+
+    function renderPrepAssetShelf() {
+      const shelf = document.getElementById("prep_asset_shelf");
+      const pick = document.getElementById("prep_asset_pick");
+      const items = readUploadVault();
+
+      if (pick) {
+        pick.innerHTML = '<option value="">-- Select an uploaded asset --</option>';
+        items.forEach(function(item) {
+          const opt = document.createElement("option");
+          opt.value = item.id;
+          opt.textContent = "[" + (item.kind || "asset") + "] " + (item.name || "Unnamed file");
+          pick.appendChild(opt);
+        });
+      }
+
+      if (!shelf) return;
+      shelf.innerHTML = "";
+      if (!items.length) {
+        shelf.innerHTML = '<p class="hint-sm">Upload files in tab 3 to populate this shelf.</p>';
+        return;
+      }
+      items.slice(0, 20).forEach(function(item) {
+        const row = document.createElement("div");
+        row.className = "asset-row";
+
+        const pill = document.createElement("span");
+        pill.className = "asset-pill";
+        pill.textContent = (item.kind || "asset").toUpperCase();
+
+        const main = document.createElement("div");
+        main.className = "asset-main";
+        const name = document.createElement("span");
+        name.className = "asset-name";
+        name.textContent = item.name || "Unnamed file";
+        const meta = document.createElement("span");
+        meta.className = "asset-meta";
+        meta.textContent = "Added " + (item.addedAt || "");
+        main.appendChild(name);
+        main.appendChild(meta);
+
+        row.appendChild(pill);
+        row.appendChild(main);
+        shelf.appendChild(row);
+      });
+    }
+
+    function loadPrepSnapshot() {
+      try {
+        const data = JSON.parse(localStorage.getItem(PREP_SNAPSHOT_KEY) || "{}");
+        if (data.goal) document.getElementById("prep_goal").value = data.goal;
+        if (data.beats) document.getElementById("prep_beats").value = data.beats;
+        if (data.notes) document.getElementById("prep_notes").value = data.notes;
+      } catch (e) {}
+    }
 
     function getAuthHeaders() {
       if (!requireApiKey) return {};
@@ -1567,7 +2916,84 @@
       loadSavedScripts();
     };
 
+    // ── Upload Vault + Prep Bridge ──────────────────────────────
+    document.getElementById("upload_add_btn").onclick = function() {
+      const fileInput = document.getElementById("upload_files");
+      const kind = document.getElementById("upload_kind").value || "asset";
+      const status = document.getElementById("upload_status");
+      const files = Array.from(fileInput.files || []);
+      if (!files.length) {
+        status.textContent = "Select one or more files first.";
+        return;
+      }
+      const now = new Date().toLocaleString();
+      const current = readUploadVault();
+      const added = files.map(function(f) {
+        return {
+          id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now() + Math.random())),
+          kind: kind,
+          name: f.name,
+          size: f.size || 0,
+          addedAt: now,
+        };
+      });
+      writeUploadVault(added.concat(current));
+      fileInput.value = "";
+      status.textContent = "Added " + added.length + " file(s) to vault.";
+      renderUploadVault();
+      renderPrepAssetShelf();
+    };
+
+    document.getElementById("upload_clear_btn").onclick = function() {
+      if (!confirm("Clear all assets from the upload vault?")) return;
+      writeUploadVault([]);
+      document.getElementById("upload_status").textContent = "Vault cleared.";
+      renderUploadVault();
+      renderPrepAssetShelf();
+    };
+
+    document.getElementById("prep_insert_asset_btn").onclick = function() {
+      const pick = document.getElementById("prep_asset_pick");
+      const notes = document.getElementById("prep_notes");
+      const status = document.getElementById("prep_status");
+      if (!pick.value) {
+        status.textContent = "Select an uploaded asset first.";
+        return;
+      }
+      const item = readUploadVault().find(function(x) { return x.id === pick.value; });
+      if (!item) {
+        status.textContent = "Selected asset no longer exists.";
+        renderPrepAssetShelf();
+        return;
+      }
+      const line = "- [" + item.kind + "] " + item.name;
+      notes.value = (notes.value ? notes.value + "\n" : "") + line;
+      status.textContent = "Asset inserted into prep notes.";
+    };
+
+    document.getElementById("prep_save_btn").onclick = function() {
+      const snapshot = {
+        goal: document.getElementById("prep_goal").value || "",
+        beats: document.getElementById("prep_beats").value || "",
+        notes: document.getElementById("prep_notes").value || "",
+        savedAt: Date.now(),
+      };
+      localStorage.setItem(PREP_SNAPSHOT_KEY, JSON.stringify(snapshot));
+      document.getElementById("prep_status").textContent = "Prep snapshot saved.";
+    };
+
+    document.getElementById("prep_clear_btn").onclick = function() {
+      document.getElementById("prep_goal").value = "";
+      document.getElementById("prep_beats").value = "";
+      document.getElementById("prep_notes").value = "";
+      document.getElementById("prep_asset_pick").value = "";
+      document.getElementById("prep_status").textContent = "Prep fields cleared.";
+    };
+
     loadSavedScripts();
+    renderUploadVault();
+    renderPrepAssetShelf();
+    loadPrepSnapshot();
     loadConfig();
     loadTags().then(function() {
       return fetchVoiceList();

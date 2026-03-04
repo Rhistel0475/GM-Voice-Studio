@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python server.py)",
+      "Bash(pip install kani-tts-2)",
+      "Bash(pip install kani-tts-2 --no-deps)",
+      "Bash(python -c \"import kani_tts; print\\(''kani_tts OK''\\); print\\(dir\\(kani_tts\\)\\)\")",
+      "Bash(pip uninstall kani-tts-2 -y)",
+      "Bash(\"C:/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -products \"*\" -requires \"Microsoft.VisualCpp.Tools.HostX64.TargetX64\" -property installationPath)",
+      "Bash(\"C:/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -products \"*\" -property installationPath)",
+      "Bash(\"C:/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -all -property installationPath)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
+      "Bash(find \"/c/Program Files \\(x86\\)\" -name \"cl.exe\")"
+    ]
+  }
+}

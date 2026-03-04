@@ -1,0 +1,8 @@
+{
+  "exclude": [
+    "kani_tts_model_fixed.py",
+    "kani_tts_speaker_embedder_fixed.py"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

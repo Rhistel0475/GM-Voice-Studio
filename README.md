@@ -25,6 +25,24 @@ python server.py
 - Web UI: **http://localhost:7862** (default port; override with `PORT` env var).
 - Interactive API docs: **http://localhost:7862/docs**.
 
+### React Preview UI (`/preview`)
+
+`/preview` now serves a React app build when available (fallback: legacy `static/index.preview.html`).
+
+```bash
+# One-time install
+cd preview-react
+npm install
+
+# Build into static/preview-react (served by FastAPI at /preview)
+npm run build
+
+# Optional local dev server for frontend iteration
+npm run dev
+```
+
+After `npm run build`, open **http://localhost:7862/preview**.
+
 ### Config (env)
 
 | Variable | Default | Description |

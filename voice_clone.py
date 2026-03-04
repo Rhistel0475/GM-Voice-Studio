@@ -1,15 +1,11 @@
 """
-Voice clone pipeline: validate upload -> Pocket TTS voice state -> export to .safetensors -> store.
+Voice clone pipeline: validate upload -> KaniTTS-2 speaker embedding -> store as .pt.
 """
 import logging
-import os
-import tempfile
-from pathlib import Path
 from typing import Optional
 
 from config import CLONE_MAX_DURATION_SEC, CLONE_MIN_DURATION_SEC
-from voice_store import create_voice_id, save_voice_from_file
-from tts_service import _get_tts
+from voice_store import create_voice_id, save_embedding
 
 
 def _get_duration_sec(audio_path: str) -> float:
@@ -29,7 +25,7 @@ def clone_voice(
     faction: Optional[str] = None,
 ) -> str:
     """
-    Validate audio, compute Pocket TTS voice state, export to .safetensors, store and return voice_id.
+    Validate audio, compute KaniTTS-2 speaker embedding, store as .pt and return voice_id.
     """
     duration = _get_duration_sec(audio_path)
     if duration < CLONE_MIN_DURATION_SEC:
@@ -38,17 +34,16 @@ def clone_voice(
         raise ValueError(f"Audio too long: {duration:.1f}s (max {CLONE_MAX_DURATION_SEC}s)")
 
     voice_id = create_voice_id()
-    tmp_path = None
     try:
-        model = _get_tts()
-        voice_state = model.get_state_for_audio_prompt(audio_path)
-        from pocket_tts import export_model_state
-        fd, tmp_path = tempfile.mkstemp(suffix=".safetensors")
-        os.close(fd)
-        export_model_state(voice_state, tmp_path)
-        save_voice_from_file(
+        from kani_tts import SpeakerEmbedder
+        embedder = SpeakerEmbedder(
+            model_name="nineninesix/speaker-emb-tbr",
+            max_duration_sec=CLONE_MAX_DURATION_SEC,
+        )
+        speaker_embedding = embedder.embed_audio_file(audio_path)
+        save_embedding(
             voice_id,
-            tmp_path,
+            speaker_embedding,
             consent_scope=consent_scope,
             name=name,
             owner_id=owner_id,
@@ -57,11 +52,5 @@ def clone_voice(
     except Exception as e:
         logging.exception("Voice extraction failed")
         raise RuntimeError(f"Voice extraction failed: {e!s}") from e
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
 
     return voice_id
