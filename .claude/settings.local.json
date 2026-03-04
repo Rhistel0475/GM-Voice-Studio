@@ -14,7 +14,14 @@
       "Bash(npm install)",
       "Bash(pip install -r requirements.txt -r requirements-rag.txt)",
       "Bash(python3 -m venv .venv)",
-      "Bash(.venv/bin/pip install -r requirements.txt -r requirements-rag.txt)"
+      "Bash(.venv/bin/pip install -r requirements.txt -r requirements-rag.txt)",
+      "Bash(curl -LsSf https://astral.sh/uv/install.sh)",
+      "Bash(sh)",
+      "Bash(/home/brian/snap/code/226/.local/bin/uv pip install --python .venv/bin/python -r requirements.txt -r requirements-rag.txt)",
+      "Bash(/home/brian/snap/code/226/.local/bin/uv pip install --python .venv/bin/python -r requirements-core.txt)",
+      "Bash(/home/brian/snap/code/226/.local/bin/uv pip install --python .venv/bin/python -r requirements-server.txt -r requirements-rag.txt)",
+      "Bash(.venv/bin/python -c \"import anthropic, langchain, openai, pinecone, pypdf; print\\(''✓ anthropic'', anthropic.__version__\\); print\\(''✓ langchain'', langchain.__version__\\); print\\(''✓ openai'', openai.__version__\\); print\\(''✓ pinecone'', pinecone.__version__\\); print\\(''✓ pypdf'', pypdf.__version__\\)\")",
+      "Bash(node -e \"const r=require\\(''./node_modules/react/package.json''\\); const t=require\\(''./node_modules/tailwindcss/package.json''\\); const v=require\\(''./node_modules/vite/package.json''\\); console.log\\(''✓ React'', r.version\\); console.log\\(''✓ Tailwind CSS'', t.version\\); console.log\\(''✓ Vite'', v.version\\);\")"
     ]
   }
 }
