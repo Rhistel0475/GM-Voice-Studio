@@ -686,6 +686,37 @@ async def npc_generate(req: NpcGenerateRequest, request: Request, _auth: None = 
     )
 
 
+# --- Co-GM NPC Dialogue ---
+
+class DialogueRequest(BaseModel):
+    npc_name: str
+    personality: str
+    situation: str
+    conversation_history: list[dict]
+    faction: str = ""
+
+
+@app.post("/ai/dialogue")
+@limiter.limit("20/minute")
+async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depends(verify_api_key)):
+    """
+    Generate a short in-character NPC line via Claude.
+    Returns: {"dialogue": "<spoken line>"}
+    """
+    from ai_service import generate_dialogue
+    try:
+        line = generate_dialogue(
+            npc_name=req.npc_name,
+            personality=req.personality,
+            situation=req.situation,
+            conversation_history=req.conversation_history,
+            faction=req.faction,
+        )
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return {"dialogue": line}
+
+
 # --- TTS: preset or custom voice ---
 @app.post("/tts")
 @limiter.limit(RATE_LIMIT_TTS or "1000/minute")

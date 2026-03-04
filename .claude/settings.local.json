@@ -21,7 +21,18 @@
       "Bash(/home/brian/snap/code/226/.local/bin/uv pip install --python .venv/bin/python -r requirements-core.txt)",
       "Bash(/home/brian/snap/code/226/.local/bin/uv pip install --python .venv/bin/python -r requirements-server.txt -r requirements-rag.txt)",
       "Bash(.venv/bin/python -c \"import anthropic, langchain, openai, pinecone, pypdf; print\\(''✓ anthropic'', anthropic.__version__\\); print\\(''✓ langchain'', langchain.__version__\\); print\\(''✓ openai'', openai.__version__\\); print\\(''✓ pinecone'', pinecone.__version__\\); print\\(''✓ pypdf'', pypdf.__version__\\)\")",
-      "Bash(node -e \"const r=require\\(''./node_modules/react/package.json''\\); const t=require\\(''./node_modules/tailwindcss/package.json''\\); const v=require\\(''./node_modules/vite/package.json''\\); console.log\\(''✓ React'', r.version\\); console.log\\(''✓ Tailwind CSS'', t.version\\); console.log\\(''✓ Vite'', v.version\\);\")"
+      "Bash(node -e \"const r=require\\(''./node_modules/react/package.json''\\); const t=require\\(''./node_modules/tailwindcss/package.json''\\); const v=require\\(''./node_modules/vite/package.json''\\); console.log\\(''✓ React'', r.version\\); console.log\\(''✓ Tailwind CSS'', t.version\\); console.log\\(''✓ Vite'', v.version\\);\")",
+      "Bash(nvm --version)",
+      "Bash(curl -fsSL https://deb.nodesource.com/setup_20.x)",
+      "Bash(sudo -E bash -)",
+      "Bash(sudo apt-get install -y nodejs)",
+      "Bash(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh)",
+      "Bash(export NVM_DIR=\"$HOME/.nvm\")",
+      "Bash(. \"$NVM_DIR/nvm.sh\")",
+      "Bash(nvm install 20)",
+      "Bash(nvm use 20)",
+      "Bash(node --version)",
+      "Bash(.venv/bin/python -c \"from ai_service import generate_dialogue; print\\(''config OK''\\)\")"
     ]
   }
 }

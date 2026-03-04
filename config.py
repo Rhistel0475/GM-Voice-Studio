@@ -60,3 +60,5 @@ PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "co-dm-index").strip
 
 # Co-DM LLM brain (Sprint 3)
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+AI_MODEL = os.environ.get("AI_MODEL", "claude-haiku-4-5-20251001").strip()
+MAX_ADVENTURE_CHARS = int(os.environ.get("MAX_ADVENTURE_CHARS", "160000"))
