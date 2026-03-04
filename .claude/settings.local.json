@@ -10,7 +10,11 @@
       "Bash(\"C:/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -products \"*\" -property installationPath)",
       "Bash(\"C:/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -all -property installationPath)",
       "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
-      "Bash(find \"/c/Program Files \\(x86\\)\" -name \"cl.exe\")"
+      "Bash(find \"/c/Program Files \\(x86\\)\" -name \"cl.exe\")",
+      "Bash(npm install)",
+      "Bash(pip install -r requirements.txt -r requirements-rag.txt)",
+      "Bash(python3 -m venv .venv)",
+      "Bash(.venv/bin/pip install -r requirements.txt -r requirements-rag.txt)"
     ]
   }
 }
