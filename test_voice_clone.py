@@ -1,29 +1,23 @@
 #!/usr/bin/env python3
-"""Quick test: load Pocket TTS and generate audio from a preset voice.
-Run from project root with HF_TOKEN set (or after hf auth login):
+"""Quick test: load KaniTTS-2 and generate audio with a random voice.
+Run from project root:
     python test_voice_clone.py
 """
 import os
 import sys
 
-# Use app's HF token injection so gated model loads
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from tts_service import _inject_hf_token
 
-_inject_hf_token()
-
-from pocket_tts import TTSModel
-import scipy.io.wavfile
+from kani_tts import KaniTTS
+import soundfile as sf
 
 def main():
-    print("Loading Pocket TTS (may download gated weights on first run)...")
-    tts_model = TTSModel.load_model()
-    print("Using built-in preset voice 'alba'...")
-    voice_state = tts_model.get_state_for_audio_prompt("alba")
-    print("Generating audio...")
-    audio = tts_model.generate_audio(voice_state, "Hello world, this is a test.")
+    print("Loading KaniTTS-2 (may download models on first run)...")
+    model = KaniTTS("nineninesix/kani-tts-2-en")
+    print("Generating audio with random voice...")
+    audio, _text = model("Hello world, this is a test.", language_tag="en_us")
     out_path = "output_test.wav"
-    scipy.io.wavfile.write(out_path, tts_model.sample_rate, audio.numpy())
+    sf.write(out_path, audio, 22050)
     print(f"Wrote {out_path}")
 
 if __name__ == "__main__":

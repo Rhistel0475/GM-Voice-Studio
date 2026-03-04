@@ -1,12 +1,12 @@
-# Kani TTS: full list. To avoid "resolution-too-deep", install in two steps:
+# Pocket TTS: full list. To avoid "resolution-too-deep", install in two steps:
 #   pip install -r requirements-core.txt && pip install -r requirements-server.txt
 torch>=2.5.0
 gradio>=6.6.0
-kani-tts-2>=0.0.5
+kani-tts-2
 soundfile>=0.13.0
 transformers>=4.56.0
 fastapi>=0.100.0
 uvicorn>=0.22.0
 slowapi>=0.1.9
-anthropic>=0.40.0
+anthropic>=0.50.0
 # Optional (S3, Celery, PostgreSQL): pip install -r requirements-optional.txt

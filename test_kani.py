@@ -1,6 +1,6 @@
-# Pocket TTS smoke test.
+# KaniTTS-2 smoke test.
 # Run with: python test_kani.py
-from pocket_tts import TTSModel
+from kani_tts import KaniTTS
 
-model = TTSModel.load_model()
-print("Pocket TTS model loaded OK")
+model = KaniTTS("nineninesix/kani-tts-2-en")
+print("KaniTTS-2 model loaded OK")

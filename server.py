@@ -2,7 +2,7 @@
 FastAPI app: TTS and voice cloning API with health check and voice_id persistence.
 Uses tts_service (thin interface) and voice_store.
 """
-# Load .env first so HF_TOKEN is available for Pocket TTS voice-cloning model download
+# Load .env first so HF_TOKEN is available for Kani TTS voice-cloning model download
 import os as _os
 try:
     from dotenv import load_dotenv
@@ -13,9 +13,11 @@ except ImportError:
 import io
 import logging
 import os
+import re
 import time
 import tempfile
 import uuid
+from collections import Counter
 from typing import Optional
 
 import numpy as np
@@ -24,7 +26,6 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from pathlib import Path
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -33,8 +34,6 @@ from slowapi.util import get_remote_address
 from config import (
     ABUSE_CLONE_PER_IP_PER_HOUR,
     ADMIN_API_KEY,
-    AI_MODEL,
-    ANTHROPIC_API_KEY,
     API_KEYS,
     CELERY_BROKER_URL,
     CORS_ORIGINS,
@@ -42,11 +41,8 @@ from config import (
     NARRATE_RESULT_PATH,
     PENDING_CLONE_PATH,
     PORT,
-    MAX_ADVENTURE_CHARS,
-    RATE_LIMIT_AI,
     RATE_LIMIT_CLONE,
     RATE_LIMIT_GLOBAL,
-    RATE_LIMIT_PARSE,
     RATE_LIMIT_TTS,
     REQUIRE_API_KEY,
     SERVER_NAME,
@@ -143,8 +139,6 @@ def startup():
         logging.warning("HF_TOKEN is not set. Voice cloning may fail; set HF_TOKEN in .env or the environment.")
     else:
         logging.info("HF_TOKEN is set; voice cloning (gated model) should be available.")
-    if not ANTHROPIC_API_KEY:
-        logging.warning("ANTHROPIC_API_KEY is not set. POST /ai/dialogue will return 500; add it to .env for Co-GM features.")
 
 # --- Client config (e.g. whether API key is required) ---
 @app.get("/config")
@@ -345,6 +339,352 @@ def patch_voice(voice_id: str, body: PatchVoiceBody, request: Request, _auth: No
         raise HTTPException(404, "Voice not found")
     meta = get_metadata(voice_id, owner_id=owner_id)
     return meta if meta else {"voice_id": voice_id}
+
+# --- Co-DM Adventure document intake ---
+
+_MAX_ADVENTURE_FILES = 6
+_MAX_ADVENTURE_FILE_BYTES = 8 * 1024 * 1024
+_MAX_ADVENTURE_TOTAL_CHARS = 160_000
+_ACT_HEADING_RE = re.compile(r"^\s*act\s+([ivx0-9]+)\s*[-:]\s*(.+)$", re.IGNORECASE)
+_SCENE_HEADING_RE = re.compile(r"^\s*(scene|encounter|chapter)\s*([0-9ivx]*)\s*[-:]\s*(.+)$", re.IGNORECASE)
+_LABEL_SPLIT_RE = re.compile(r"^\s*([A-Za-z ]{2,24})\s*[:\-]\s*(.+)$")
+_TITLE_PHRASE_RE = re.compile(r"\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,}){0,2})\b")
+_SKIP_TITLE_PHRASES = {
+    "Act",
+    "Scene",
+    "Chapter",
+    "Campaign",
+    "Session",
+    "Dungeon Master",
+    "Game Master",
+    "Read Aloud",
+    "Important Npcs",
+    "Secrets Clues",
+}
+
+
+def _dedupe_keep_order(items: list[str], limit: int = 10) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for item in items:
+        clean = re.sub(r"\s+", " ", (item or "").strip())
+        if not clean:
+            continue
+        key = clean.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(clean)
+        if len(output) >= limit:
+            break
+    return output
+
+
+def _extract_pdf_text(data: bytes) -> tuple[str, int]:
+    try:
+        from pypdf import PdfReader
+    except Exception as e:
+        raise RuntimeError("PDF parsing requires 'pypdf'. Install requirements-rag.txt.") from e
+    reader = PdfReader(io.BytesIO(data))
+    chunks: list[str] = []
+    for page in reader.pages:
+        text = (page.extract_text() or "").strip()
+        if text:
+            chunks.append(text)
+    return "\n".join(chunks), len(reader.pages)
+
+
+async def _read_adventure_upload(upload: UploadFile) -> tuple[str, dict]:
+    if not upload.filename:
+        raise HTTPException(400, "One of the uploaded files has no filename.")
+    suffix = Path(upload.filename).suffix.lower()
+    if suffix not in {".txt", ".md", ".pdf"}:
+        raise HTTPException(400, f"Unsupported file type: {upload.filename}. Use .txt, .md, or .pdf.")
+
+    raw = await upload.read()
+    if not raw:
+        raise HTTPException(400, f"{upload.filename} is empty.")
+    if len(raw) > _MAX_ADVENTURE_FILE_BYTES:
+        raise HTTPException(413, f"{upload.filename} is too large. Max size is {_MAX_ADVENTURE_FILE_BYTES // (1024 * 1024)}MB.")
+
+    page_count: Optional[int] = None
+    if suffix == ".pdf":
+        try:
+            text, page_count = _extract_pdf_text(raw)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e))
+    else:
+        text = raw.decode("utf-8", errors="ignore")
+
+    text = re.sub(r"\r\n?", "\n", text or "").strip()
+    if not text:
+        raise HTTPException(400, f"{upload.filename} has no extractable text.")
+
+    return text, {
+        "name": upload.filename,
+        "characters": len(text),
+        "page_count": page_count,
+    }
+
+
+def _scene_like(line: str) -> bool:
+    words = line.split()
+    if len(words) < 2 or len(words) > 10:
+        return False
+    if len(line) > 80:
+        return False
+    if line.endswith("."):
+        return False
+    if not line[0].isalpha() or not line[0].isupper():
+        return False
+    return True
+
+
+def _extract_acts(lines: list[str]) -> list[dict]:
+    acts: list[dict] = []
+    current: Optional[dict] = None
+
+    for line in lines:
+        act_match = _ACT_HEADING_RE.match(line)
+        if act_match:
+            act_id = act_match.group(1).upper()
+            act_title = act_match.group(2).strip()
+            current = {"title": f"Act {act_id} - {act_title}", "scenes": []}
+            acts.append(current)
+            continue
+
+        scene_match = _SCENE_HEADING_RE.match(line)
+        if scene_match:
+            scene_title = scene_match.group(3).strip()
+            if not current:
+                current = {"title": "Act I - Imported Adventure", "scenes": []}
+                acts.append(current)
+            if scene_title:
+                current["scenes"].append(scene_title)
+            continue
+
+        if current and _scene_like(line):
+            current["scenes"].append(line)
+
+    if not acts:
+        fallback_scenes = [line for line in lines if _scene_like(line)]
+        if fallback_scenes:
+            acts = [{"title": "Act I - Imported Adventure", "scenes": fallback_scenes[:6]}]
+
+    normalized: list[dict] = []
+    for act in acts[:6]:
+        scenes = _dedupe_keep_order(act.get("scenes", []), limit=8)
+        normalized.append({"title": act.get("title", "Act - Imported"), "scenes": scenes})
+    return normalized
+
+
+def _extract_labeled_values(lines: list[str], labels: set[str], limit: int = 10) -> list[str]:
+    values: list[str] = []
+    for line in lines:
+        match = _LABEL_SPLIT_RE.match(line)
+        if not match:
+            continue
+        label = match.group(1).strip().lower()
+        value = match.group(2).strip()
+        if label in labels and value:
+            values.append(value)
+    return _dedupe_keep_order(values, limit=limit)
+
+
+def _extract_title_phrases(text: str, limit: int = 30) -> list[str]:
+    counts: Counter[str] = Counter()
+    for match in _TITLE_PHRASE_RE.finditer(text):
+        phrase = match.group(1).strip()
+        if phrase in _SKIP_TITLE_PHRASES:
+            continue
+        if len(phrase) > 42:
+            continue
+        counts[phrase] += 1
+    return [item for item, _count in counts.most_common(limit)]
+
+
+def _extract_context_items(text: str, phrases: list[str], keywords: tuple[str, ...], limit: int = 10) -> list[str]:
+    out: list[str] = []
+    low = text.lower()
+    for phrase in phrases:
+        needle = phrase.lower()
+        idx = low.find(needle)
+        if idx == -1:
+            continue
+        start = max(0, idx - 80)
+        end = min(len(low), idx + len(needle) + 80)
+        window = low[start:end]
+        if any(k in window for k in keywords):
+            out.append(phrase)
+    return _dedupe_keep_order(out, limit=limit)
+
+
+def _extract_reveals(lines: list[str]) -> list[str]:
+    reveals: list[str] = []
+    for line in lines:
+        low = line.lower()
+        if any(k in low for k in ("clue", "secret", "hook", "reveal", "rumor", "twist")):
+            match = _LABEL_SPLIT_RE.match(line)
+            reveals.append(match.group(2).strip() if match else line)
+    return _dedupe_keep_order(reveals, limit=10)
+
+
+def _summarize_text(text: str) -> str:
+    compact = re.sub(r"\s+", " ", text).strip()
+    if not compact:
+        return ""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", compact) if s.strip()]
+    summary = " ".join(sentences[:2]).strip() if sentences else compact
+    if len(summary) < 80:
+        summary = compact[:420].rsplit(" ", 1)[0]
+    if len(summary) > 420:
+        summary = summary[:420].rsplit(" ", 1)[0] + "..."
+    return summary
+
+
+def _parse_adventure_text(text: str) -> dict:
+    clipped = text[:_MAX_ADVENTURE_TOTAL_CHARS]
+    lines = [
+        re.sub(r"\s+", " ", re.sub(r"^[\-\*\+]+\s*", "", raw.strip()))
+        for raw in clipped.splitlines()
+    ]
+    lines = [line for line in lines if line]
+
+    acts = _extract_acts(lines)
+    phrases = _extract_title_phrases(clipped)
+
+    labeled_npcs = _extract_labeled_values(lines, {"npc", "name", "character", "villain", "ally"}, limit=10)
+    context_npcs = _extract_context_items(
+        clipped,
+        phrases,
+        ("npc", "character", "villain", "ally", "guardian", "priest", "captain", "mage", "merchant"),
+        limit=10,
+    )
+    npcs = _dedupe_keep_order(labeled_npcs + context_npcs, limit=10)
+
+    labeled_locations = _extract_labeled_values(lines, {"location", "region", "site", "area", "setting"}, limit=10)
+    context_locations = _extract_context_items(
+        clipped,
+        phrases,
+        ("location", "temple", "ruin", "cave", "forest", "city", "village", "chamber", "lair", "hall"),
+        limit=10,
+    )
+    locations = _dedupe_keep_order(labeled_locations + context_locations, limit=10)
+
+    reveals = _extract_reveals(lines)
+    summary = _summarize_text(clipped)
+
+    return {
+        "summary": summary,
+        "acts": acts,
+        "npcs": npcs,
+        "locations": locations,
+        "reveals": reveals,
+        "total_characters": len(clipped),
+    }
+
+
+@app.post("/adventure/parse")
+@limiter.limit("15/minute")
+async def parse_adventure_docs(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    _auth: None = Depends(verify_api_key),
+):
+    """Upload adventure docs (.txt/.md/.pdf) and return a parsed prep summary payload."""
+    if not files:
+        raise HTTPException(400, "Upload at least one document.")
+    if len(files) > _MAX_ADVENTURE_FILES:
+        raise HTTPException(400, f"Too many files. Max {_MAX_ADVENTURE_FILES} files per parse.")
+
+    all_text_parts: list[str] = []
+    uploaded_files: list[dict] = []
+    for upload in files:
+        text, meta = await _read_adventure_upload(upload)
+        all_text_parts.append(text)
+        uploaded_files.append(meta)
+
+    merged = "\n\n".join(all_text_parts)
+    parsed = _parse_adventure_text(merged)
+    return {"files": uploaded_files, **parsed}
+
+
+# --- Co-DM RAG query ---
+
+class RagQueryRequest(BaseModel):
+    query: str
+    top_k: int = 5
+    doc_type: Optional[str] = None
+
+
+@app.post("/rag/query")
+@limiter.limit("60/minute")
+async def rag_query(req: RagQueryRequest, request: Request, _auth: None = Depends(verify_api_key)):
+    """Semantic search over ingested campaign documents. Returns top_k relevant chunks."""
+    from retrieval import retrieve
+    try:
+        results = retrieve(req.query, top_k=req.top_k, doc_type=req.doc_type)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return {"results": results}
+
+
+# --- Co-DM LLM brain (Sprint 3) ---
+
+class BrainQueryRequest(BaseModel):
+    query: str
+
+
+@app.post("/brain/query")
+@limiter.limit("30/minute")
+async def brain_query(req: BrainQueryRequest, request: Request, _auth: None = Depends(verify_api_key)):
+    """
+    Classify intent, optionally fetch RAG context, call Claude, return structured response.
+    Returns: {type, intent, content, sources}
+    """
+    from llm_brain import handle_query
+    try:
+        result = handle_query(req.query)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return result
+
+
+# --- Co-DM NPC Generator (Sprint 4) ---
+
+class NpcGenerateRequest(BaseModel):
+    genre: str
+    location: str
+    name: str
+    role: str
+
+
+@app.post("/npc/generate")
+@limiter.limit("10/minute")
+async def npc_generate(req: NpcGenerateRequest, request: Request, _auth: None = Depends(verify_api_key)):
+    """
+    Stream a full NPC profile as Server-Sent Events.
+    Each event: data: {"token": "<text>"}\\n\\n
+    Final event: data: {"done": true}\\n\\n
+    Error event: data: {"error": "<message>"}\\n\\n
+    """
+    import json as _json
+    from npc_generator import generate_npc_stream
+
+    async def sse():
+        try:
+            for token in generate_npc_stream(req.genre, req.location, req.name, req.role):
+                yield f"data: {_json.dumps({'token': token})}\n\n"
+        except Exception as e:
+            yield f"data: {_json.dumps({'error': str(e)})}\n\n"
+        yield f"data: {_json.dumps({'done': True})}\n\n"
+
+    return StreamingResponse(
+        sse(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )
+
 
 # --- TTS: preset or custom voice ---
 @app.post("/tts")
@@ -548,141 +888,6 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     return response
 
 
-# --- AI: Co-GM NPC Dialogue Generation ---
-
-class DialogueMessage(BaseModel):
-    role: str    # "user" or "assistant"
-    content: str
-
-
-class DialogueRequest(BaseModel):
-    npc_name: str
-    personality: str
-    situation: str
-    conversation_history: list[DialogueMessage] = []
-    voice_id: Optional[str] = None
-    faction: str = ""
-
-
-class DialogueResponse(BaseModel):
-    dialogue: str
-    voice_id: Optional[str]
-
-
-@app.post("/ai/dialogue", response_model=DialogueResponse)
-@limiter.limit(RATE_LIMIT_AI or "1000/minute")
-async def ai_dialogue(
-    request: Request,
-    body: DialogueRequest,
-    _auth: None = Depends(verify_api_key),
-):
-    """
-    Generate a short in-character NPC line using Claude (Anthropic).
-    Returns dialogue text only; call /tts separately to speak it aloud.
-    Requires ANTHROPIC_API_KEY in .env.
-    """
-    if not body.npc_name.strip():
-        raise HTTPException(400, "npc_name is required")
-    if not body.personality.strip():
-        raise HTTPException(400, "personality is required")
-
-    from ai_service import generate_dialogue
-    history = [{"role": m.role, "content": m.content} for m in body.conversation_history]
-
-    try:
-        dialogue = generate_dialogue(
-            npc_name=body.npc_name,
-            personality=body.personality,
-            situation=body.situation,
-            conversation_history=history,
-            faction=body.faction,
-        )
-    except RuntimeError as e:
-        increment("errors_total")
-        raise HTTPException(500, str(e))
-
-    increment("ai_dialogue_requests_total")
-    return DialogueResponse(dialogue=dialogue, voice_id=body.voice_id or None)
-
-
-# --- AI: Adventure Import (parse read-alouds and NPCs from uploaded adventure) ---
-
-class ReadAloud(BaseModel):
-    title: str
-    text: str
-    scene: str = ""
-
-class ParsedNPC(BaseModel):
-    name: str
-    personality: str
-    faction: str = ""
-    description: str = ""
-    scene: str = ""
-
-class ParseAdventureResponse(BaseModel):
-    read_alouds: list[ReadAloud]
-    npcs: list[ParsedNPC]
-    char_count: int
-
-@app.post("/ai/parse-adventure", response_model=ParseAdventureResponse)
-@limiter.limit(RATE_LIMIT_PARSE or "1000/minute")
-async def parse_adventure_endpoint(
-    request: Request,
-    file: Optional[UploadFile] = File(None),
-    text: str = Form(""),
-    _auth: None = Depends(verify_api_key),
-):
-    """
-    Upload a PDF, DOCX, or TXT adventure module (or paste text) and extract
-    read-aloud passages and NPC profiles using Claude.
-    Requires ANTHROPIC_API_KEY in .env and pdfplumber/python-docx for PDF/DOCX files.
-    """
-    raw_text = ""
-    tmp_path = None
-
-    if file and file.filename:
-        suffix = os.path.splitext(file.filename)[1] or ".txt"
-        body_bytes = await file.read()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(body_bytes)
-            tmp_path = tmp.name
-        try:
-            from ai_service import extract_text_from_file
-            raw_text = extract_text_from_file(tmp_path, suffix)
-        except RuntimeError as e:
-            increment("errors_total")
-            raise HTTPException(500, str(e))
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
-    elif text.strip():
-        raw_text = text.strip()
-    else:
-        raise HTTPException(400, "Provide a file upload or paste text in the 'text' field.")
-
-    if not raw_text.strip():
-        raise HTTPException(400, "No text could be extracted from the provided file.")
-
-    char_count = len(raw_text)
-    raw_text = raw_text[:MAX_ADVENTURE_CHARS]
-
-    from ai_service import parse_adventure
-    try:
-        result = parse_adventure(raw_text)
-    except RuntimeError as e:
-        increment("errors_total")
-        raise HTTPException(500, str(e))
-
-    increment("ai_dialogue_requests_total")
-    return ParseAdventureResponse(
-        read_alouds=[ReadAloud(**r) for r in result.get("read_alouds", [])],
-        npcs=[ParsedNPC(**n) for n in result.get("npcs", [])],
-        char_count=char_count,
-    )
-
-
 # --- Favicon (browsers request this automatically; 204 avoids 404 in logs) ---
 @app.get("/favicon.ico")
 def favicon():
@@ -690,24 +895,48 @@ def favicon():
 
 # --- Web UI: served from static file ---
 _STATIC_INDEX = Path(__file__).resolve().parent / "static" / "index.html"
-_STATIC_TEST  = Path(__file__).resolve().parent / "static" / "test_ui.html"
+_STATIC_PREVIEW_INDEX = Path(__file__).resolve().parent / "static" / "index.preview.html"
+_STATIC_PREVIEW_REACT_DIR = Path(__file__).resolve().parent / "static" / "preview-react"
+_STATIC_PREVIEW_REACT_INDEX = _STATIC_PREVIEW_REACT_DIR / "index.html"
 
-@app.get("/test", response_class=HTMLResponse)
-def test_ui():
-    return FileResponse(_STATIC_TEST, media_type="text/html")
+
+def _with_no_cache(resp: Response) -> Response:
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
+def _serve_preview(subpath: Optional[str] = None) -> Response:
+    """Serve React preview build when available; fallback to legacy preview HTML."""
+    if _STATIC_PREVIEW_REACT_INDEX.is_file():
+        if subpath:
+            base = _STATIC_PREVIEW_REACT_DIR.resolve()
+            candidate = (base / subpath).resolve()
+            try:
+                candidate.relative_to(base)
+            except ValueError:
+                raise HTTPException(404, "Not found")
+            if candidate.is_file():
+                return FileResponse(candidate)
+        return _with_no_cache(FileResponse(_STATIC_PREVIEW_REACT_INDEX, media_type="text/html"))
+    return _with_no_cache(FileResponse(_STATIC_PREVIEW_INDEX, media_type="text/html"))
 
 @app.get("/", response_class=HTMLResponse)
 def index():
     return FileResponse(_STATIC_INDEX, media_type="text/html")
 
-@app.get("/live", response_class=HTMLResponse)
-def live_board():
-    live_html = Path(__file__).resolve().parent / "static" / "live.html"
-    return FileResponse(live_html, media_type="text/html")
 
-app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static_files")
+@app.get("/preview", response_class=HTMLResponse)
+def preview_index():
+    return _serve_preview()
+
+
+@app.get("/preview/{subpath:path}", response_class=HTMLResponse)
+def preview_subpath(subpath: str):
+    return _serve_preview(subpath)
+
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=SERVER_NAME, port=PORT)
-

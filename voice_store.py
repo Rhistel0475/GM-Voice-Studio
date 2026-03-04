@@ -1,5 +1,5 @@
 """
-Voice store: persist voice files (.safetensors for Pocket TTS) and metadata for voice_id.
+Voice store: persist voice files (.pt tensors for KaniTTS-2) and metadata for voice_id.
 Supports local directory (default) or optional S3 backend via VOICE_STORAGE_BACKEND=s3.
 """
 import json
@@ -34,7 +34,7 @@ if VOICE_STORAGE_BACKEND == "local":
 
 # --- Local backend ---
 
-VOICE_DATA_EXT = ".safetensors"
+VOICE_DATA_EXT = ".pt"
 
 
 def _voice_data_path(voice_id: str) -> Path:
@@ -127,7 +127,7 @@ def _local_save_voice_from_file(
     name: Optional[str] = None,
     faction: Optional[str] = None,
 ) -> None:
-    """Copy voice file to storage and write metadata. Used by Pocket TTS (.safetensors)."""
+    """Copy voice file to storage and write metadata. Used by KaniTTS-2 (.pt)."""
     import shutil
     dest = _voice_data_path(voice_id)
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -234,7 +234,7 @@ def _s3_save_voice_from_file(
     name: Optional[str] = None,
     faction: Optional[str] = None,
 ) -> None:
-    """Upload voice file to S3 and write metadata. Used by Pocket TTS (.safetensors)."""
+    """Upload voice file to S3 and write metadata. Used by KaniTTS-2 (.pt)."""
     client = _s3_client()
     bucket = VOICE_STORAGE_BUCKET
     key = f"{voice_id}{VOICE_DATA_EXT}"
@@ -383,7 +383,7 @@ def save_embedding(
     owner_id: Optional[str] = None,
     faction: Optional[str] = None,
 ) -> None:
-    """Save .pt and metadata (legacy). For Pocket TTS use save_voice_from_file instead."""
+    """Save speaker embedding tensor (.pt) and metadata for a voice_id."""
     created_at = time.time()
     if _use_s3():
         _s3_save_embedding(voice_id, embedding, consent_scope=consent_scope, name=name, faction=faction)
@@ -401,7 +401,7 @@ def save_voice_from_file(
     owner_id: Optional[str] = None,
     faction: Optional[str] = None,
 ) -> None:
-    """Register a voice from an existing .safetensors file (Pocket TTS). Copies to storage and writes metadata."""
+    """Register a voice from an existing .pt file (KaniTTS-2). Copies to storage and writes metadata."""
     created_at = time.time()
     if _use_s3():
         _s3_save_voice_from_file(voice_id, voice_file_path, consent_scope=consent_scope, name=name, faction=faction)
@@ -412,7 +412,7 @@ def save_voice_from_file(
 
 
 def load_embedding_path(voice_id: str) -> Optional[str]:
-    """Return path to voice file (.safetensors) if it exists. For S3, downloads to a temp file."""
+    """Return path to voice embedding file (.pt) if it exists. For S3, downloads to a temp file."""
     if _use_s3():
         return _s3_load_embedding_path(voice_id)
     return _local_load_embedding_path(voice_id)
