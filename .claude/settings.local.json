@@ -44,7 +44,11 @@
       "Bash(curl -s -X POST http://localhost:7862/adventure/ai-parse -F \"files=@D0-HollowsLastHope.pdf\")",
       "Bash(python3 -m json.tool)",
       "Bash(.venv/bin/python -c \"from pypdf import PdfReader; r=PdfReader\\(''D0-HollowsLastHope.pdf''\\); imgs=[]; [imgs.extend\\(list\\(p.images\\)\\) for p in r.pages]; print\\(f''Embedded images in PDF: {len\\(imgs\\)}''\\)\")",
-      "Bash(.venv/bin/pip install pdf2image -q)"
+      "Bash(.venv/bin/pip install pdf2image -q)",
+      "Bash(git push origin main)",
+      "Bash(git rm --cached \"Starter Set - Lost Mine Of Phandelver.pdf\")",
+      "Bash(git add .gitignore)",
+      "Bash(git commit --amend --no-edit)"
     ]
   }
 }
