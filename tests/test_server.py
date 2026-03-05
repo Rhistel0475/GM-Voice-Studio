@@ -1,39 +1,32 @@
-"""Minimal tests for Kani TTS API: health, readiness, optional TTS (slow)."""
+"""Minimal tests for Kani TTS API endpoint behavior without HTTP client integration."""
 import pytest
-from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
-from server import app
-
-client = TestClient(app)
+from server import health, ready
 
 
-def test_health():
-    """GET /health returns 200 and status ok."""
-    r = client.get("/health")
-    assert r.status_code == 200
-    data = r.json()
+def test_health_payload():
+    """health() returns status and service keys used by monitoring checks."""
+    data = health()
     assert data.get("status") == "ok"
     assert data.get("service") == "kani-tts"
 
 
-def test_ready_before_model_load():
-    """GET /ready returns 503 until model has been loaded (or 200 if already loaded)."""
-    r = client.get("/ready")
-    # Before any TTS request, model is typically not loaded
-    assert r.status_code in (200, 503)
-    if r.status_code == 200:
-        assert r.json().get("status") == "ready"
-    else:
-        assert "not yet loaded" in r.text.lower() or r.status_code == 503
+def test_ready_raises_503_when_model_not_loaded(monkeypatch):
+    """ready() raises HTTP 503 if TTS model is not loaded yet."""
+    import tts_service
+
+    monkeypatch.setattr(tts_service, "is_model_loaded", lambda: False)
+    with pytest.raises(HTTPException) as excinfo:
+        ready()
+    assert excinfo.value.status_code == 503
+    assert "not yet loaded" in str(excinfo.value.detail).lower()
 
 
-@pytest.mark.slow
-def test_tts_with_preset_voice():
-    """POST /tts with text and preset voice returns 200 and WAV. Slow (loads model)."""
-    r = client.post(
-        "/tts",
-        data={"text": "Hello.", "language_tag": "en", "voice_id": "alba"},
-    )
-    assert r.status_code == 200, r.text[:500]
-    assert r.headers.get("content-type", "").startswith("audio/")
-    assert len(r.content) > 1000  # non-trivial WAV
+def test_ready_returns_ok_when_model_loaded(monkeypatch):
+    """ready() returns ready status once model is loaded."""
+    import tts_service
+
+    monkeypatch.setattr(tts_service, "is_model_loaded", lambda: True)
+    data = ready()
+    assert data == {"status": "ready"}

@@ -175,6 +175,7 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
 const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectNpc }) => {
   const [sceneTab, setSceneTab] = useState("text");
   const [isNarrating, setIsNarrating] = useState(false);
+  const [narrateError, setNarrateError] = useState("");
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
@@ -182,24 +183,40 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
   const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
   const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs.slice(0, 6);
 
+  const resolveNarrationVoiceId = async () => {
+    const response = await fetch("/voices/list");
+    if (!response.ok) {
+      throw new Error("Could not load available voices.");
+    }
+    const voices = await response.json();
+    const firstVoice = Array.isArray(voices) ? voices.find(v => v?.voice_id) : null;
+    if (!firstVoice?.voice_id) {
+      throw new Error("No cloned voice found. Create a voice first, then narrate.");
+    }
+    return firstVoice.voice_id;
+  };
+
   const handleNarrate = async () => {
     if (!scene.read_aloud) return;
     setIsNarrating(true);
+    setNarrateError("");
     try {
+      const voiceId = await resolveNarrationVoiceId();
       const response = await fetch('/tts/narrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: scene.read_aloud, voice_id: 'Albia' }),
+        body: JSON.stringify({ text: scene.read_aloud, voice_id: voiceId }),
       });
       if (!response.ok) {
-        throw new Error('Narration failed');
+        const errorText = await response.text();
+        throw new Error(errorText || "Narration failed.");
       }
       const blob = await response.blob();
       const audio = new Audio(URL.createObjectURL(blob));
       audio.play();
     } catch (error) {
       console.error('Error narrating scene:', error);
-      // Maybe show an error to the user
+      setNarrateError(error?.message || "Narration failed.");
     } finally {
       setIsNarrating(false);
     }
@@ -272,6 +289,9 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
                     </>
                   )}
                 </button>
+                {narrateError && (
+                  <div className="text-xs text-red-400 mt-2">{narrateError}</div>
+                )}
               </div>
             )}
 
@@ -326,11 +346,34 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
   const [dialogue, setDialogue] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState([]);
+  const [selectedVoiceId, setSelectedVoiceId] = useState("");
 
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const npc = selectedNpcName
     ? (npcs.find(n => n.name === selectedNpcName) || npcs[0])
     : npcs[0];
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/voices/list")
+      .then(r => r.ok ? r.json() : [])
+      .then((data) => {
+        if (cancelled) return;
+        const voices = Array.isArray(data) ? data.filter(v => v?.voice_id) : [];
+        setAvailableVoices(voices);
+        setSelectedVoiceId((current) => {
+          if (current && voices.some(v => v.voice_id === current)) return current;
+          return voices[0]?.voice_id || "";
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAvailableVoices([]);
+        setSelectedVoiceId("");
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleGenerateDialogue = async () => {
     if (!situation || !npc) return;
@@ -368,7 +411,9 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
     try {
         const formData = new FormData();
         formData.append('text', dialogue);
-        formData.append('voice_id', npc.name);
+        if (selectedVoiceId) {
+          formData.append('voice_id', selectedVoiceId);
+        }
 
         const response = await fetch('/tts', {
             method: 'POST',
@@ -394,15 +439,20 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
         <div className="space-y-2">
           <label className="field-wrap">
             <span>Choose Voice:</span>
-            <select>
-              <option>Albia (preset)</option>
+            <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}>
+              <option value="">Random voice</option>
+              {availableVoices.map((voice) => (
+                <option key={voice.voice_id} value={voice.voice_id}>
+                  {voice.name?.trim() ? voice.name : voice.voice_id}
+                </option>
+              ))}
             </select>
           </label>
           <label className="field-wrap">
             <select value={npc?.name || ''} onChange={() => {}}>
               {campaignData?.npcs?.length
                 ? campaignData.npcs.slice(0, 6).map(n => <option key={n.name} value={n.name}>{n.name} (campaign NPC)</option>)
-                : <option>No NPC voices loaded</option>}
+                : <option>No NPCs loaded</option>}
             </select>
           </label>
           <div className="wave-box">
