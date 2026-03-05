@@ -97,11 +97,18 @@ const Header = ({ view, onNavigate, campaignData }) => (
   </header>
 );
 
-const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc }) => {
+const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
-  const encounterNpcs = campaignData?.npcs?.length
-    ? campaignData.npcs.slice(0, 6)
-    : [];
+
+  const allNpcs = campaignData?.npcs || [];
+  const sceneNpcs = (scene?.npcs || []).map(npcName => allNpcs.find(n => n.name === npcName)).filter(Boolean);
+
+  const allItems = campaignData?.items || [];
+  const sceneItems = (scene?.items || []).map(itemName => allItems.find(i => i.name === itemName)).filter(Boolean);
+
+  const allReveals = campaignData?.reveals || [];
+  const sceneReveals = (scene?.reveals || []).map(revealName => allReveals.find(r => r.name === revealName)).filter(Boolean);
+
   return (
     <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
       <Panel title="Quick Tools">
@@ -114,9 +121,9 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc }) => {
         </div>
       </Panel>
 
-      <Panel title="Encounter Tracker">
+      <Panel title="Active Scene">
         <div className="space-y-2">
-          {encounterNpcs.length ? encounterNpcs.map((npc) => (
+          {sceneNpcs.map((npc) => (
             <button
               key={npc.name}
               type="button"
@@ -127,8 +134,21 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc }) => {
               <span className="encounter-name">{npc.name}</span>
               <span className="text-[#9b7440] text-xs">{npc.role}</span>
             </button>
-          )) : (
-            <div className="intake-empty text-xs">Import adventure docs to populate.</div>
+          ))}
+          {sceneItems.map((item) => (
+            <div key={item.name} className="tracker-row w-full text-left">
+              <span className="encounter-name">{item.name}</span>
+              <span className="text-[#9b7440] text-xs">Item</span>
+            </div>
+          ))}
+          {sceneReveals.map((reveal) => (
+            <div key={reveal.name} className="tracker-row w-full text-left">
+              <span className="encounter-name">{reveal.name}</span>
+              <span className="text-[#9b7440] text-xs capitalize">{reveal.type}</span>
+            </div>
+          ))}
+          {sceneNpcs.length === 0 && sceneItems.length === 0 && sceneReveals.length === 0 && (
+            <div className="intake-empty text-xs">No NPCs, items, or reveals in this scene.</div>
           )}
         </div>
       </Panel>
@@ -139,8 +159,8 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc }) => {
             <article key={char.name} className="party-card">
               <div className="party-face" />
               <div className="party-meta">
-                <div className="name">{char.name}</div>
-                <div className="stats">
+                <div className="name text-sm">{char.name}</div>
+                <div className="stats text-xs">
                   {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span className="text-[#6b5030]">—</span>}
                 </div>
               </div>
@@ -154,6 +174,7 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc }) => {
 
 const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectNpc }) => {
   const [sceneTab, setSceneTab] = useState("text");
+  const [isNarrating, setIsNarrating] = useState(false);
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
@@ -161,9 +182,32 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
   const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
   const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs.slice(0, 6);
 
+  const handleNarrate = async () => {
+    if (!scene.read_aloud) return;
+    setIsNarrating(true);
+    try {
+      const response = await fetch('/tts/narrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: scene.read_aloud }),
+      });
+      if (!response.ok) {
+        throw new Error('Narration failed');
+      }
+      const blob = await response.blob();
+      const audio = new Audio(URL.createObjectURL(blob));
+      audio.play();
+    } catch (error) {
+      console.error('Error narrating scene:', error);
+      // Maybe show an error to the user
+    } finally {
+      setIsNarrating(false);
+    }
+  };
+
   return (
     <div className="h-full min-h-0">
-      <Panel title="Scene Detail Editor" className="h-full">
+      <Panel className="h-full">
         {/* Scene navigation */}
         <div className="flex items-center gap-2 mb-2">
           <button
@@ -206,11 +250,31 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
             {scene.type && (
               <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
             )}
-            <div className="parchment mt-1">
+            <div className="parchment mt-1 text-lg">
               {scene.read_aloud || scene.title
                 ? (scene.read_aloud || `Scene: ${scene.title}`)
                 : "Upload adventure docs via Library to load scene read-aloud text here."}
             </div>
+
+            {scene.read_aloud && (
+              <div className="mt-3 text-center">
+                <button
+                  type="button"
+                  className="cta-secondary"
+                  onClick={handleNarrate}
+                  disabled={isNarrating}
+                >
+                  {isNarrating ? (
+                    'Generating...'
+                  ) : (
+                    <>
+                      <Play size={13} className="inline-block mr-1" /> Narrate Scene
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
             {scene.notes && (
               <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
             )}
@@ -258,10 +322,68 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
 };
 
 const RightColumn = ({ campaignData, selectedNpcName }) => {
+  const [situation, setSituation] = useState("");
+  const [dialogue, setDialogue] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
-  const firstNpc = selectedNpcName
+  const npc = selectedNpcName
     ? (npcs.find(n => n.name === selectedNpcName) || npcs[0])
     : npcs[0];
+
+  const handleGenerateDialogue = async () => {
+    if (!situation || !npc) return;
+    setIsGenerating(true);
+    setDialogue("");
+    try {
+      const response = await fetch('/ai/dialogue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          npc: {
+            name: npc.name,
+            personality: npc.personality,
+            faction: npc.faction,
+          },
+          situation,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Dialogue generation failed');
+      }
+      const data = await response.json();
+      setDialogue(data.dialogue);
+    } catch (error) {
+      console.error('Error generating dialogue:', error);
+      setDialogue("Sorry, I'm at a loss for words.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSpeakDialogue = async () => {
+    if (!dialogue) return;
+    setIsSpeaking(true);
+    try {
+        const response = await fetch('/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: dialogue, speaker_name: npc.name }),
+        });
+        if (!response.ok) {
+            throw new Error('TTS failed');
+        }
+        const blob = await response.blob();
+        const audio = new Audio(URL.createObjectURL(blob));
+        audio.play();
+    } catch (error) {
+        console.error('Error speaking dialogue:', error);
+    } finally {
+        setIsSpeaking(false);
+    }
+  };
+
   return (
     <div className="h-full min-h-0 grid grid-rows-[.95fr_1.25fr] gap-3">
       <Panel title="Voice Studio">
@@ -303,24 +425,51 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
           <div className="size-16 border border-[#6e4a28] rounded-full bg-[radial-gradient(circle_at_30%_25%,#74522f,#2b1a10)]" />
           <div className="flex-1">
             <div className="voice-label">Name:</div>
-            <div className="voice-name">{firstNpc?.name || "No NPC loaded"}</div>
-            <div className="voice-tag">{firstNpc?.role || "Load campaign data"}</div>
+            <div className="voice-name">{npc?.name || "No NPC loaded"}</div>
+            <div className="voice-tag">{npc?.role || "Load campaign data"}</div>
           </div>
         </div>
 
-        {firstNpc && (
-          <div className="text-xs text-[#b08040] mb-2">{firstNpc.personality}</div>
+        {npc && (
+          <div className="text-xs text-[#b08040] mb-2">{npc.personality}</div>
         )}
 
-        <div className="mt-auto">
-          <div className="flex justify-end mb-2">
-            <button type="button" className="cta-secondary">
-              Speak as NPC <SlidersHorizontal size={13} />
+        <div className="mt-auto flex flex-col">
+          {dialogue && (
+            <div className="mb-2">
+              <blockquote className="text-amber-200 italic border-l-2 border-amber-600/50 pl-3 py-1 text-sm">
+                {dialogue}
+              </blockquote>
+              <div className="text-right mt-1">
+                <button
+                  type="button"
+                  className="cta-secondary text-xs"
+                  onClick={handleSpeakDialogue}
+                  disabled={isSpeaking}
+                >
+                  {isSpeaking ? '...' : 'Speak'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-auto">
+            <input
+              type="text"
+              placeholder="Describe what happens..."
+              className="chat-input"
+              value={situation}
+              onChange={(e) => setSituation(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleGenerateDialogue()}
+            />
+            <button
+              type="button"
+              className="send-btn"
+              onClick={handleGenerateDialogue}
+              disabled={isGenerating || !npc}
+            >
+              {isGenerating ? '...' : 'Send'}
             </button>
-          </div>
-          <div className="flex gap-2">
-            <input type="text" placeholder="Describe what happens..." className="chat-input" />
-            <button type="button" className="send-btn">Send</button>
           </div>
         </div>
       </Panel>
@@ -331,12 +480,14 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
 const LiveBoard = ({ view, onNavigate, campaignData }) => {
   const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
   const [selectedNpcName, setSelectedNpcName] = useState(null);
+  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
+  const scene = scenes[selectedSceneIdx] || scenes[0];
   return (
     <div className="dm-shell dm-fit mx-auto">
       <Header view={view} onNavigate={onNavigate} campaignData={campaignData} />
       <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
         <div className="xl:col-span-3 min-h-0">
-          <LeftColumn campaignData={campaignData} selectedNpcName={selectedNpcName} onSelectNpc={setSelectedNpcName} />
+          <LeftColumn campaignData={campaignData} selectedNpcName={selectedNpcName} onSelectNpc={setSelectedNpcName} scene={scene} />
         </div>
         <div className="xl:col-span-5 min-h-0">
           <MiddleColumn
