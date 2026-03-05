@@ -91,7 +91,7 @@ const Header = ({ view, onNavigate, campaignData }) => (
         GM Voice Studio - Live Board
       </h1>
       <p className="font-heading text-[clamp(1.1rem,1.7vw,2.1rem)] leading-[1.05] text-[#d9b878]">
-        {campaignData?.title || "Campaign : The Shattered Crown"}
+        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "The Shattered Crown · Awaiting Campaign Data"}
       </p>
     </div>
   </header>
@@ -365,7 +365,7 @@ const PrepHeader = ({ view, onNavigate, campaignData }) => (
         GM Voice Studio - Prep Room
       </h1>
       <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">
-        {campaignData?.title || "Campaign Planning Console"}
+        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "Campaign Planning Console"}
       </p>
     </div>
   </header>
@@ -517,13 +517,24 @@ const PrepLeftColumn = ({ campaignData, selectedIdx, onSelectScene, onUpdateCamp
   );
 };
 
-const PrepMiddleColumn = ({ campaignData, selectedIdx }) => {
+const PrepMiddleColumn = ({ campaignData, selectedIdx, onUpdateCampaign }) => {
   const [tab, setTab] = useState("readaloud");
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
   const scene = scenes[selectedIdx] || scenes[0];
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
-  const reveals = campaignData?.reveals?.length ? campaignData.reveals : DEFAULT_REVEALS;
+  const allReveals = campaignData?.reveals?.length ? campaignData.reveals : DEFAULT_REVEALS;
   const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
+  const sceneReveals = (scene.reveals || [])
+    .map(name => allReveals.find(r => r.name === name) || { name, type: "clue", when: "" });
+
+  const removeFromScene = (field, value) => {
+    if (!onUpdateCampaign || !campaignData) return;
+    const updatedScenes = scenes.map((s, i) => {
+      if (i !== selectedIdx) return s;
+      return { ...s, [field]: (s[field] || []).filter(v => v !== value) };
+    });
+    onUpdateCampaign({ ...campaignData, scenes: updatedScenes });
+  };
 
   return (
     <div className="h-full min-h-0">
@@ -561,26 +572,48 @@ const PrepMiddleColumn = ({ campaignData, selectedIdx }) => {
         {tab === "npcs" && (
           <div className="prep-npc-grid mt-2">
             {sceneNpcs.length ? sceneNpcs.map((npc) => (
-              <article key={npc.name} className="prep-npc-card">
+              <article key={npc.name} className="prep-npc-card" style={{ position:"relative" }}>
+                {onUpdateCampaign && (
+                  <button
+                    type="button"
+                    onClick={() => removeFromScene("npcs", npc.name)}
+                    title="Remove from scene"
+                    style={{ position:"absolute", top:"2px", right:"2px", background:"none",
+                      border:"none", color:"#7a3a3a", fontSize:"0.8rem", cursor:"pointer",
+                      lineHeight:1, padding:"0 2px" }}
+                  >×</button>
+                )}
                 <div className="prep-npc-face">{npc.name.slice(0, 2).toUpperCase()}</div>
                 <p>{npc.name}</p>
                 <p className="text-xs text-[#9b7440]">{npc.role}</p>
               </article>
             )) : (
-              <div className="intake-empty">No NPCs assigned to this scene.</div>
+              <div className="intake-empty">No NPCs assigned. Use Library Assets → +</div>
             )}
           </div>
         )}
 
         {tab === "secrets" && (
           <div className="prep-reveal-list mt-2">
-            {reveals.map((reveal) => (
-              <div key={reveal.name} className="prep-reveal-row">
+            {sceneReveals.length ? sceneReveals.map((reveal) => (
+              <div key={reveal.name} className="prep-reveal-row" style={{ display:"flex", alignItems:"center" }}>
                 <span className={`prep-reveal-dot ${reveal.type === "hook" ? "green" : reveal.type === "secret" ? "red" : "amber"}`} />
-                <span className="prep-reveal-name">{reveal.name}</span>
+                <span className="prep-reveal-name" style={{ flex:1 }}>{reveal.name}</span>
                 <span className="prep-reveal-status">{reveal.when || ""}</span>
+                {onUpdateCampaign && (
+                  <button
+                    type="button"
+                    onClick={() => removeFromScene("reveals", reveal.name)}
+                    title="Remove from scene"
+                    style={{ background:"none", border:"none", color:"#7a3a3a",
+                      fontSize:"0.8rem", cursor:"pointer", lineHeight:1,
+                      marginLeft:"0.25rem", padding:"0 2px" }}
+                  >×</button>
+                )}
               </div>
-            ))}
+            )) : (
+              <div className="intake-empty">No secrets assigned. Use Library Assets → +</div>
+            )}
           </div>
         )}
 
@@ -594,71 +627,72 @@ const PrepMiddleColumn = ({ campaignData, selectedIdx }) => {
   );
 };
 
-const PrepRightColumn = ({ campaignData, selectedIdx }) => {
-  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
+const PrepRightColumn = ({ campaignData, selectedIdx, onUpdateCampaign }) => {
+  const allNpcs = campaignData?.npcs || [];
+  const allReveals = campaignData?.reveals || [];
+  const allItems = campaignData?.items || [];
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
-  const scene = scenes[selectedIdx] || scenes[0];
-  const [selectedNpc, setSelectedNpc] = useState(0);
+  const [assetTab, setAssetTab] = useState("npcs");
 
-  const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
-  const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs;
-  const npc = displayNpcs[selectedNpc] || displayNpcs[0];
+  const addToScene = (field, value) => {
+    if (!onUpdateCampaign || !campaignData) return;
+    const updatedScenes = scenes.map((s, i) => {
+      if (i !== selectedIdx) return s;
+      const arr = s[field] || [];
+      if (arr.includes(value)) return s;
+      return { ...s, [field]: [...arr, value] };
+    });
+    onUpdateCampaign({ ...campaignData, scenes: updatedScenes });
+  };
+
+  const hasAny = allNpcs.length || allReveals.length || allItems.length;
+
+  const AssetRow = ({ label, field }) => (
+    <div style={{ display:"flex", alignItems:"center", gap:"0.4rem", padding:"0.3rem 0.25rem",
+      borderBottom:"1px solid #2e1e0a" }}>
+      <span style={{ flex:1, fontSize:"0.8rem", color:"#c9a85c", fontFamily:"Cinzel,serif",
+        overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{label}</span>
+      <button
+        type="button"
+        onClick={() => addToScene(field, label)}
+        title="Add to scene"
+        style={{ background:"none", border:"1px solid #5a3e1b", color:"#d4af37",
+          borderRadius:"3px", width:"18px", height:"18px", lineHeight:"14px",
+          fontSize:"0.9rem", cursor:"pointer", flexShrink:0, textAlign:"center" }}
+      >+</button>
+    </div>
+  );
 
   return (
     <div className="h-full min-h-0">
-      <PrepPanel title="NPC Configuration" className="h-full">
-        {npc ? (
+      <PrepPanel title="Library Assets" className="h-full">
+        {hasAny ? (
           <>
-            <div className="prep-profile-head">
-              <div className="prep-avatar">{npc.name.slice(0, 2).toUpperCase()}</div>
-              <div className="prep-name-block">
-                <span>Name:</span>
-                <strong>{npc.name}</strong>
-              </div>
+            <div className="tab-strip prep-main-tabs">
+              <button type="button" className={assetTab === "npcs" ? "tab-active" : ""} onClick={() => setAssetTab("npcs")}>All NPCs</button>
+              <button type="button" className={assetTab === "secrets" ? "tab-active" : ""} onClick={() => setAssetTab("secrets")}>All Secrets</button>
+              <button type="button" className={assetTab === "items" ? "tab-active" : ""} onClick={() => setAssetTab("items")}>All Items</button>
             </div>
-
-            <div className="prep-stack">
-              <label className="prep-field">
-                <span>Role</span>
-                <select value={selectedNpc} onChange={e => setSelectedNpc(Number(e.target.value))}>
-                  {displayNpcs.map((n, i) => (
-                    <option key={n.name} value={i}>{n.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="prep-field">
-                <span>Faction</span>
-                <input type="text" readOnly value={npc.faction || "—"} className="bg-transparent border-none text-[#c8a050]" />
-              </label>
+            <div style={{ overflowY:"auto", flex:1, marginTop:"0.25rem" }}>
+              {assetTab === "npcs" && (
+                allNpcs.length
+                  ? allNpcs.map(n => <AssetRow key={n.name} label={n.name} field="npcs" />)
+                  : <div className="intake-empty">No NPCs in campaign.</div>
+              )}
+              {assetTab === "secrets" && (
+                allReveals.length
+                  ? allReveals.map(r => <AssetRow key={r.name} label={r.name} field="reveals" />)
+                  : <div className="intake-empty">No secrets in campaign.</div>
+              )}
+              {assetTab === "items" && (
+                allItems.length
+                  ? allItems.map(it => <AssetRow key={it.name} label={it.name} field="items" />)
+                  : <div className="intake-empty">No items in campaign.</div>
+              )}
             </div>
-
-            {npc.personality && (
-              <>
-                <div className="subhead">Personality:</div>
-                <ul className="prep-notes">
-                  {npc.personality.split(". ").filter(Boolean).map((p, i) => (
-                    <li key={i}>{p.replace(/\.$/, "")}.</li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            {npc.motivation && (
-              <>
-                <div className="subhead">Motivation:</div>
-                <p className="text-xs text-[#b08040] px-1">{npc.motivation}</p>
-              </>
-            )}
-
-            {npc.secrets && (
-              <>
-                <div className="subhead">Secrets:</div>
-                <p className="text-xs text-[#8a6030] px-1 italic">{npc.secrets}</p>
-              </>
-            )}
           </>
         ) : (
-          <div className="intake-empty">No NPC data loaded. Use Library to import your adventure.</div>
+          <div className="intake-empty">Use Library to import a campaign.</div>
         )}
       </PrepPanel>
     </div>
@@ -675,10 +709,10 @@ const PrepRoom = ({ view, onNavigate, campaignData, onUpdateCampaign }) => {
           <PrepLeftColumn campaignData={campaignData} selectedIdx={selectedIdx} onSelectScene={setSelectedIdx} onUpdateCampaign={onUpdateCampaign} />
         </div>
         <div className="xl:col-span-5 min-h-0">
-          <PrepMiddleColumn campaignData={campaignData} selectedIdx={selectedIdx} />
+          <PrepMiddleColumn campaignData={campaignData} selectedIdx={selectedIdx} onUpdateCampaign={onUpdateCampaign} />
         </div>
         <div className="xl:col-span-4 min-h-0">
-          <PrepRightColumn campaignData={campaignData} selectedIdx={selectedIdx} />
+          <PrepRightColumn campaignData={campaignData} selectedIdx={selectedIdx} onUpdateCampaign={onUpdateCampaign} />
         </div>
       </section>
     </div>
@@ -696,7 +730,7 @@ const IntakeHeader = ({ view, onNavigate, campaignData }) => (
         GM Voice Studio - Library
       </h1>
       <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">
-        {campaignData?.title ? `Campaign loaded: ${campaignData.title}` : "Upload docs · AI extracts · Everything feeds your session"}
+        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "Upload docs · AI extracts · Everything feeds your session"}
       </p>
     </div>
   </header>
@@ -708,7 +742,7 @@ const DetailDrawer = ({ item, onClose, onLightbox }) => {
   if (!item) return null;
   const { type, data } = item;
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose} style={{ backdropFilter:"blur(4px)", WebkitBackdropFilter:"blur(4px)" }}>
       <div className="w-full max-w-sm h-full bg-[#1a0f06] border-l-2 border-[#4f341f] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b border-[#4f341f] bg-[#120a04]">
           <div className="font-heading text-[#d4af37] text-sm truncate">
@@ -934,32 +968,29 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
               </h3>
               {loadingCampaigns ? (
                 <p style={{ color: "#9c7a3a", fontSize: "0.78rem" }}>Loading…</p>
-              ) : savedCampaigns.length === 0 ? (
-                <p style={{ color: "#6b5230", fontSize: "0.78rem", fontStyle: "italic" }}>
-                  No campaigns saved yet.
-                </p>
               ) : (
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, maxHeight: "18rem", overflowY: "auto" }}>
-                  {savedCampaigns.map(c => (
-                    <li key={c.id}>
-                      <button
-                        type="button"
-                        onClick={() => loadSavedCampaign(c.id)}
-                        disabled={loadingCampaignId === c.id}
-                        style={{
-                          display: "block", width: "100%", textAlign: "left",
-                          background: parseResult?.id === c.id ? "#3a2410" : "transparent",
-                          border: "none", borderBottom: "1px solid #2e1e0a",
-                          padding: "0.4rem 0.5rem", cursor: "pointer",
-                          color: parseResult?.id === c.id ? "#e7c27a" : "#c9a85c",
-                          fontSize: "0.82rem", fontFamily: "Cinzel, serif",
-                        }}
-                      >
-                        {loadingCampaignId === c.id ? "Loading…" : (c.title || `Campaign #${c.id}`)}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <label style={{ display:"block", color:"#9c7a3a", fontSize:"0.72rem",
+                    fontFamily:"Cinzel,serif", letterSpacing:"0.04em", marginBottom:"0.3rem" }}>
+                    Active Campaign:
+                  </label>
+                  <select
+                    value={parseResult?.id ?? ""}
+                    onChange={e => { if (e.target.value) loadSavedCampaign(Number(e.target.value)); }}
+                    style={{ width:"100%", background:"#1a0f06", color:"#e7c27a",
+                      border:"1px solid #5a3e1b", borderRadius:"4px",
+                      padding:"0.4rem 0.5rem", fontFamily:"Cinzel,serif", fontSize:"0.8rem",
+                      cursor:"pointer" }}
+                  >
+                    <option value="" style={{ color:"#6b5230" }}>— Select Campaign —</option>
+                    {savedCampaigns.map(c => (
+                      <option key={c.id} value={c.id}>{c.title || `Campaign #${c.id}`}</option>
+                    ))}
+                  </select>
+                  {loadingCampaignId && (
+                    <p style={{ color:"#9c7a3a", fontSize:"0.72rem", marginTop:"0.3rem" }}>Loading…</p>
+                  )}
+                </>
               )}
             </div>
 
@@ -967,11 +998,18 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
               Drop in session notes, module PDFs, or campaign text. AI Parse uses Claude to extract full campaign data.
             </p>
 
-            <label className="intake-file-pick">
-              <Upload size={16} className="inline mr-1" />
-              <span>Select Files</span>
-              <input type="file" multiple accept=".txt,.md,.pdf" onChange={onFileChange} />
-            </label>
+            <div
+              style={{ border:"2px dashed #4f341f", borderRadius:"6px",
+                padding:"0.75rem", marginBottom:"0.5rem", transition:"border-color 0.2s" }}
+              onMouseEnter={e => e.currentTarget.style.borderColor="#9b7440"}
+              onMouseLeave={e => e.currentTarget.style.borderColor="#4f341f"}
+            >
+              <label className="intake-file-pick">
+                <Upload size={16} className="inline mr-1" />
+                <span>Select Files</span>
+                <input type="file" multiple accept=".txt,.md,.pdf" onChange={onFileChange} />
+              </label>
+            </div>
 
             <div className="flex flex-col gap-2 mt-2">
               <button
@@ -1162,6 +1200,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
                                 {actScenes.map((scene, i) => (
                                   <li key={i}
                                     className="flex gap-2 items-start cursor-pointer hover:bg-[#2a1a0a] px-3 py-2"
+                                    title="Click to view scene details"
                                     onClick={() => setDetailItem({type:"scene", data:scene})}>
                                     {scene.image_url && (
                                       <img src={scene.image_url} alt={scene.title}
