@@ -23,6 +23,7 @@ from typing import Optional
 import numpy as np
 import soundfile as sf
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from pathlib import Path
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
@@ -106,6 +107,18 @@ from fastapi.staticfiles import StaticFiles
 _ASSETS_DIR = Path(__file__).resolve().parent / "static" / "campaign_assets"
 _ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/campaign-assets", StaticFiles(directory=_ASSETS_DIR), name="campaign_assets")
+
+from database import init_db
+init_db()
+
+
+def _cleanup_old_sessions(assets_dir: Path, max_age_seconds: int = 3600) -> None:
+    """Remove session dirs older than max_age_seconds to prevent disk bloat."""
+    now = time.time()
+    for child in assets_dir.iterdir():
+        if child.is_dir() and (now - child.stat().st_mtime) > max_age_seconds:
+            import shutil as _shutil
+            _shutil.rmtree(child, ignore_errors=True)
 if CORS_ORIGINS:
     origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
     if origins:
@@ -237,7 +250,8 @@ async def create_voice(
         tmp_path = tmp.name
     try:
         owner_id = get_owner_id(request)
-        voice_id = clone_voice(
+        voice_id = await run_in_threadpool(
+            clone_voice,
             tmp_path,
             consent_scope=consent_scope,
             name=name or None,
@@ -416,7 +430,7 @@ async def _read_adventure_upload(upload: UploadFile) -> tuple[str, dict]:
     page_count: Optional[int] = None
     if suffix == ".pdf":
         try:
-            text, page_count = _extract_pdf_text(raw)
+            text, page_count = await run_in_threadpool(_extract_pdf_text, raw)
         except RuntimeError as e:
             raise HTTPException(503, str(e))
     else:
@@ -615,6 +629,40 @@ async def parse_adventure_docs(
     return {"files": uploaded_files, **parsed}
 
 
+def _extract_embedded_images(raw_pdf: bytes, embedded_dir: Path, start_counter: int, session_id: str) -> tuple[list[dict], int]:
+    """
+    Synchronous: extract meaningful embedded images from a PDF into embedded_dir.
+    Returns (raw_images list, total_pages).
+    """
+    raw_images: list[dict] = []
+    total_pages = 0
+    img_counter = start_counter
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(raw_pdf))
+        total_pages = len(reader.pages)
+        for page_num, page in enumerate(reader.pages):
+            for img_obj in page.images:
+                try:
+                    data = img_obj.data
+                    if len(data) < 50_000:  # skip decorative/small images
+                        continue
+                    ext = "jpg" if data[:3] == b"\xff\xd8\xff" else "png"
+                    img_counter += 1
+                    fname = f"img_{img_counter:04d}.{ext}"
+                    (embedded_dir / fname).write_bytes(data)
+                    raw_images.append({
+                        "idx": img_counter,
+                        "page": page_num + 1,
+                        "url": f"/campaign-assets/{session_id}/embedded/{fname}",
+                    })
+                except Exception:
+                    continue
+    except Exception as e:
+        logging.warning("Image extraction during ai-parse failed: %s", e)
+    return raw_images, total_pages
+
+
 @app.post("/adventure/ai-parse")
 @limiter.limit("10/minute")
 async def ai_parse_adventure_docs(
@@ -646,54 +694,197 @@ async def ai_parse_adventure_docs(
     merged = "\n\n".join(all_text_parts)
     from ai_service import ai_full_parse, assign_images_to_entities
     try:
-        result = ai_full_parse(merged)
+        result = await run_in_threadpool(ai_full_parse, merged)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
 
     # --- Auto-extract meaningful images and assign them to campaign entities ---
-    import shutil
-    session_dir = _ASSETS_DIR / "current"
-    if session_dir.exists():
-        shutil.rmtree(session_dir)
+    _cleanup_old_sessions(_ASSETS_DIR)
+    session_id = str(uuid.uuid4())
+    session_dir = _ASSETS_DIR / session_id
     embedded_dir = session_dir / "embedded"
     embedded_dir.mkdir(parents=True)
 
-    raw_images: list[dict] = []  # {idx, page, url}
-    img_counter = 0
+    raw_images: list[dict] = []
     total_pages = 0
+    img_counter = 0
 
     for raw_pdf in pdf_raws:
-        try:
-            from pypdf import PdfReader
-            reader = PdfReader(io.BytesIO(raw_pdf))
-            total_pages += len(reader.pages)
-            for page_num, page in enumerate(reader.pages):
-                for img_obj in page.images:
-                    try:
-                        data = img_obj.data
-                        if len(data) < 50_000:  # skip decorative/small images
-                            continue
-                        ext = "jpg" if data[:3] == b"\xff\xd8\xff" else "png"
-                        img_counter += 1
-                        fname = f"img_{img_counter:04d}.{ext}"
-                        (embedded_dir / fname).write_bytes(data)
-                        raw_images.append({
-                            "idx": img_counter,
-                            "page": page_num + 1,
-                            "url": f"/campaign-assets/current/embedded/{fname}",
-                        })
-                    except Exception:
-                        continue
-        except Exception as e:
-            logging.warning("Image extraction during ai-parse failed: %s", e)
+        new_images, pages = await run_in_threadpool(
+            _extract_embedded_images, raw_pdf, embedded_dir, img_counter, session_id
+        )
+        raw_images.extend(new_images)
+        total_pages += pages
+        img_counter += len(new_images)
 
     if raw_images:
-        assigned = assign_images_to_entities(raw_images, result, total_pages or 1)
+        assigned = await run_in_threadpool(assign_images_to_entities, raw_images, result, total_pages or 1)
         result["images"] = assigned
     else:
         result["images"] = []
 
+    # --- Persist to database ---
+    try:
+        from database import SessionLocal
+        from models import Campaign, NPC, Scene, Location as LocationModel
+        db = SessionLocal()
+        try:
+            campaign = Campaign(
+                title=result.get("title", ""),
+                summary=result.get("summary", ""),
+            )
+            db.add(campaign)
+            db.flush()  # populate campaign.id before children
+
+            for n in result.get("npcs", []):
+                db.add(NPC(
+                    campaign_id=campaign.id,
+                    name=n.get("name", ""),
+                    role=n.get("role", ""),
+                    personality=n.get("personality", ""),
+                    faction=n.get("faction", ""),
+                    description=n.get("description", ""),
+                    motivation=n.get("motivation", ""),
+                    secrets=n.get("secrets", ""),
+                    hp=str(n.get("hp", "")),
+                    ac=n.get("ac") or None,
+                    cr=n.get("cr", ""),
+                    image_url=n.get("image_url"),
+                ))
+
+            for s in result.get("scenes", []):
+                db.add(Scene(
+                    campaign_id=campaign.id,
+                    title=s.get("title", ""),
+                    act=s.get("act", ""),
+                    type=s.get("type", ""),
+                    read_aloud=s.get("read_aloud", ""),
+                    difficulty=s.get("difficulty", ""),
+                    rewards=s.get("rewards", ""),
+                    notes=s.get("notes", ""),
+                    image_url=s.get("image_url"),
+                ))
+
+            for loc in result.get("locations", []):
+                db.add(LocationModel(
+                    campaign_id=campaign.id,
+                    name=loc.get("name", ""),
+                    description=loc.get("description", ""),
+                    image_url=loc.get("image_url"),
+                ))
+
+            db.commit()
+            result["campaign_id"] = campaign.id
+        finally:
+            db.close()
+    except Exception as e:
+        logging.warning("Failed to persist campaign to DB: %s", e)
+
     return {"files": uploaded_files, **result}
+
+
+@app.get("/api/campaigns")
+@limiter.limit("60/minute")
+async def list_campaigns(request: Request, _auth: None = Depends(verify_api_key)):
+    """Return all saved campaigns (id, title, summary) ordered newest first."""
+    from database import SessionLocal
+    from models import Campaign
+    db = SessionLocal()
+    try:
+        campaigns = db.query(Campaign).order_by(Campaign.id.desc()).all()
+        return [{"id": c.id, "title": c.title, "summary": c.summary} for c in campaigns]
+    finally:
+        db.close()
+
+
+@app.get("/api/campaigns/{campaign_id}")
+@limiter.limit("60/minute")
+async def get_campaign(campaign_id: int, request: Request, _auth: None = Depends(verify_api_key)):
+    """Return a single campaign with all NPCs, Scenes, and Locations."""
+    from database import SessionLocal
+    from models import Campaign
+    db = SessionLocal()
+    try:
+        c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if c is None:
+            raise HTTPException(404, "Campaign not found")
+        return {
+            "id": c.id,
+            "title": c.title,
+            "summary": c.summary,
+            "npcs": [
+                {"id": n.id, "name": n.name, "role": n.role, "personality": n.personality,
+                 "faction": n.faction, "description": n.description, "motivation": n.motivation,
+                 "secrets": n.secrets, "hp": n.hp, "ac": n.ac, "cr": n.cr, "image_url": n.image_url}
+                for n in c.npcs
+            ],
+            "scenes": [
+                {"id": s.id, "title": s.title, "act": s.act, "type": s.type,
+                 "read_aloud": s.read_aloud, "difficulty": s.difficulty,
+                 "rewards": s.rewards, "notes": s.notes, "image_url": s.image_url}
+                for s in c.scenes
+            ],
+            "locations": [
+                {"id": loc.id, "name": loc.name, "description": loc.description, "image_url": loc.image_url}
+                for loc in c.locations
+            ],
+        }
+    finally:
+        db.close()
+
+
+def _extract_images_from_pdf(
+    raw: bytes,
+    embedded_dir: Path,
+    pages_dir: Path,
+    img_counter_start: int,
+    session_id: str,
+) -> tuple[list[str], list[str]]:
+    """
+    Synchronous: extract embedded images and page thumbnails from a PDF.
+    Returns (embedded_urls, page_urls).
+    """
+    embedded_urls: list[str] = []
+    page_urls: list[str] = []
+    img_counter = img_counter_start
+
+    # --- Embedded images via pypdf ---
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(io.BytesIO(raw))
+        for page in reader.pages:
+            for img_obj in page.images:
+                try:
+                    data = img_obj.data
+                    if data[:3] == b"\xff\xd8\xff":
+                        ext = "jpg"
+                    elif data[:8] == b"\x89PNG\r\n\x1a\n":
+                        ext = "png"
+                    else:
+                        ext = "png"
+                    if len(data) < 5000:
+                        continue
+                    img_counter += 1
+                    fname = f"img_{img_counter:04d}.{ext}"
+                    (embedded_dir / fname).write_bytes(data)
+                    embedded_urls.append(f"/campaign-assets/{session_id}/embedded/{fname}")
+                except Exception:
+                    continue
+    except Exception as e:
+        logging.warning("Embedded image extraction failed: %s", e)
+
+    # --- Page thumbnails via pdf2image ---
+    try:
+        from pdf2image import convert_from_bytes
+        pages = convert_from_bytes(raw, dpi=96, fmt="jpeg", thread_count=2)
+        for i, page_img in enumerate(pages):
+            fname = f"page_{i + 1:04d}.jpg"
+            page_img.save(str(pages_dir / fname), "JPEG", quality=75)
+            page_urls.append(f"/campaign-assets/{session_id}/pages/{fname}")
+    except Exception as e:
+        logging.warning("Page thumbnail extraction failed: %s", e)
+
+    return embedded_urls, page_urls
 
 
 @app.post("/adventure/images")
@@ -705,17 +896,15 @@ async def extract_adventure_images(
 ):
     """
     Extract embedded images and page thumbnails from uploaded PDFs.
-    Saves to static/campaign_assets/current/ and returns URLs.
+    Saves to static/campaign_assets/<session_id>/ and returns URLs.
     Returns: {"embedded": [...urls], "pages": [...urls]}
     """
     if not files:
         raise HTTPException(400, "Upload at least one document.")
 
-    # Clear and recreate the current session folder
-    import shutil
-    session_dir = _ASSETS_DIR / "current"
-    if session_dir.exists():
-        shutil.rmtree(session_dir)
+    _cleanup_old_sessions(_ASSETS_DIR)
+    session_id = str(uuid.uuid4())
+    session_dir = _ASSETS_DIR / session_id
     embedded_dir = session_dir / "embedded"
     pages_dir = session_dir / "pages"
     embedded_dir.mkdir(parents=True)
@@ -728,53 +917,17 @@ async def extract_adventure_images(
     for upload in files:
         if not upload.filename:
             continue
-        suffix = Path(upload.filename).suffix.lower()
-        if suffix != ".pdf":
+        if Path(upload.filename).suffix.lower() != ".pdf":
             continue
-
         raw = await upload.read()
         if not raw:
             continue
-
-        # --- Embedded images via pypdf ---
-        try:
-            from pypdf import PdfReader
-            reader = PdfReader(io.BytesIO(raw))
-            for page in reader.pages:
-                for img_obj in page.images:
-                    try:
-                        data = img_obj.data
-                        # Detect format from magic bytes
-                        if data[:3] == b"\xff\xd8\xff":
-                            ext = "jpg"
-                        elif data[:8] == b"\x89PNG\r\n\x1a\n":
-                            ext = "png"
-                        else:
-                            ext = "png"
-                        # Skip tiny images (icons/bullets) by checking raw size
-                        if len(data) < 5000:
-                            continue
-                        img_counter += 1
-                        fname = f"img_{img_counter:04d}.{ext}"
-                        out_path = embedded_dir / fname
-                        out_path.write_bytes(data)
-                        embedded_urls.append(f"/campaign-assets/current/embedded/{fname}")
-                    except Exception:
-                        continue
-        except Exception as e:
-            logging.warning("Embedded image extraction failed: %s", e)
-
-        # --- Page thumbnails via pdf2image ---
-        try:
-            from pdf2image import convert_from_bytes
-            pages = convert_from_bytes(raw, dpi=96, fmt="jpeg", thread_count=2)
-            for i, page_img in enumerate(pages):
-                fname = f"page_{i + 1:04d}.jpg"
-                out_path = pages_dir / fname
-                page_img.save(str(out_path), "JPEG", quality=75)
-                page_urls.append(f"/campaign-assets/current/pages/{fname}")
-        except Exception as e:
-            logging.warning("Page thumbnail extraction failed: %s", e)
+        new_embedded, new_pages = await run_in_threadpool(
+            _extract_images_from_pdf, raw, embedded_dir, pages_dir, img_counter, session_id
+        )
+        img_counter += len(new_embedded)
+        embedded_urls.extend(new_embedded)
+        page_urls.extend(new_pages)
 
     return {
         "embedded": embedded_urls,
@@ -798,7 +951,7 @@ async def rag_query(req: RagQueryRequest, request: Request, _auth: None = Depend
     """Semantic search over ingested campaign documents. Returns top_k relevant chunks."""
     from retrieval import retrieve
     try:
-        results = retrieve(req.query, top_k=req.top_k, doc_type=req.doc_type)
+        results = await run_in_threadpool(retrieve, req.query, top_k=req.top_k, doc_type=req.doc_type)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
     return {"results": results}
@@ -819,7 +972,7 @@ async def brain_query(req: BrainQueryRequest, request: Request, _auth: None = De
     """
     from llm_brain import handle_query
     try:
-        result = handle_query(req.query)
+        result = await run_in_threadpool(handle_query, req.query)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
     return result
@@ -880,7 +1033,8 @@ async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depe
     """
     from ai_service import generate_dialogue
     try:
-        line = generate_dialogue(
+        line = await run_in_threadpool(
+            generate_dialogue,
             npc_name=req.npc_name,
             personality=req.personality,
             situation=req.situation,
@@ -941,7 +1095,8 @@ async def tts_endpoint(
             tmp.write(await reference_audio.read())
             tmp_path = tmp.name
         try:
-            audio, sr = tts_generate(
+            audio, sr = await run_in_threadpool(
+                tts_generate,
                 text,
                 language_tag=language_tag,
                 speaker_emb_path=tmp_path,
@@ -964,7 +1119,8 @@ async def tts_endpoint(
                 pass
 
     try:
-        audio, sr = tts_generate(
+        audio, sr = await run_in_threadpool(
+            tts_generate,
             text,
             language_tag=language_tag,
             speaker_emb_path=speaker_emb_path,
@@ -1058,9 +1214,9 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
         lang_tag = supported[0]
     language_tag = lang_tag
 
-    audio_list: list = []
-    sr_out: Optional[int] = None
-    try:
+    def _run_narrate_chunks() -> tuple[list, int]:
+        audio_list: list = []
+        sr_out: Optional[int] = None
         for chunk in chunks:
             audio, sr = tts_generate(
                 chunk,
@@ -1073,6 +1229,10 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
             if sr_out is None:
                 sr_out = sr
             audio_list.append(audio)
+        return audio_list, sr_out
+
+    try:
+        audio_list, sr_out = await run_in_threadpool(_run_narrate_chunks)
     except ValueError as e:
         increment("errors_total")
         raise HTTPException(400, str(e))

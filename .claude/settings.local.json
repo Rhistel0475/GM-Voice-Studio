@@ -48,7 +48,14 @@
       "Bash(git push origin main)",
       "Bash(git rm --cached \"Starter Set - Lost Mine Of Phandelver.pdf\")",
       "Bash(git add .gitignore)",
-      "Bash(git commit --amend --no-edit)"
+      "Bash(git commit --amend --no-edit)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''server.py''\\).read\\(\\)\\); print\\(''syntax OK''\\)\")",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\(''/home/brian/GM-Voice-Studio/server.py''\\).read\\(\\)\\); print\\(''syntax OK''\\)\")",
+      "Bash(.venv/bin/python3 -c \":*)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\(''server.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
+      "Bash(node --input-type=module --eval \"import\\(''/home/brian/GM-Voice-Studio/preview-react/src/App.jsx''\\)\")",
+      "Bash(echo \"exit:$?\")",
+      "Bash(npx --yes vite build)"
     ]
   }
 }

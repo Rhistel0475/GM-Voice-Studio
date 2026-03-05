@@ -38,9 +38,9 @@ const DEFAULT_PARTY = [
   { name: "BORWIN",   hp: "—", ac: "—" },
   { name: "DUNCAN",   hp: "—", ac: "—" },
 ];
-const DEFAULT_NPCS = ["No campaign loaded. Use Doc Intake to import your adventure."];
+const DEFAULT_NPCS = ["No campaign loaded. Use Library to import your adventure."];
 const DEFAULT_SCENES = [
-  { title: "No scenes loaded", act: "Upload docs in Doc Intake", type: "exploration", read_aloud: "", npcs: [], location: "", notes: "" },
+  { title: "No scenes loaded", act: "Upload docs in Library", type: "exploration", read_aloud: "", npcs: [], location: "", notes: "" },
 ];
 const DEFAULT_REVEALS = [
   { name: "Upload adventure docs to see plot hooks", when: "", type: "hook" },
@@ -75,7 +75,7 @@ const ViewTabs = ({ view, onNavigate, className = "" }) => (
       Prep Room
     </button>
     <button type="button" className={`nav-glyph-btn ${view === "intake" ? "is-active" : ""}`} onClick={() => onNavigate("intake")}>
-      Doc Intake
+      Library
     </button>
   </div>
 );
@@ -209,7 +209,7 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
             <div className="parchment mt-1">
               {scene.read_aloud || scene.title
                 ? (scene.read_aloud || `Scene: ${scene.title}`)
-                : "Upload adventure docs via Doc Intake to load scene read-aloud text here."}
+                : "Upload adventure docs via Library to load scene read-aloud text here."}
             </div>
             {scene.notes && (
               <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
@@ -658,7 +658,7 @@ const PrepRightColumn = ({ campaignData, selectedIdx }) => {
             )}
           </>
         ) : (
-          <div className="intake-empty">No NPC data loaded. Use Doc Intake to import your adventure.</div>
+          <div className="intake-empty">No NPC data loaded. Use Library to import your adventure.</div>
         )}
       </PrepPanel>
     </div>
@@ -685,7 +685,7 @@ const PrepRoom = ({ view, onNavigate, campaignData, onUpdateCampaign }) => {
   );
 };
 
-// ─── Doc Intake ─────────────────────────────────────────────────────────────
+// ─── Library ─────────────────────────────────────────────────────────────
 
 const IntakeHeader = ({ view, onNavigate, campaignData }) => (
   <header className="prep-header intake-header">
@@ -693,7 +693,7 @@ const IntakeHeader = ({ view, onNavigate, campaignData }) => (
     <ViewTabs view={view} onNavigate={onNavigate} className="prep-header-bar nav-tab-bar" />
     <div className="relative z-10 text-center">
       <h1 className="font-heading text-[clamp(1.8rem,2.35vw,3rem)] leading-[1.05] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08]">
-        GM Voice Studio - Doc Intake
+        GM Voice Studio - Library
       </h1>
       <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">
         {campaignData?.title ? `Campaign loaded: ${campaignData.title}` : "Upload docs · AI extracts · Everything feeds your session"}
@@ -798,6 +798,18 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
   const [lightbox, setLightbox] = useState(null); // URL of enlarged image
   const [detailItem, setDetailItem] = useState(null); // {type, data} for detail drawer
   const [expandedActs, setExpandedActs] = useState(new Set()); // which chapter headers are open
+  const [savedCampaigns, setSavedCampaigns] = useState([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [loadingCampaignId, setLoadingCampaignId] = useState(null);
+
+  useEffect(() => {
+    setLoadingCampaigns(true);
+    fetch("/api/campaigns")
+      .then(r => r.ok ? r.json() : [])
+      .then(data => setSavedCampaigns(Array.isArray(data) ? data : []))
+      .catch(() => setSavedCampaigns([]))
+      .finally(() => setLoadingCampaigns(false));
+  }, []);
 
   const onFileChange = (e) => {
     setFiles(Array.from(e.target.files || []));
@@ -823,6 +835,11 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
       if (!res.ok) throw new Error((payload?.detail) || raw || `Parse failed (${res.status})`);
       if (!payload) throw new Error("Parse returned no data.");
       setParseResult(payload);
+      // Refresh saved campaigns list (new campaign was just persisted to DB)
+      fetch("/api/campaigns")
+        .then(r => r.ok ? r.json() : [])
+        .then(data => setSavedCampaigns(Array.isArray(data) ? data : []))
+        .catch(() => {});
       // Auto-expand the first act/chapter in the outline
       const firstAct = payload?.scenes?.[0]?.act || (payload?.acts?.[0]?.title);
       if (firstAct) setExpandedActs(new Set([firstAct]));
@@ -867,6 +884,28 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
     setSaved(true);
   };
 
+  const loadSavedCampaign = async (id) => {
+    setLoadingCampaignId(id);
+    try {
+      const res = await fetch(`/api/campaigns/${id}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setParseResult({
+        ...data,
+        party: data.party ?? [],
+        reveals: data.reveals ?? [],
+        items: data.items ?? [],
+        images: data.images ?? [],
+      });
+      setSaved(true);
+      setActivePanel("outline");
+      const firstAct = data?.scenes?.[0]?.act;
+      if (firstAct) setExpandedActs(new Set([firstAct]));
+    } finally {
+      setLoadingCampaignId(null);
+    }
+  };
+
   const npcs = parseResult?.npcs?.length ? parseResult.npcs : [];
   const party = parseResult?.party?.length ? parseResult.party : [];
   const scenes = parseResult?.scenes?.length ? parseResult.scenes : [];
@@ -886,6 +925,44 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
         {/* Left: Upload */}
         <div className="xl:col-span-3 min-h-0">
           <PrepPanel title="Upload Adventure Docs" className="h-full">
+            {/* Saved Campaigns */}
+            <div style={{ marginBottom: "1rem" }}>
+              <h3 style={{ color: "#e7c27a", fontFamily: "Cinzel, serif", fontSize: "0.85rem",
+                letterSpacing: "0.05em", marginBottom: "0.5rem", borderBottom: "1px solid #5a3e1b",
+                paddingBottom: "0.35rem" }}>
+                Saved Campaigns
+              </h3>
+              {loadingCampaigns ? (
+                <p style={{ color: "#9c7a3a", fontSize: "0.78rem" }}>Loading…</p>
+              ) : savedCampaigns.length === 0 ? (
+                <p style={{ color: "#6b5230", fontSize: "0.78rem", fontStyle: "italic" }}>
+                  No campaigns saved yet.
+                </p>
+              ) : (
+                <ul style={{ listStyle: "none", padding: 0, margin: 0, maxHeight: "18rem", overflowY: "auto" }}>
+                  {savedCampaigns.map(c => (
+                    <li key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => loadSavedCampaign(c.id)}
+                        disabled={loadingCampaignId === c.id}
+                        style={{
+                          display: "block", width: "100%", textAlign: "left",
+                          background: parseResult?.id === c.id ? "#3a2410" : "transparent",
+                          border: "none", borderBottom: "1px solid #2e1e0a",
+                          padding: "0.4rem 0.5rem", cursor: "pointer",
+                          color: parseResult?.id === c.id ? "#e7c27a" : "#c9a85c",
+                          fontSize: "0.82rem", fontFamily: "Cinzel, serif",
+                        }}
+                      >
+                        {loadingCampaignId === c.id ? "Loading…" : (c.title || `Campaign #${c.id}`)}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
             <p className="intake-hint">
               Drop in session notes, module PDFs, or campaign text. AI Parse uses Claude to extract full campaign data.
             </p>
