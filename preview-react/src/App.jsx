@@ -91,7 +91,7 @@ const Header = ({ view, onNavigate, campaignData }) => (
         GM Voice Studio - Live Board
       </h1>
       <p className="font-heading text-[clamp(1.1rem,1.7vw,2.1rem)] leading-[1.05] text-[#d9b878]">
-        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "The Shattered Crown · Awaiting Campaign Data"}
+        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "No Campaign Loaded"}
       </p>
     </div>
   </header>
@@ -189,7 +189,7 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
       const response = await fetch('/tts/narrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: scene.read_aloud }),
+        body: JSON.stringify({ text: scene.read_aloud, voice_id: 'Albia' }),
       });
       if (!response.ok) {
         throw new Error('Narration failed');
@@ -341,16 +341,16 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          npc: {
-            name: npc.name,
-            personality: npc.personality,
-            faction: npc.faction,
-          },
+          npc_name: npc.name,
+          personality: npc.personality,
+          faction: npc.faction || '',
           situation,
+          conversation_history: [],
         }),
       });
       if (!response.ok) {
-        throw new Error('Dialogue generation failed');
+        const errorText = await response.text();
+        throw new Error(`Dialogue generation failed: ${errorText}`);
       }
       const data = await response.json();
       setDialogue(data.dialogue);
@@ -363,14 +363,18 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
   };
 
   const handleSpeakDialogue = async () => {
-    if (!dialogue) return;
+    if (!dialogue || !npc) return;
     setIsSpeaking(true);
     try {
+        const formData = new FormData();
+        formData.append('text', dialogue);
+        formData.append('voice_id', npc.name);
+
         const response = await fetch('/tts', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: dialogue, speaker_name: npc.name }),
+            body: formData,
         });
+
         if (!response.ok) {
             throw new Error('TTS failed');
         }
@@ -395,9 +399,9 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
             </select>
           </label>
           <label className="field-wrap">
-            <select>
+            <select value={npc?.name || ''} onChange={() => {}}>
               {campaignData?.npcs?.length
-                ? campaignData.npcs.slice(0, 6).map(n => <option key={n.name}>{n.name} (campaign NPC)</option>)
+                ? campaignData.npcs.slice(0, 6).map(n => <option key={n.name} value={n.name}>{n.name} (campaign NPC)</option>)
                 : <option>No NPC voices loaded</option>}
             </select>
           </label>
@@ -881,7 +885,7 @@ const IntakeHeader = ({ view, onNavigate, campaignData }) => (
         GM Voice Studio - Library
       </h1>
       <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">
-        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "Upload docs · AI extracts · Everything feeds your session"}
+        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "Upload docs · AI extracts · Feed your session"}
       </p>
     </div>
   </header>
