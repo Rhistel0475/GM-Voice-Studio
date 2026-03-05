@@ -10,27 +10,9 @@ import logging
 import re
 from typing import Optional
 
-from config import ANTHROPIC_API_KEY
+from anthropic_client import get_client as _get_client
 
 logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Lazy Anthropic client
-# ---------------------------------------------------------------------------
-
-_anthropic_client = None
-
-
-def _get_client():
-    global _anthropic_client
-    if _anthropic_client is None:
-        if not ANTHROPIC_API_KEY:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY is not set. Add it to your .env file."
-            )
-        import anthropic
-        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    return _anthropic_client
 
 
 # ---------------------------------------------------------------------------

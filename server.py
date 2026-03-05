@@ -100,6 +100,12 @@ app = FastAPI(title="Kani TTS API")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+# Serve extracted campaign images as static files
+from fastapi.staticfiles import StaticFiles
+_ASSETS_DIR = Path(__file__).resolve().parent / "static" / "campaign_assets"
+_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/campaign-assets", StaticFiles(directory=_ASSETS_DIR), name="campaign_assets")
 if CORS_ORIGINS:
     origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
     if origins:
@@ -343,7 +349,7 @@ def patch_voice(voice_id: str, body: PatchVoiceBody, request: Request, _auth: No
 # --- Co-DM Adventure document intake ---
 
 _MAX_ADVENTURE_FILES = 6
-_MAX_ADVENTURE_FILE_BYTES = 8 * 1024 * 1024
+_MAX_ADVENTURE_FILE_BYTES = 200 * 1024 * 1024  # 200 MB — text is truncated to MAX_ADVENTURE_CHARS after extraction
 _MAX_ADVENTURE_TOTAL_CHARS = 160_000
 _ACT_HEADING_RE = re.compile(r"^\s*act\s+([ivx0-9]+)\s*[-:]\s*(.+)$", re.IGNORECASE)
 _SCENE_HEADING_RE = re.compile(r"^\s*(scene|encounter|chapter)\s*([0-9ivx]*)\s*[-:]\s*(.+)$", re.IGNORECASE)
@@ -607,6 +613,175 @@ async def parse_adventure_docs(
     merged = "\n\n".join(all_text_parts)
     parsed = _parse_adventure_text(merged)
     return {"files": uploaded_files, **parsed}
+
+
+@app.post("/adventure/ai-parse")
+@limiter.limit("10/minute")
+async def ai_parse_adventure_docs(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    _auth: None = Depends(verify_api_key),
+):
+    """Upload adventure docs and use Claude to extract a full structured campaign object."""
+    if not files:
+        raise HTTPException(400, "Upload at least one document.")
+    if len(files) > _MAX_ADVENTURE_FILES:
+        raise HTTPException(400, f"Too many files. Max {_MAX_ADVENTURE_FILES} files per parse.")
+
+    all_text_parts: list[str] = []
+    uploaded_files: list[dict] = []
+    pdf_raws: list[bytes] = []  # keep raw bytes for image extraction
+
+    for upload in files:
+        # Peek raw bytes before _read_adventure_upload consumes the stream
+        raw_peek = await upload.read()
+        await upload.seek(0)
+        text, meta = await _read_adventure_upload(upload)
+        all_text_parts.append(text)
+        uploaded_files.append(meta)
+        suffix = Path(upload.filename or "").suffix.lower()
+        if suffix == ".pdf":
+            pdf_raws.append(raw_peek)
+
+    merged = "\n\n".join(all_text_parts)
+    from ai_service import ai_full_parse, assign_images_to_entities
+    try:
+        result = ai_full_parse(merged)
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+    # --- Auto-extract meaningful images and assign them to campaign entities ---
+    import shutil
+    session_dir = _ASSETS_DIR / "current"
+    if session_dir.exists():
+        shutil.rmtree(session_dir)
+    embedded_dir = session_dir / "embedded"
+    embedded_dir.mkdir(parents=True)
+
+    raw_images: list[dict] = []  # {idx, page, url}
+    img_counter = 0
+    total_pages = 0
+
+    for raw_pdf in pdf_raws:
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw_pdf))
+            total_pages += len(reader.pages)
+            for page_num, page in enumerate(reader.pages):
+                for img_obj in page.images:
+                    try:
+                        data = img_obj.data
+                        if len(data) < 50_000:  # skip decorative/small images
+                            continue
+                        ext = "jpg" if data[:3] == b"\xff\xd8\xff" else "png"
+                        img_counter += 1
+                        fname = f"img_{img_counter:04d}.{ext}"
+                        (embedded_dir / fname).write_bytes(data)
+                        raw_images.append({
+                            "idx": img_counter,
+                            "page": page_num + 1,
+                            "url": f"/campaign-assets/current/embedded/{fname}",
+                        })
+                    except Exception:
+                        continue
+        except Exception as e:
+            logging.warning("Image extraction during ai-parse failed: %s", e)
+
+    if raw_images:
+        assigned = assign_images_to_entities(raw_images, result, total_pages or 1)
+        result["images"] = assigned
+    else:
+        result["images"] = []
+
+    return {"files": uploaded_files, **result}
+
+
+@app.post("/adventure/images")
+@limiter.limit("10/minute")
+async def extract_adventure_images(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    _auth: None = Depends(verify_api_key),
+):
+    """
+    Extract embedded images and page thumbnails from uploaded PDFs.
+    Saves to static/campaign_assets/current/ and returns URLs.
+    Returns: {"embedded": [...urls], "pages": [...urls]}
+    """
+    if not files:
+        raise HTTPException(400, "Upload at least one document.")
+
+    # Clear and recreate the current session folder
+    import shutil
+    session_dir = _ASSETS_DIR / "current"
+    if session_dir.exists():
+        shutil.rmtree(session_dir)
+    embedded_dir = session_dir / "embedded"
+    pages_dir = session_dir / "pages"
+    embedded_dir.mkdir(parents=True)
+    pages_dir.mkdir(parents=True)
+
+    embedded_urls: list[str] = []
+    page_urls: list[str] = []
+    img_counter = 0
+
+    for upload in files:
+        if not upload.filename:
+            continue
+        suffix = Path(upload.filename).suffix.lower()
+        if suffix != ".pdf":
+            continue
+
+        raw = await upload.read()
+        if not raw:
+            continue
+
+        # --- Embedded images via pypdf ---
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(io.BytesIO(raw))
+            for page in reader.pages:
+                for img_obj in page.images:
+                    try:
+                        data = img_obj.data
+                        # Detect format from magic bytes
+                        if data[:3] == b"\xff\xd8\xff":
+                            ext = "jpg"
+                        elif data[:8] == b"\x89PNG\r\n\x1a\n":
+                            ext = "png"
+                        else:
+                            ext = "png"
+                        # Skip tiny images (icons/bullets) by checking raw size
+                        if len(data) < 5000:
+                            continue
+                        img_counter += 1
+                        fname = f"img_{img_counter:04d}.{ext}"
+                        out_path = embedded_dir / fname
+                        out_path.write_bytes(data)
+                        embedded_urls.append(f"/campaign-assets/current/embedded/{fname}")
+                    except Exception:
+                        continue
+        except Exception as e:
+            logging.warning("Embedded image extraction failed: %s", e)
+
+        # --- Page thumbnails via pdf2image ---
+        try:
+            from pdf2image import convert_from_bytes
+            pages = convert_from_bytes(raw, dpi=96, fmt="jpeg", thread_count=2)
+            for i, page_img in enumerate(pages):
+                fname = f"page_{i + 1:04d}.jpg"
+                out_path = pages_dir / fname
+                page_img.save(str(out_path), "JPEG", quality=75)
+                page_urls.append(f"/campaign-assets/current/pages/{fname}")
+        except Exception as e:
+            logging.warning("Page thumbnail extraction failed: %s", e)
+
+    return {
+        "embedded": embedded_urls,
+        "pages": page_urls,
+        "total_embedded": len(embedded_urls),
+        "total_pages": len(page_urls),
+    }
 
 
 # --- Co-DM RAG query ---

@@ -154,6 +154,203 @@ def extract_text_from_file(path: str, suffix: str) -> str:
             raise RuntimeError(f"Text file read failed: {e!s}") from e
 
 
+def ai_full_parse(text: str) -> dict:
+    """
+    Use Claude to extract a complete campaign data object from adventure text.
+    Returns structured data for all three app tabs: NPCs, party, scenes, locations, reveals.
+
+    Returns:
+        {
+          "title": str,
+          "summary": str,
+          "npcs": [{"name", "role", "personality", "faction", "description", "scene", "motivation", "secrets"}],
+          "party": [{"name", "class_", "race", "level", "hp", "ac", "player"}],
+          "scenes": [{"title", "act", "type", "read_aloud", "npcs", "location", "notes"}],
+          "locations": [{"name", "description", "scene"}],
+          "reveals": [{"name", "when", "type"}]
+        }
+    """
+    from anthropic_client import get_client
+    client = get_client()
+    # Cap at 60k chars to leave ample room for the large JSON response within 8192 tokens
+    truncated = text[:min(MAX_ADVENTURE_CHARS, 60_000)]
+
+    system_prompt = (
+        "You are a tabletop RPG game prep assistant. "
+        "Extract structured data from adventure module text and return ONLY valid JSON — "
+        "no markdown, no explanation, no preamble. Just the JSON object."
+    )
+
+    user_prompt = (
+        "Extract GM prep data from this adventure text. "
+        "Return ONLY compact JSON — no markdown, no prose. "
+        "Keep ALL string values short (≤15 words each). "
+        "Limits: max 10 npcs, max 10 scenes, max 8 locations, max 8 reveals, max 8 items.\n\n"
+        'JSON keys required:\n'
+        '"title": adventure title\n'
+        '"summary": 2-sentence premise\n'
+        '"npcs": [{"name","role"(villain|ally|quest-giver|neutral),"personality","faction","motivation","secrets","hp"(e.g."45" or "3d8"),"ac"(int),"cr"(e.g."CR 3")}]\n'
+        '"party": [{"name","class_","race","level"(int),"hp","ac"(int)}] or []\n'
+        '"scenes": [{"title","act","type"(combat|social|exploration|mystery),"read_aloud"(≤30 words),"npcs":[str],"location","difficulty"(easy|medium|hard|deadly|none),"rewards"(≤15 words),"notes"(≤20 words)}]\n'
+        '"locations": [{"name","description"}]\n'
+        '"reveals": [{"name","when","type"(hook|secret|clue|twist)}]\n'
+        '"items": [{"name","description"(≤15 words),"scene"(scene title or ""),"magical"(true|false)}]\n\n'
+        "Adventure text:\n---\n"
+        f"{truncated}\n---"
+    )
+
+    try:
+        response = client.messages.create(
+            model=AI_MODEL,
+            max_tokens=8192,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        raw = response.content[0].text.strip()
+        logging.debug("ai_full_parse raw response (%d chars): %s...", len(raw), raw[:200])
+
+        # Strip markdown code fences
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+
+        # If the JSON was truncated mid-stream, find the last complete top-level key
+        # by locating the outermost { ... } block
+        brace_start = raw.find("{")
+        if brace_start != -1 and not raw.endswith("}"):
+            # Attempt to close the JSON at the last complete array/object boundary
+            raw = raw[:raw.rfind(",")].rstrip() + "\n}"
+            logging.warning("ai_full_parse: JSON was truncated; attempted auto-close.")
+
+        result = json.loads(raw)
+        for key in ("title", "summary"):
+            result.setdefault(key, "")
+        for key in ("npcs", "party", "scenes", "locations", "reveals", "items"):
+            result.setdefault(key, [])
+        # Normalize new NPC fields
+        for npc in result.get("npcs", []):
+            npc.setdefault("hp", "")
+            npc.setdefault("ac", 0)
+            npc.setdefault("cr", "")
+        # Normalize new scene fields
+        for scene in result.get("scenes", []):
+            scene.setdefault("difficulty", "")
+            scene.setdefault("rewards", "")
+            scene.setdefault("notes", "")
+        return result
+    except json.JSONDecodeError as e:
+        logging.error("Claude returned non-JSON for ai_full_parse: %s", e)
+        raise RuntimeError("Claude returned invalid JSON. Try a shorter or cleaner text input.") from e
+    except anthropic.APIConnectionError as e:
+        raise RuntimeError("Could not reach Anthropic API.") from e
+    except anthropic.AuthenticationError as e:
+        raise RuntimeError("Invalid ANTHROPIC_API_KEY.") from e
+    except anthropic.RateLimitError as e:
+        raise RuntimeError("Anthropic rate limit hit; try again in a moment.") from e
+    except Exception as e:
+        logging.exception("ai_full_parse failed")
+        raise RuntimeError(f"Adventure AI parse failed: {e!s}") from e
+
+
+def assign_images_to_entities(images: list[dict], campaign: dict, total_pages: int) -> list[dict]:
+    """
+    Text-only Claude call to assign each extracted image (identified by page number)
+    to the most likely NPC, scene, or location in the campaign.
+
+    Args:
+        images: [{"idx": int, "page": int, "url": str}]
+        campaign: parsed campaign dict with npcs, scenes, locations
+        total_pages: total pages in the source PDF
+
+    Returns:
+        Updated list with "type" and "assigned_to" and "label" added to each entry.
+        Also sets image_url on matching entities in campaign (mutates campaign).
+    """
+    from anthropic_client import get_client
+    client = get_client()
+
+    npc_names = [n["name"] for n in campaign.get("npcs", [])]
+    scene_titles = [s["title"] for s in campaign.get("scenes", [])]
+    location_names = [l["name"] for l in campaign.get("locations", [])]
+
+    img_list = [{"idx": img["idx"], "page": img["page"]} for img in images]
+
+    prompt = (
+        f"Adventure: \"{campaign.get('title', 'Unknown')}\", {total_pages} pages.\n"
+        f"NPCs: {npc_names}\n"
+        f"Scenes: {scene_titles}\n"
+        f"Locations: {location_names}\n\n"
+        f"Images extracted from the PDF by page:\n{json.dumps(img_list)}\n\n"
+        "For each image, decide:\n"
+        "- type: portrait | map | handout | illustration | decoration\n"
+        "- assigned_to: exact NPC name, scene title, or location name from the lists above — or null\n"
+        "- label: 5-word description of what the image likely shows\n\n"
+        "Return ONLY a JSON array, one entry per image, in order:\n"
+        '[{"idx":1,"type":"...","assigned_to":"...","label":"..."},...]\n'
+        "No markdown, no prose."
+    )
+
+    try:
+        response = client.messages.create(
+            model=AI_MODEL,
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+        assignments = json.loads(raw)
+    except Exception as e:
+        logging.warning("assign_images_to_entities failed: %s", e)
+        # Return images without assignments rather than failing the whole parse
+        return [{"idx": img["idx"], "page": img["page"], "url": img["url"],
+                 "type": "illustration", "assigned_to": None, "label": ""} for img in images]
+
+    # Merge assignments back onto original image list
+    assign_map = {a["idx"]: a for a in assignments if isinstance(a, dict)}
+    result = []
+    for img in images:
+        a = assign_map.get(img["idx"], {})
+        entry = {
+            "idx": img["idx"],
+            "page": img["page"],
+            "url": img["url"],
+            "type": a.get("type", "illustration"),
+            "assigned_to": a.get("assigned_to") or None,
+            "label": a.get("label", ""),
+        }
+        result.append(entry)
+
+    # Stamp image_url onto matching NPCs, scenes, and locations (first match wins)
+    assigned_to_used: set = set()
+    for entry in result:
+        target = entry.get("assigned_to")
+        if not target or target in assigned_to_used:
+            continue
+        for npc in campaign.get("npcs", []):
+            if npc["name"] == target and "image_url" not in npc:
+                npc["image_url"] = entry["url"]
+                assigned_to_used.add(target)
+                break
+        for scene in campaign.get("scenes", []):
+            if scene["title"] == target and "image_url" not in scene:
+                scene["image_url"] = entry["url"]
+                assigned_to_used.add(target)
+                break
+        for loc in campaign.get("locations", []):
+            if loc["name"] == target and "image_url" not in loc:
+                loc["image_url"] = entry["url"]
+                assigned_to_used.add(target)
+                break
+
+    return result
+
+
 def parse_adventure(text: str) -> dict:
     """
     Use Claude to extract read-aloud passages and NPCs from adventure text.

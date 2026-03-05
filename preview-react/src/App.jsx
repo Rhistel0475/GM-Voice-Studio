@@ -10,6 +10,10 @@ import {
   SlidersHorizontal,
   Square,
   Swords,
+  Upload,
+  Zap,
+  Save,
+  CheckCircle,
 } from "lucide-react";
 
 const normalizePath = (path) => (path || "/").replace(/\/+$/, "") || "/";
@@ -19,51 +23,42 @@ const PREP_PATH = LIVE_PATH === "/" ? "/prep" : `${LIVE_PATH}/prep`;
 const INTAKE_PATH = LIVE_PATH === "/" ? "/intake" : `${LIVE_PATH}/intake`;
 const resolveViewFromPath = (path) => {
   const normalized = normalizePath(path);
-  if (normalized.endsWith("/prep")) {
-    return "prep";
-  }
-  if (normalized.endsWith("/intake")) {
-    return "intake";
-  }
+  if (normalized.endsWith("/prep")) return "prep";
+  if (normalized.endsWith("/intake")) return "intake";
   return "live";
 };
 
 const WAVE = [20, 45, 28, 60, 35, 70, 26, 52, 41, 63, 30, 47, 22, 58, 37, 66, 29, 49, 31, 54, 24, 62, 34, 57, 27, 64];
-
 const TOOL_ICONS = [Dice5, Book, Map, ScrollText, Swords, Settings];
 
-const ENEMIES = [
-  { name: "Goblin Scout", hp: 8, max: 12 },
-  { name: "Goblin Archer", hp: 6, max: 10 },
-  { name: "Goblin Shaman", hp: 9, max: 15 },
-  { name: "Captive Wolf", hp: 11, max: 20 },
+// Fallback defaults (shown when no campaign data is loaded)
+const DEFAULT_PARTY = [
+  { name: "ATHELRED", hp: "—", ac: "—" },
+  { name: "SERAPINA", hp: "—", ac: "—" },
+  { name: "BORWIN",   hp: "—", ac: "—" },
+  { name: "DUNCAN",   hp: "—", ac: "—" },
+];
+const DEFAULT_NPCS = ["No campaign loaded. Use Doc Intake to import your adventure."];
+const DEFAULT_SCENES = [
+  { title: "No scenes loaded", act: "Upload docs in Doc Intake", type: "exploration", read_aloud: "", npcs: [], location: "", notes: "" },
+];
+const DEFAULT_REVEALS = [
+  { name: "Upload adventure docs to see plot hooks", when: "", type: "hook" },
 ];
 
-const NPCS = ["Temple Guardian", "Lost Pilgrim", "Ancient Priest"];
-const PARTY = [
-  { name: "ATHELRED", hp: "333/33", ac: 13 },
-  { name: "SERAPINA", hp: "333/33", ac: 15 },
-  { name: "BORWIN", hp: "390/44", ac: 16 },
-  { name: "DUNCAN", hp: "390/44", ac: 16 },
-];
-const PREP_SCENES = [
-  { title: "Temple Entrance", detail: "Read-aloud", glyph: "*" },
-  { title: "Haunted Halls", detail: "Social scene, 3 NPCs", glyph: "o" },
-  { title: "Guardian Chamber", detail: "Combat encounter", glyph: "x" },
-];
-const PREP_NPCS = [
-  { name: "Temple Guardian", initials: "TG" },
-  { name: "Lost Pilgrim", initials: "LP" },
-  { name: "Ancient Priest", initials: "AP" },
-];
-const PREP_REVEALS = [
-  { name: "Hook line", status: "", tone: "green" },
-  { name: "Temple history", status: "after combat", tone: "amber" },
-  { name: "Secret passage", status: "Locked until clue", tone: "red" },
-];
+// ─── Shared Components ─────────────────────────────────────────────────────
 
 const Panel = ({ title, children, className = "" }) => (
   <section className={`panel-ornate ${className}`}>
+    <div className="panel-head">
+      <div className="plaque">{title}</div>
+    </div>
+    <div className="panel-body">{children}</div>
+  </section>
+);
+
+const PrepPanel = ({ title, children, className = "" }) => (
+  <section className={`panel-ornate prep-panel ${className}`}>
     <div className="panel-head">
       <div className="plaque">{title}</div>
     </div>
@@ -85,7 +80,9 @@ const ViewTabs = ({ view, onNavigate, className = "" }) => (
   </div>
 );
 
-const Header = ({ view, onNavigate }) => (
+// ─── Live Board ─────────────────────────────────────────────────────────────
+
+const Header = ({ view, onNavigate, campaignData }) => (
   <header className="dm-header">
     <div className="header-glow" />
     <ViewTabs view={view} onNavigate={onNavigate} className="header-actions nav-tab-bar" />
@@ -93,198 +90,273 @@ const Header = ({ view, onNavigate }) => (
       <h1 className="font-heading text-[clamp(1.6rem,2.25vw,2.85rem)] leading-[1.05] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08]">
         GM Voice Studio - Live Board
       </h1>
-      <p className="font-heading text-[clamp(1.1rem,1.7vw,2.1rem)] leading-[1.05] text-[#d9b878]">Campaign : The Shattered Crown</p>
+      <p className="font-heading text-[clamp(1.1rem,1.7vw,2.1rem)] leading-[1.05] text-[#d9b878]">
+        {campaignData?.title || "Campaign : The Shattered Crown"}
+      </p>
     </div>
   </header>
 );
 
-const LeftColumn = () => (
-  <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
-    <Panel title="Quick Tools">
-      <div className="grid grid-cols-3 gap-2 h-full">
-        {TOOL_ICONS.map((Icon, idx) => (
-          <button key={idx} type="button" className="quick-tile">
-            <Icon size={30} className="text-[#a98547]" />
-          </button>
-        ))}
-      </div>
-    </Panel>
-
-    <Panel title="Encounter Tracker">
-      <div className="space-y-2">
-        {ENEMIES.map((enemy) => (
-          <div key={enemy.name} className="tracker-row">
-            <span className="encounter-name">{enemy.name}</span>
-            <div className="flex items-center gap-2 w-[40%]">
-              <span className="encounter-hp">
-                {enemy.hp}/{enemy.max}
-              </span>
-              <div className="grow h-3 border border-[#4f341f] bg-[#0f0b08]">
-                <div className="h-full bg-gradient-to-r from-[#a82e17] to-[#d46e2f]" style={{ width: `${(enemy.hp / enemy.max) * 100}%` }} />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </Panel>
-
-    <Panel title="Party Roster">
-      <div className="map-slot">
-        <Map size={42} className="text-[#9b7440]/70" />
-      </div>
-    </Panel>
-  </div>
-);
-
-const MiddleColumn = () => (
-  <div className="h-full min-h-0">
-    <Panel title="Scene Detail Editor" className="h-full">
-      <div className="tab-strip">
-        <button type="button" className="tab-active">
-          Scene Text
-        </button>
-        <button type="button">Important NPCs</button>
-        <button type="button">Secrets & Clues</button>
-      </div>
-
-      <div className="parchment mt-2">
-        &quot;As you enter the temple, dust motes dance in shafts of light that pierce the cracked shadows where the ruins meet
-        the eternal vault.&quot;
-      </div>
-
-      <div className="subhead mt-3">Important NPCs</div>
-      <div className="grid grid-cols-3 gap-2">
-        {NPCS.map((npc) => (
-          <article key={npc} className="portrait-card">
-            <div className="portrait-slot" />
-            <p>{npc}</p>
-          </article>
-        ))}
-      </div>
-
-      <div className="subhead mt-3">Party Roster</div>
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
-        {PARTY.map((char) => (
-          <article key={char.name} className="party-card">
-            <div className="party-face" />
-            <div className="party-meta">
-              <div className="name">{char.name}</div>
-              <div className="stats">
-                HP {char.hp} <span>/ AC {char.ac}</span>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </Panel>
-  </div>
-);
-
-const RightColumn = () => (
-  <div className="h-full min-h-0 grid grid-rows-[.95fr_1.25fr] gap-3">
-    <Panel title="Voice Studio">
-      <div className="space-y-2">
-        <label className="field-wrap">
-          <span>Choose Voices:</span>
-          <select>
-            <option>Albia (preset)</option>
-          </select>
-        </label>
-        <label className="field-wrap">
-          <select>
-            <option>Dragon Queen (cloned)</option>
-            <option>Temple Guardian (cloned)</option>
-          </select>
-        </label>
-
-        <div className="wave-box">
-          {WAVE.map((h, idx) => (
-            <span key={idx} style={{ height: `${h}%` }} />
+const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc }) => {
+  const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
+  const encounterNpcs = campaignData?.npcs?.length
+    ? campaignData.npcs.slice(0, 6)
+    : [];
+  return (
+    <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
+      <Panel title="Quick Tools">
+        <div className="grid grid-cols-3 gap-2 h-full">
+          {TOOL_ICONS.map((Icon, idx) => (
+            <button key={idx} type="button" className="quick-tile">
+              <Icon size={30} className="text-[#a98547]" />
+            </button>
           ))}
         </div>
+      </Panel>
 
-        <div className="flex items-center justify-between gap-2 mt-1">
-          <div className="flex gap-1">
-            <button type="button" className="ctl-btn">
-              <Play size={14} />
+      <Panel title="Encounter Tracker">
+        <div className="space-y-2">
+          {encounterNpcs.length ? encounterNpcs.map((npc) => (
+            <button
+              key={npc.name}
+              type="button"
+              className={`tracker-row w-full text-left ${selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""}`}
+              style={{ cursor: "pointer" }}
+              onClick={() => onSelectNpc(npc.name)}
+            >
+              <span className="encounter-name">{npc.name}</span>
+              <span className="text-[#9b7440] text-xs">{npc.role}</span>
             </button>
-            <button type="button" className="ctl-btn">
-              <Pause size={14} />
-            </button>
-            <button type="button" className="ctl-btn">
-              <Square size={14} />
-            </button>
-          </div>
-          <div className="voice-temp-row">
-            <span>Temperature</span>
-            <input type="range" className="accent-[#d4a857] w-24" />
-          </div>
+          )) : (
+            <div className="intake-empty text-xs">Import adventure docs to populate.</div>
+          )}
         </div>
-      </div>
-    </Panel>
+      </Panel>
 
-    <Panel title="NPC Profile">
-      <div className="flex items-start gap-2 border-b border-[#54351f] pb-2 mb-2">
-        <div className="size-16 border border-[#6e4a28] rounded-full bg-[radial-gradient(circle_at_30%_25%,#74522f,#2b1a10)]" />
-        <div className="flex-1">
-          <div className="voice-label">Voice:</div>
-          <div className="voice-name">Temple Guardian</div>
-          <div className="voice-tag">
-            Undead Sentinel
-          </div>
+      <Panel title="Party Roster">
+        <div className="grid grid-cols-2 gap-1">
+          {party.slice(0, 4).map((char) => (
+            <article key={char.name} className="party-card">
+              <div className="party-face" />
+              <div className="party-meta">
+                <div className="name">{char.name}</div>
+                <div className="stats">
+                  {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span className="text-[#6b5030]">—</span>}
+                </div>
+              </div>
+            </article>
+          ))}
         </div>
-      </div>
-
-      <div className="subhead">The events unfold:</div>
-      <div className="event-line">-&gt; Players approach temple entrance</div>
-      <div className="event-quote">
-        &quot;As you enter the temple, dust motes dance in shafts of light...&quot;
-      </div>
-
-      <div className="mt-auto">
-        <div className="flex justify-end mb-2">
-          <button type="button" className="cta-secondary">
-            Speak as NPC <SlidersHorizontal size={13} />
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <input type="text" placeholder="They attack the guardian...." className="chat-input" />
-          <button type="button" className="send-btn">
-            Send
-          </button>
-        </div>
-      </div>
-    </Panel>
-  </div>
-);
-
-const LiveBoard = ({ view, onNavigate }) => (
-  <div className="dm-shell dm-fit mx-auto">
-    <Header view={view} onNavigate={onNavigate} />
-    <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
-      <div className="xl:col-span-3 min-h-0">
-        <LeftColumn />
-      </div>
-      <div className="xl:col-span-5 min-h-0">
-        <MiddleColumn />
-      </div>
-      <div className="xl:col-span-4 min-h-0">
-        <RightColumn />
-      </div>
-    </section>
-  </div>
-);
-
-const PrepPanel = ({ title, children, className = "" }) => (
-  <section className={`panel-ornate prep-panel ${className}`}>
-    <div className="panel-head">
-      <div className="plaque">{title}</div>
+      </Panel>
     </div>
-    <div className="panel-body">{children}</div>
-  </section>
-);
+  );
+};
 
-const PrepHeader = ({ view, onNavigate }) => (
+const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectNpc }) => {
+  const [sceneTab, setSceneTab] = useState("text");
+  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
+  const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
+  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
+  const scene = scenes[selectedSceneIdx] || scenes[0];
+  const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
+  const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs.slice(0, 6);
+
+  return (
+    <div className="h-full min-h-0">
+      <Panel title="Scene Detail Editor" className="h-full">
+        {/* Scene navigation */}
+        <div className="flex items-center gap-2 mb-2">
+          <button
+            type="button"
+            className="ctl-btn"
+            onClick={() => onSelectScene(Math.max(0, selectedSceneIdx - 1))}
+            disabled={selectedSceneIdx === 0}
+          >◀</button>
+          <select
+            className="flex-1 bg-[#1a0f06] border border-[#4f341f] text-[#d4af37] text-xs rounded px-2 py-1"
+            value={selectedSceneIdx}
+            onChange={e => onSelectScene(Number(e.target.value))}
+          >
+            {scenes.map((s, i) => (
+              <option key={i} value={i}>{s.title}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="ctl-btn"
+            onClick={() => onSelectScene(Math.min(scenes.length - 1, selectedSceneIdx + 1))}
+            disabled={selectedSceneIdx >= scenes.length - 1}
+          >▶</button>
+        </div>
+
+        <div className="tab-strip">
+          <button type="button" className={sceneTab === "text" ? "tab-active" : ""} onClick={() => setSceneTab("text")}>
+            Read-Aloud
+          </button>
+          <button type="button" className={sceneTab === "npcs" ? "tab-active" : ""} onClick={() => setSceneTab("npcs")}>
+            NPCs
+          </button>
+          <button type="button" className={sceneTab === "party" ? "tab-active" : ""} onClick={() => setSceneTab("party")}>
+            Party
+          </button>
+        </div>
+
+        {sceneTab === "text" && (
+          <>
+            {scene.type && (
+              <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
+            )}
+            <div className="parchment mt-1">
+              {scene.read_aloud || scene.title
+                ? (scene.read_aloud || `Scene: ${scene.title}`)
+                : "Upload adventure docs via Doc Intake to load scene read-aloud text here."}
+            </div>
+            {scene.notes && (
+              <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
+            )}
+          </>
+        )}
+
+        {sceneTab === "npcs" && (
+          <div className="grid grid-cols-3 gap-2 mt-2">
+            {displayNpcs.length ? displayNpcs.map((npc) => (
+              <article
+                key={npc.name}
+                className="portrait-card cursor-pointer hover:border-[#d4af37]"
+                onClick={() => onSelectNpc(npc.name)}
+              >
+                {npc.image_url
+                  ? <img src={npc.image_url} alt={npc.name} className="portrait-slot object-cover" />
+                  : <div className="portrait-slot" />}
+                <p>{npc.name}</p>
+                <p className="text-[#9b7440] text-xs">{npc.role}</p>
+              </article>
+            )) : (
+              <div className="col-span-3 intake-empty">No NPCs loaded yet.</div>
+            )}
+          </div>
+        )}
+
+        {sceneTab === "party" && (
+          <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mt-2">
+            {party.map((char) => (
+              <article key={char.name} className="party-card">
+                <div className="party-face" />
+                <div className="party-meta">
+                  <div className="name">{char.name}</div>
+                  <div className="stats">
+                    {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span>{char.class_ || "—"}</span>}
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </Panel>
+    </div>
+  );
+};
+
+const RightColumn = ({ campaignData, selectedNpcName }) => {
+  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
+  const firstNpc = selectedNpcName
+    ? (npcs.find(n => n.name === selectedNpcName) || npcs[0])
+    : npcs[0];
+  return (
+    <div className="h-full min-h-0 grid grid-rows-[.95fr_1.25fr] gap-3">
+      <Panel title="Voice Studio">
+        <div className="space-y-2">
+          <label className="field-wrap">
+            <span>Choose Voice:</span>
+            <select>
+              <option>Albia (preset)</option>
+            </select>
+          </label>
+          <label className="field-wrap">
+            <select>
+              {campaignData?.npcs?.length
+                ? campaignData.npcs.slice(0, 6).map(n => <option key={n.name}>{n.name} (campaign NPC)</option>)
+                : <option>No NPC voices loaded</option>}
+            </select>
+          </label>
+          <div className="wave-box">
+            {WAVE.map((h, idx) => (
+              <span key={idx} style={{ height: `${h}%` }} />
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-2 mt-1">
+            <div className="flex gap-1">
+              <button type="button" className="ctl-btn"><Play size={14} /></button>
+              <button type="button" className="ctl-btn"><Pause size={14} /></button>
+              <button type="button" className="ctl-btn"><Square size={14} /></button>
+            </div>
+            <div className="voice-temp-row">
+              <span>Temperature</span>
+              <input type="range" className="accent-[#d4a857] w-24" />
+            </div>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="NPC Profile">
+        <div className="flex items-start gap-2 border-b border-[#54351f] pb-2 mb-2">
+          <div className="size-16 border border-[#6e4a28] rounded-full bg-[radial-gradient(circle_at_30%_25%,#74522f,#2b1a10)]" />
+          <div className="flex-1">
+            <div className="voice-label">Name:</div>
+            <div className="voice-name">{firstNpc?.name || "No NPC loaded"}</div>
+            <div className="voice-tag">{firstNpc?.role || "Load campaign data"}</div>
+          </div>
+        </div>
+
+        {firstNpc && (
+          <div className="text-xs text-[#b08040] mb-2">{firstNpc.personality}</div>
+        )}
+
+        <div className="mt-auto">
+          <div className="flex justify-end mb-2">
+            <button type="button" className="cta-secondary">
+              Speak as NPC <SlidersHorizontal size={13} />
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <input type="text" placeholder="Describe what happens..." className="chat-input" />
+            <button type="button" className="send-btn">Send</button>
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+};
+
+const LiveBoard = ({ view, onNavigate, campaignData }) => {
+  const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
+  const [selectedNpcName, setSelectedNpcName] = useState(null);
+  return (
+    <div className="dm-shell dm-fit mx-auto">
+      <Header view={view} onNavigate={onNavigate} campaignData={campaignData} />
+      <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
+        <div className="xl:col-span-3 min-h-0">
+          <LeftColumn campaignData={campaignData} selectedNpcName={selectedNpcName} onSelectNpc={setSelectedNpcName} />
+        </div>
+        <div className="xl:col-span-5 min-h-0">
+          <MiddleColumn
+            campaignData={campaignData}
+            selectedSceneIdx={selectedSceneIdx}
+            onSelectScene={setSelectedSceneIdx}
+            onSelectNpc={setSelectedNpcName}
+          />
+        </div>
+        <div className="xl:col-span-4 min-h-0">
+          <RightColumn campaignData={campaignData} selectedNpcName={selectedNpcName} />
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// ─── Prep Room ──────────────────────────────────────────────────────────────
+
+const PrepHeader = ({ view, onNavigate, campaignData }) => (
   <header className="prep-header">
     <div className="header-glow" />
     <ViewTabs view={view} onNavigate={onNavigate} className="prep-header-bar nav-tab-bar" />
@@ -292,299 +364,967 @@ const PrepHeader = ({ view, onNavigate }) => (
       <h1 className="font-heading text-[clamp(1.8rem,2.35vw,3rem)] leading-[1.05] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08]">
         GM Voice Studio - Prep Room
       </h1>
-      <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">Campaign Planning Console</p>
-    </div>
-  </header>
-);
-
-const PrepLeftColumn = () => (
-  <div className="h-full min-h-0">
-    <PrepPanel title="Adventure Outline" className="h-full">
-      <div className="prep-act-row">
-        <span>Act I - The Sunken Temple</span>
-        <span>v</span>
-      </div>
-      {PREP_SCENES.map((scene, idx) => (
-        <button key={scene.title} type="button" className={`prep-outline-item ${idx === 0 ? "is-active" : ""}`}>
-          <div className="prep-outline-glyph">{scene.glyph}</div>
-          <div className="prep-outline-copy">
-            <div className="prep-outline-title">{scene.title}</div>
-            <div className="prep-outline-meta">{scene.detail}</div>
-          </div>
-        </button>
-      ))}
-      <div className="prep-act-row">
-        <span>Act II - The Shattered Crown</span>
-        <span>v</span>
-      </div>
-      <div className="prep-act-row">
-        <span>Act III - Dragon&apos;s Lair</span>
-        <span>v</span>
-      </div>
-    </PrepPanel>
-  </div>
-);
-
-const PrepMiddleColumn = () => (
-  <div className="h-full min-h-0">
-    <PrepPanel title="Scene Detail Editor" className="h-full">
-      <div className="tab-strip prep-main-tabs">
-        <button type="button" className="tab-active">
-          Read-aloud
-        </button>
-        <button type="button">Important NPCs</button>
-        <button type="button">Secrets &amp; Clues</button>
-        <button type="button">Environment</button>
-      </div>
-
-      <div className="parchment prep-readaloud">
-        - As you enter the temple, dust motes dance in shafts of light, filtering while cracked stained glass. A deep voice echoes
-        from the shadows: "Who dares disturb the eternal resort?"
-      </div>
-
-      <div className="tab-strip prep-subtabs">
-        <button type="button" className="tab-active">
-          Important NPCs
-        </button>
-        <button type="button">Important NPCs</button>
-        <button type="button">Secrets &amp; Clues</button>
-      </div>
-
-      <div className="prep-card-wrap">
-        <div className="prep-card-head">Important NPCs</div>
-        <div className="prep-npc-grid">
-          {PREP_NPCS.map((npc) => (
-            <article key={npc.name} className="prep-npc-card">
-              <div className="prep-npc-face">{npc.initials}</div>
-              <p>{npc.name}</p>
-            </article>
-          ))}
-        </div>
-      </div>
-    </PrepPanel>
-  </div>
-);
-
-const PrepRightColumn = () => (
-  <div className="h-full min-h-0">
-    <PrepPanel title="NPC Configuration" className="h-full">
-      <div className="prep-profile-head">
-        <div className="prep-avatar">TG</div>
-        <div className="prep-name-block">
-          <span>Name:</span>
-          <strong>Temple Guardian</strong>
-        </div>
-      </div>
-
-      <div className="prep-stack">
-        <label className="prep-field">
-          <span>Archetype</span>
-          <select>
-            <option>Undead Sentinel</option>
-            <option>Ethereal Guardian</option>
-          </select>
-        </label>
-        <label className="prep-field">
-          <span>Voice</span>
-          <select>
-            <option>Dragon Queen (cloned)</option>
-            <option>Temple Guardian (cloned)</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="subhead">Personality Notes:</div>
-      <ul className="prep-notes">
-        <li>Speaks in formal, archaic language.</li>
-        <li>Protective of the temple.</li>
-        <li>Reveals secret passage after combat.</li>
-      </ul>
-
-      <div className="subhead">Reveals:</div>
-      <div className="prep-reveal-list">
-        {PREP_REVEALS.map((reveal) => (
-          <div key={reveal.name} className="prep-reveal-row">
-            <span className={`prep-reveal-dot ${reveal.tone}`} />
-            <span className="prep-reveal-name">{reveal.name}</span>
-            <span className="prep-reveal-status">{reveal.status || " "}</span>
-          </div>
-        ))}
-      </div>
-    </PrepPanel>
-  </div>
-);
-
-const PrepRoom = ({ view, onNavigate }) => (
-  <div className="dm-shell dm-fit prep-shell mx-auto">
-    <PrepHeader view={view} onNavigate={onNavigate} />
-    <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
-      <div className="xl:col-span-3 min-h-0">
-        <PrepLeftColumn />
-      </div>
-      <div className="xl:col-span-5 min-h-0">
-        <PrepMiddleColumn />
-      </div>
-      <div className="xl:col-span-4 min-h-0">
-        <PrepRightColumn />
-      </div>
-    </section>
-  </div>
-);
-
-const IntakeHeader = ({ view, onNavigate }) => (
-  <header className="prep-header intake-header">
-    <div className="header-glow" />
-    <ViewTabs view={view} onNavigate={onNavigate} className="prep-header-bar nav-tab-bar" />
-    <div className="relative z-10 text-center">
-      <h1 className="font-heading text-[clamp(1.8rem,2.35vw,3rem)] leading-[1.05] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08]">
-        GM Voice Studio - Adventure Intake
-      </h1>
       <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">
-        Upload docs, parse structure, prep faster
+        {campaignData?.title || "Campaign Planning Console"}
       </p>
     </div>
   </header>
 );
 
-const AdventureIntake = ({ view, onNavigate }) => {
-  const [files, setFiles] = useState([]);
-  const [isParsing, setIsParsing] = useState(false);
-  const [parseError, setParseError] = useState("");
-  const [parseResult, setParseResult] = useState(null);
+const BLANK_SCENE = { title: "", act: "", type: "exploration", location: "", read_aloud: "", notes: "", npcs: [] };
 
-  const onFileChange = (event) => {
-    setFiles(Array.from(event.target.files || []));
-    setParseError("");
+const PrepLeftColumn = ({ campaignData, selectedIdx, onSelectScene, onUpdateCampaign }) => {
+  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
+  const [showForm, setShowForm] = useState(false);
+  const [editIdx, setEditIdx] = useState(null); // null = new, number = editing existing
+  const [form, setForm] = useState(BLANK_SCENE);
+
+  const existingActs = [...new Set(scenes.map(s => s.act).filter(Boolean))];
+  const typeGlyph = { combat: "x", social: "o", exploration: "*", mystery: "?", travel: "~" };
+
+  const actGroups = scenes.reduce((acc, scene, idx) => {
+    const act = scene.act || "Adventure";
+    if (!acc[act]) acc[act] = [];
+    acc[act].push({ ...scene, idx });
+    return acc;
+  }, {});
+
+  const openNew = () => {
+    setForm(BLANK_SCENE);
+    setEditIdx(null);
+    setShowForm(true);
   };
 
-  const onParse = async () => {
-    if (!files.length) {
-      setParseError("Choose at least one .txt, .md, or .pdf file.");
-      return;
-    }
-    setParseError("");
-    setIsParsing(true);
-    try {
-      const formData = new FormData();
-      files.forEach((file) => formData.append("files", file));
-      const response = await fetch("/adventure/parse", { method: "POST", body: formData });
-      const raw = await response.text();
-      let payload = null;
-      try {
-        payload = raw ? JSON.parse(raw) : null;
-      } catch (error) {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        throw new Error((payload && payload.detail) || raw || `Parse failed (${response.status})`);
-      }
-      if (!payload) {
-        throw new Error("Parse returned no data.");
-      }
-      setParseResult(payload);
-    } catch (error) {
-      setParseError(error.message || "Unable to parse adventure docs.");
-    } finally {
-      setIsParsing(false);
-    }
+  const openEdit = (e, scene, idx) => {
+    e.stopPropagation();
+    setForm({ title: scene.title||"", act: scene.act||"", type: scene.type||"exploration", location: scene.location||"", read_aloud: scene.read_aloud||"", notes: scene.notes||"", npcs: scene.npcs||[] });
+    setEditIdx(idx);
+    setShowForm(true);
   };
 
-  const acts = parseResult?.acts?.length
-    ? parseResult.acts
-    : [{ title: "Act I - Waiting for uploads", scenes: ["Upload your adventure docs, then click Parse Documents."] }];
-  const npcs = parseResult?.npcs?.length ? parseResult.npcs : ["No NPCs parsed yet."];
-  const locations = parseResult?.locations?.length ? parseResult.locations : ["No locations parsed yet."];
-  const reveals = parseResult?.reveals?.length ? parseResult.reveals : ["No clues/reveals parsed yet."];
+  const saveScene = () => {
+    if (!form.title.trim() || !onUpdateCampaign) return;
+    const base = campaignData?.scenes?.length ? campaignData.scenes : [];
+    let updated;
+    if (editIdx !== null) {
+      updated = base.map((s, i) => i === editIdx ? { ...s, ...form } : s);
+    } else {
+      updated = [...base, { ...form, npcs: [] }];
+    }
+    onUpdateCampaign({ ...(campaignData || {}), scenes: updated });
+    if (editIdx === null) onSelectScene(updated.length - 1);
+    setShowForm(false);
+    setEditIdx(null);
+  };
 
   return (
-    <div className="dm-shell dm-fit prep-shell intake-shell mx-auto">
-      <IntakeHeader view={view} onNavigate={onNavigate} />
-      <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
-        <div className="xl:col-span-4 min-h-0">
-          <PrepPanel title="Upload Adventure Docs" className="h-full">
-            <p className="intake-hint">Drop in session notes, module text, or PDF handouts and parse them into prep-ready blocks.</p>
-            <label className="intake-file-pick">
-              <span>Select Files</span>
-              <input type="file" multiple accept=".txt,.md,.pdf" onChange={onFileChange} />
-            </label>
-            <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={onParse} disabled={isParsing}>
-              {isParsing ? "Parsing..." : "Parse Documents"}
-            </button>
-            {parseError ? <div className="intake-error">{parseError}</div> : null}
-            <div className="subhead">Queued Files</div>
-            <div className="intake-file-list">
-              {files.length ? (
-                files.map((file) => (
-                  <div key={`${file.name}-${file.size}`} className="intake-file-item">
-                    <span>{file.name}</span>
-                    <small>{Math.max(1, Math.round(file.size / 1024))} KB</small>
+    <div className="h-full min-h-0 flex flex-col">
+      <PrepPanel title="Adventure Outline" className="flex-1 min-h-0">
+        <div className="overflow-y-auto flex-1">
+          {Object.entries(actGroups).map(([act, actScenes]) => (
+            <div key={act}>
+              <div className="prep-act-row"><span>{act}</span><span>▾</span></div>
+              {actScenes.map((scene) => (
+                <div
+                  key={scene.idx}
+                  className={`prep-outline-item group flex items-center gap-1 ${scene.idx === selectedIdx ? "is-active" : ""}`}
+                  style={{cursor:"pointer"}}
+                  onClick={() => onSelectScene(scene.idx)}
+                >
+                  <div className="prep-outline-glyph">{typeGlyph[scene.type] || "*"}</div>
+                  <div className="prep-outline-copy flex-1 min-w-0">
+                    <div className="prep-outline-title">{scene.title}</div>
+                    <div className="prep-outline-meta">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
                   </div>
-                ))
-              ) : (
-                <div className="intake-empty">No files selected.</div>
-              )}
+                  {onUpdateCampaign && (
+                    <button
+                      type="button"
+                      className="opacity-0 group-hover:opacity-100 text-[#9b7440] hover:text-[#d4af37] text-xs px-1 flex-shrink-0"
+                      onClick={(e) => openEdit(e, scene, scene.idx)}
+                      title="Edit scene"
+                    >✎</button>
+                  )}
+                </div>
+              ))}
             </div>
-          </PrepPanel>
+          ))}
         </div>
 
-        <div className="xl:col-span-4 min-h-0">
-          <PrepPanel title="Parsed Adventure Outline" className="h-full">
-            <div className="parchment intake-summary">
-              {parseResult?.summary || "Summary appears here after parsing."}
+        {onUpdateCampaign && !showForm && (
+          <button type="button" className="nav-glyph-btn intake-parse-btn mt-2 w-full" onClick={openNew}>
+            ＋ New Scene
+          </button>
+        )}
+
+        {showForm && (
+          <div className="mt-2 border border-[#4f341f] rounded p-2 space-y-2 bg-[#120a04]">
+            <div className="text-xs text-[#d4af37] font-heading mb-1">{editIdx !== null ? "Edit Scene" : "New Scene"}</div>
+            <input
+              className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f]"
+              placeholder="Title *"
+              value={form.title}
+              onChange={e => setForm(f => ({...f, title: e.target.value}))}
+            />
+            <input
+              list="act-options"
+              className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f]"
+              placeholder="Act (e.g. Chapter 1)"
+              value={form.act}
+              onChange={e => setForm(f => ({...f, act: e.target.value}))}
+            />
+            <datalist id="act-options">{existingActs.map(a => <option key={a} value={a} />)}</datalist>
+            <div className="flex gap-2">
+              <select
+                className="flex-1 bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1"
+                value={form.type}
+                onChange={e => setForm(f => ({...f, type: e.target.value}))}
+              >
+                {["combat","social","exploration","mystery","travel"].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <input
+                className="flex-1 bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f]"
+                placeholder="Location"
+                value={form.location}
+                onChange={e => setForm(f => ({...f, location: e.target.value}))}
+              />
             </div>
-            <div className="subhead">Acts & Scenes</div>
-            <div className="intake-act-list">
-              {acts.map((act) => (
-                <article key={act.title} className="intake-act-card">
-                  <h3>{act.title}</h3>
-                  <ul>
-                    {(act.scenes || []).map((scene, sceneIdx) => (
-                      <li key={`${act.title}-${sceneIdx}`}>{scene}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
+            <textarea
+              className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f] resize-none"
+              placeholder="Read-aloud text..."
+              rows={3}
+              value={form.read_aloud}
+              onChange={e => setForm(f => ({...f, read_aloud: e.target.value}))}
+            />
+            <textarea
+              className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f] resize-none"
+              placeholder="GM notes..."
+              rows={2}
+              value={form.notes}
+              onChange={e => setForm(f => ({...f, notes: e.target.value}))}
+            />
+            <div className="flex gap-2">
+              <button type="button" className="flex-1 nav-glyph-btn intake-parse-btn is-active text-xs py-1" onClick={saveScene} disabled={!form.title.trim()}>
+                Save Scene
+              </button>
+              <button type="button" className="flex-1 nav-glyph-btn intake-parse-btn text-xs py-1" onClick={() => { setShowForm(false); setEditIdx(null); }}>
+                Cancel
+              </button>
             </div>
-          </PrepPanel>
+          </div>
+        )}
+      </PrepPanel>
+    </div>
+  );
+};
+
+const PrepMiddleColumn = ({ campaignData, selectedIdx }) => {
+  const [tab, setTab] = useState("readaloud");
+  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
+  const scene = scenes[selectedIdx] || scenes[0];
+  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
+  const reveals = campaignData?.reveals?.length ? campaignData.reveals : DEFAULT_REVEALS;
+  const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
+
+  return (
+    <div className="h-full min-h-0">
+      <PrepPanel title={`Scene: ${scene.title}`} className="h-full">
+        {(scene.difficulty || scene.rewards || scene.location) && (
+          <div className="flex gap-2 flex-wrap text-xs mb-2">
+            {scene.location && <span className="text-[#7a5a30]">📍 {scene.location}</span>}
+            {scene.difficulty && scene.difficulty !== "none" && (
+              <span className={`border rounded px-2 py-0.5 ${scene.difficulty === "deadly" ? "border-red-900 text-red-400" : scene.difficulty === "hard" ? "border-orange-900 text-orange-400" : "border-[#4f341f] text-[#9b7440]"}`}>{scene.difficulty}</span>
+            )}
+            {scene.rewards && <span className="text-[#9b7440]">Rewards: {scene.rewards}</span>}
+          </div>
+        )}
+        <div className="tab-strip prep-main-tabs">
+          <button type="button" className={tab === "readaloud" ? "tab-active" : ""} onClick={() => setTab("readaloud")}>
+            Read-aloud
+          </button>
+          <button type="button" className={tab === "npcs" ? "tab-active" : ""} onClick={() => setTab("npcs")}>
+            Important NPCs
+          </button>
+          <button type="button" className={tab === "secrets" ? "tab-active" : ""} onClick={() => setTab("secrets")}>
+            Secrets &amp; Clues
+          </button>
+          <button type="button" className={tab === "notes" ? "tab-active" : ""} onClick={() => setTab("notes")}>
+            GM Notes
+          </button>
         </div>
 
+        {tab === "readaloud" && (
+          <div className="parchment prep-readaloud">
+            {scene.read_aloud || "No read-aloud text extracted for this scene."}
+          </div>
+        )}
+
+        {tab === "npcs" && (
+          <div className="prep-npc-grid mt-2">
+            {sceneNpcs.length ? sceneNpcs.map((npc) => (
+              <article key={npc.name} className="prep-npc-card">
+                <div className="prep-npc-face">{npc.name.slice(0, 2).toUpperCase()}</div>
+                <p>{npc.name}</p>
+                <p className="text-xs text-[#9b7440]">{npc.role}</p>
+              </article>
+            )) : (
+              <div className="intake-empty">No NPCs assigned to this scene.</div>
+            )}
+          </div>
+        )}
+
+        {tab === "secrets" && (
+          <div className="prep-reveal-list mt-2">
+            {reveals.map((reveal) => (
+              <div key={reveal.name} className="prep-reveal-row">
+                <span className={`prep-reveal-dot ${reveal.type === "hook" ? "green" : reveal.type === "secret" ? "red" : "amber"}`} />
+                <span className="prep-reveal-name">{reveal.name}</span>
+                <span className="prep-reveal-status">{reveal.when || ""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tab === "notes" && (
+          <div className="parchment prep-readaloud mt-2">
+            {scene.notes || "No GM notes for this scene."}
+          </div>
+        )}
+      </PrepPanel>
+    </div>
+  );
+};
+
+const PrepRightColumn = ({ campaignData, selectedIdx }) => {
+  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
+  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
+  const scene = scenes[selectedIdx] || scenes[0];
+  const [selectedNpc, setSelectedNpc] = useState(0);
+
+  const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
+  const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs;
+  const npc = displayNpcs[selectedNpc] || displayNpcs[0];
+
+  return (
+    <div className="h-full min-h-0">
+      <PrepPanel title="NPC Configuration" className="h-full">
+        {npc ? (
+          <>
+            <div className="prep-profile-head">
+              <div className="prep-avatar">{npc.name.slice(0, 2).toUpperCase()}</div>
+              <div className="prep-name-block">
+                <span>Name:</span>
+                <strong>{npc.name}</strong>
+              </div>
+            </div>
+
+            <div className="prep-stack">
+              <label className="prep-field">
+                <span>Role</span>
+                <select value={selectedNpc} onChange={e => setSelectedNpc(Number(e.target.value))}>
+                  {displayNpcs.map((n, i) => (
+                    <option key={n.name} value={i}>{n.name}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="prep-field">
+                <span>Faction</span>
+                <input type="text" readOnly value={npc.faction || "—"} className="bg-transparent border-none text-[#c8a050]" />
+              </label>
+            </div>
+
+            {npc.personality && (
+              <>
+                <div className="subhead">Personality:</div>
+                <ul className="prep-notes">
+                  {npc.personality.split(". ").filter(Boolean).map((p, i) => (
+                    <li key={i}>{p.replace(/\.$/, "")}.</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {npc.motivation && (
+              <>
+                <div className="subhead">Motivation:</div>
+                <p className="text-xs text-[#b08040] px-1">{npc.motivation}</p>
+              </>
+            )}
+
+            {npc.secrets && (
+              <>
+                <div className="subhead">Secrets:</div>
+                <p className="text-xs text-[#8a6030] px-1 italic">{npc.secrets}</p>
+              </>
+            )}
+          </>
+        ) : (
+          <div className="intake-empty">No NPC data loaded. Use Doc Intake to import your adventure.</div>
+        )}
+      </PrepPanel>
+    </div>
+  );
+};
+
+const PrepRoom = ({ view, onNavigate, campaignData, onUpdateCampaign }) => {
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  return (
+    <div className="dm-shell dm-fit prep-shell mx-auto">
+      <PrepHeader view={view} onNavigate={onNavigate} campaignData={campaignData} />
+      <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
+        <div className="xl:col-span-3 min-h-0">
+          <PrepLeftColumn campaignData={campaignData} selectedIdx={selectedIdx} onSelectScene={setSelectedIdx} onUpdateCampaign={onUpdateCampaign} />
+        </div>
+        <div className="xl:col-span-5 min-h-0">
+          <PrepMiddleColumn campaignData={campaignData} selectedIdx={selectedIdx} />
+        </div>
         <div className="xl:col-span-4 min-h-0">
-          <PrepPanel title="Prep Essentials" className="h-full">
-            <div className="subhead">NPC Candidates</div>
-            <ul className="intake-pill-list">
-              {npcs.map((npc) => (
-                <li key={npc}>{npc}</li>
-              ))}
-            </ul>
-
-            <div className="subhead">Location Candidates</div>
-            <ul className="intake-pill-list">
-              {locations.map((location) => (
-                <li key={location}>{location}</li>
-              ))}
-            </ul>
-
-            <div className="subhead">Clues & Reveals</div>
-            <ul className="intake-pill-list">
-              {reveals.map((reveal) => (
-                <li key={reveal}>{reveal}</li>
-              ))}
-            </ul>
-          </PrepPanel>
+          <PrepRightColumn campaignData={campaignData} selectedIdx={selectedIdx} />
         </div>
       </section>
     </div>
   );
 };
 
+// ─── Doc Intake ─────────────────────────────────────────────────────────────
+
+const IntakeHeader = ({ view, onNavigate, campaignData }) => (
+  <header className="prep-header intake-header">
+    <div className="header-glow" />
+    <ViewTabs view={view} onNavigate={onNavigate} className="prep-header-bar nav-tab-bar" />
+    <div className="relative z-10 text-center">
+      <h1 className="font-heading text-[clamp(1.8rem,2.35vw,3rem)] leading-[1.05] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08]">
+        GM Voice Studio - Doc Intake
+      </h1>
+      <p className="font-heading text-[clamp(1rem,1.5vw,1.85rem)] leading-[1.05] text-[#d8b36f]">
+        {campaignData?.title ? `Campaign loaded: ${campaignData.title}` : "Upload docs · AI extracts · Everything feeds your session"}
+      </p>
+    </div>
+  </header>
+);
+
+const TYPE_BADGE = { hook: "green", secret: "red", clue: "amber", twist: "amber" };
+
+const DetailDrawer = ({ item, onClose, onLightbox }) => {
+  if (!item) return null;
+  const { type, data } = item;
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end" onClick={onClose}>
+      <div className="w-full max-w-sm h-full bg-[#1a0f06] border-l-2 border-[#4f341f] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-[#4f341f] bg-[#120a04]">
+          <div className="font-heading text-[#d4af37] text-sm truncate">
+            {type === "scene" && `Scene: ${data.title}`}
+            {type === "npc" && `NPC: ${data.name}`}
+            {type === "location" && `Location: ${data.name}`}
+            {type === "reveal" && `${data.type || "Reveal"}: ${data.name}`}
+            {type === "item" && `Item: ${data.name}`}
+          </div>
+          <button type="button" onClick={onClose} className="text-[#9b7440] hover:text-[#d4af37] text-2xl ml-2 flex-shrink-0 leading-none">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {type === "scene" && <>
+            <div className="flex gap-2 flex-wrap text-xs">
+              {data.act && <span className="border border-[#4f341f] rounded px-2 py-0.5 text-[#9b7440]">{data.act}</span>}
+              {data.type && <span className="border border-[#4f341f] rounded px-2 py-0.5 text-[#9b7440]">{data.type}</span>}
+              {data.difficulty && data.difficulty !== "none" && (
+                <span className={`border rounded px-2 py-0.5 ${data.difficulty === "deadly" ? "border-red-900 text-red-400" : data.difficulty === "hard" ? "border-orange-900 text-orange-400" : "border-[#4f341f] text-[#9b7440]"}`}>{data.difficulty}</span>
+              )}
+            </div>
+            {data.location && <p className="text-xs text-[#7a5a30]">Location: {data.location}</p>}
+            {data.image_url && <img src={data.image_url} alt={data.title} className="w-full rounded border border-[#4f341f] cursor-pointer object-cover" style={{maxHeight:"140px"}} onClick={() => onLightbox(data.image_url)} />}
+            {data.read_aloud && <><div className="subhead">Read-Aloud</div><div className="parchment text-sm">{data.read_aloud}</div></>}
+            {data.npcs?.length > 0 && <><div className="subhead">NPCs in Scene</div><div className="flex flex-wrap gap-1">{data.npcs.map(n => <span key={n} className="border border-[#4f341f] rounded px-2 py-0.5 text-xs text-[#9b7440]">{n}</span>)}</div></>}
+            {data.rewards && <><div className="subhead">Rewards</div><p className="text-xs text-[#9b7440]">{data.rewards}</p></>}
+            {data.notes && <><div className="subhead">GM Notes</div><p className="text-xs text-[#7a5a30] italic">{data.notes}</p></>}
+          </>}
+
+          {type === "npc" && <>
+            <div className="flex gap-3 items-start">
+              {data.image_url
+                ? <img src={data.image_url} alt={data.name} className="w-20 h-20 object-cover rounded border border-[#4f341f] flex-shrink-0 cursor-pointer" onClick={() => onLightbox(data.image_url)} />
+                : <div className="w-20 h-20 flex-shrink-0 rounded border border-[#4f341f] bg-[#120a04] flex items-center justify-center text-[#4f341f] text-2xl font-bold">{data.name.slice(0,2).toUpperCase()}</div>
+              }
+              <div>
+                <div className="flex gap-2 flex-wrap text-xs mb-1">
+                  <span className="border border-[#4f341f] rounded px-2 py-0.5 text-[#9b7440]">{data.role}</span>
+                  {data.faction && <span className="text-[#7a5a30]">{data.faction}</span>}
+                </div>
+                <div className="flex gap-3 text-xs text-[#c8a050]">
+                  {data.hp && <span>HP {data.hp}</span>}
+                  {data.ac ? <span>AC {data.ac}</span> : null}
+                  {data.cr && <span>{data.cr}</span>}
+                </div>
+              </div>
+            </div>
+            {data.personality && <><div className="subhead">Personality</div><p className="text-xs text-[#9b7440] italic">{data.personality}</p></>}
+            {data.motivation && <><div className="subhead">Motivation</div><p className="text-xs text-[#b08040]">{data.motivation}</p></>}
+            {data.secrets && <><div className="subhead">Secrets</div><p className="text-xs text-[#7a5a30] italic">{data.secrets}</p></>}
+          </>}
+
+          {type === "location" && <>
+            {data.scene && <p className="text-xs text-[#7a5a30]">Scene: {data.scene}</p>}
+            <div className="subhead">Description</div>
+            <p className="text-sm text-[#c8a050]">{data.description || "No description available."}</p>
+          </>}
+
+          {type === "reveal" && <>
+            <div className="flex gap-2 items-center mb-1">
+              <span className={`prep-reveal-dot ${TYPE_BADGE[data.type] || "amber"}`} />
+              <span className="text-xs border border-[#4f341f] rounded px-2 py-0.5 text-[#9b7440]">{data.type}</span>
+            </div>
+            {data.when && <><div className="subhead">When Triggered</div><p className="text-sm text-[#c8a050]">{data.when}</p></>}
+          </>}
+
+          {type === "item" && <>
+            {data.magical && <span className="text-xs border border-amber-800 rounded px-2 py-0.5 text-amber-400">Magical</span>}
+            {data.scene && <p className="text-xs text-[#7a5a30] mt-1">Found in: {data.scene}</p>}
+            <div className="subhead">Description</div>
+            <p className="text-sm text-[#c8a050]">{data.description || "No description."}</p>
+          </>}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => {
+  const [files, setFiles] = useState([]);
+  const [isParsing, setIsParsing] = useState(false);
+  const [isExtractingImages, setIsExtractingImages] = useState(false);
+  const [parseError, setParseError] = useState("");
+  const [parseResult, setParseResult] = useState(null);
+  const [images, setImages] = useState({ embedded: [], pages: [] });
+  const [saved, setSaved] = useState(false);
+  const [activePanel, setActivePanel] = useState("outline");
+  const [lightbox, setLightbox] = useState(null); // URL of enlarged image
+  const [detailItem, setDetailItem] = useState(null); // {type, data} for detail drawer
+  const [expandedActs, setExpandedActs] = useState(new Set()); // which chapter headers are open
+
+  const onFileChange = (e) => {
+    setFiles(Array.from(e.target.files || []));
+    setParseError("");
+    setSaved(false);
+  };
+
+  const runParse = async (endpoint) => {
+    if (!files.length) {
+      setParseError("Select at least one .txt, .md, or .pdf file.");
+      return;
+    }
+    setParseError("");
+    setIsParsing(true);
+    setParseResult(null);
+    try {
+      const formData = new FormData();
+      files.forEach((f) => formData.append("files", f));
+      const res = await fetch(endpoint, { method: "POST", body: formData });
+      const raw = await res.text();
+      let payload = null;
+      try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+      if (!res.ok) throw new Error((payload?.detail) || raw || `Parse failed (${res.status})`);
+      if (!payload) throw new Error("Parse returned no data.");
+      setParseResult(payload);
+      // Auto-expand the first act/chapter in the outline
+      const firstAct = payload?.scenes?.[0]?.act || (payload?.acts?.[0]?.title);
+      if (firstAct) setExpandedActs(new Set([firstAct]));
+      // Auto-switch to images tab if AI parse returned images
+      if (payload?.images?.length > 0) {
+        setActivePanel("images");
+      }
+    } catch (err) {
+      setParseError(err.message || "Unable to parse documents.");
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  const runImageExtract = async () => {
+    if (!files.length) {
+      setParseError("Select at least one PDF file first.");
+      return;
+    }
+    setParseError("");
+    setIsExtractingImages(true);
+    try {
+      const formData = new FormData();
+      files.forEach((f) => formData.append("files", f));
+      const res = await fetch("/adventure/images", { method: "POST", body: formData });
+      const raw = await res.text();
+      let payload = null;
+      try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
+      if (!res.ok) throw new Error((payload?.detail) || `Image extraction failed (${res.status})`);
+      setImages({ embedded: payload.embedded || [], pages: payload.pages || [] });
+      setActivePanel("images");
+    } catch (err) {
+      setParseError(err.message || "Image extraction failed.");
+    } finally {
+      setIsExtractingImages(false);
+    }
+  };
+
+  const saveToSession = () => {
+    if (!parseResult) return;
+    onSaveCampaign(parseResult);
+    setSaved(true);
+  };
+
+  const npcs = parseResult?.npcs?.length ? parseResult.npcs : [];
+  const party = parseResult?.party?.length ? parseResult.party : [];
+  const scenes = parseResult?.scenes?.length ? parseResult.scenes : [];
+  const locations = parseResult?.locations?.length ? parseResult.locations : [];
+  const reveals = parseResult?.reveals?.length ? parseResult.reveals : [];
+  const items = parseResult?.items?.length ? parseResult.items : [];
+
+  // Quick parse result (regex-based) also has acts/npcs as strings
+  const acts = parseResult?.acts || [];
+  const isAiResult = parseResult && typeof parseResult.npcs?.[0] === "object";
+
+  return (
+    <div className="dm-shell dm-fit prep-shell intake-shell mx-auto">
+      <IntakeHeader view={view} onNavigate={onNavigate} campaignData={campaignData} />
+      <section className="min-h-0 grid grid-cols-1 xl:grid-cols-12 gap-3">
+
+        {/* Left: Upload */}
+        <div className="xl:col-span-3 min-h-0">
+          <PrepPanel title="Upload Adventure Docs" className="h-full">
+            <p className="intake-hint">
+              Drop in session notes, module PDFs, or campaign text. AI Parse uses Claude to extract full campaign data.
+            </p>
+
+            <label className="intake-file-pick">
+              <Upload size={16} className="inline mr-1" />
+              <span>Select Files</span>
+              <input type="file" multiple accept=".txt,.md,.pdf" onChange={onFileChange} />
+            </label>
+
+            <div className="flex flex-col gap-2 mt-2">
+              <button
+                type="button"
+                className="nav-glyph-btn intake-parse-btn is-active"
+                onClick={() => runParse("/adventure/ai-parse")}
+                disabled={isParsing || isExtractingImages}
+              >
+                <Zap size={14} className="inline mr-1" />
+                {isParsing ? "Parsing with AI..." : "AI Parse (Claude)"}
+              </button>
+              <button
+                type="button"
+                className="nav-glyph-btn intake-parse-btn"
+                onClick={() => runParse("/adventure/parse")}
+                disabled={isParsing || isExtractingImages}
+              >
+                {isParsing ? "Parsing..." : "Quick Parse (fast)"}
+              </button>
+              <button
+                type="button"
+                className="nav-glyph-btn intake-parse-btn"
+                onClick={runImageExtract}
+                disabled={isParsing || isExtractingImages}
+              >
+                <Map size={14} className="inline mr-1" />
+                {isExtractingImages ? "Extracting images..." : "Extract Images"}
+              </button>
+            </div>
+
+            {parseError && <div className="intake-error mt-2">{parseError}</div>}
+
+            <div className="subhead mt-3">Queued Files</div>
+            <div className="intake-file-list">
+              {files.length ? files.map((f) => (
+                <div key={`${f.name}-${f.size}`} className="intake-file-item">
+                  <span>{f.name}</span>
+                  <small>{Math.max(1, Math.round(f.size / 1024))} KB</small>
+                </div>
+              )) : (
+                <div className="intake-empty">No files selected.</div>
+              )}
+            </div>
+
+            {parseResult && (
+              <button
+                type="button"
+                className={`nav-glyph-btn intake-parse-btn mt-4 ${saved ? "is-active" : ""}`}
+                onClick={saveToSession}
+              >
+                {saved
+                  ? <><CheckCircle size={14} className="inline mr-1" />Saved to Campaign</>
+                  : <><Save size={14} className="inline mr-1" />Save to Campaign</>
+                }
+              </button>
+            )}
+
+            {parseResult?.files?.length && (
+              <div className="mt-3 text-xs text-[#7a5a30]">
+                {parseResult.files.map(f => (
+                  <div key={f.name}>{f.name} — {(f.characters / 1000).toFixed(1)}k chars{f.page_count ? ` · ${f.page_count}p` : ""}</div>
+                ))}
+              </div>
+            )}
+          </PrepPanel>
+        </div>
+
+        {/* Middle: Outline / Summary / Images */}
+        <div className="xl:col-span-4 min-h-0">
+          <PrepPanel title="Parsed Adventure Outline" className="h-full">
+            <div className="tab-strip mb-2">
+              <button type="button" className={activePanel === "outline" ? "tab-active" : ""} onClick={() => setActivePanel("outline")}>
+                Outline
+              </button>
+              <button type="button" className={activePanel === "locations" ? "tab-active" : ""} onClick={() => setActivePanel("locations")}>
+                Locations
+              </button>
+              <button type="button" className={activePanel === "party" ? "tab-active" : ""} onClick={() => setActivePanel("party")}>
+                Party
+              </button>
+              <button type="button" className={activePanel === "items" ? "tab-active" : ""} onClick={() => setActivePanel("items")}>
+                Items {items.length > 0 ? `(${items.length})` : ""}
+              </button>
+              <button type="button" className={activePanel === "images" ? "tab-active" : ""} onClick={() => setActivePanel("images")}>
+                Images {(images.embedded.length + images.pages.length) > 0 ? `(${images.embedded.length + images.pages.length})` : ""}
+              </button>
+            </div>
+
+            {parseResult?.summary && activePanel !== "images" && (
+              <div className="parchment intake-summary mb-3">
+                {parseResult.summary}
+              </div>
+            )}
+
+            {!parseResult && activePanel !== "images" && (
+              <div className="intake-empty">Upload docs and click a Parse button to see your adventure outline here.</div>
+            )}
+
+            {/* Images gallery panel */}
+            {activePanel === "images" && (
+              <div className="overflow-y-auto space-y-3">
+                {/* AI-assigned images from ai-parse (rich metadata) */}
+                {parseResult?.images?.length > 0 ? (
+                  <>
+                    <div className="subhead">Extracted Images ({parseResult.images.length}) — auto-assigned</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {parseResult.images.map((img) => (
+                        <div key={img.idx} className="relative group cursor-pointer" onClick={() => setLightbox(img.url)}>
+                          <img
+                            src={img.url}
+                            alt={img.label || `Image ${img.idx}`}
+                            className="w-full rounded border border-[#4f341f] group-hover:border-[#d4af37] object-cover"
+                            style={{ maxHeight: "120px" }}
+                          />
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[#d4af37] text-[10px] px-1 py-0.5 rounded-b truncate">
+                            {img.assigned_to ? `→ ${img.assigned_to}` : img.type || "illustration"}
+                            {img.label ? ` · ${img.label}` : ""}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : images.embedded.length > 0 ? (
+                  <>
+                    <div className="subhead">Maps &amp; Artwork ({images.embedded.length})</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {images.embedded.map((url, i) => (
+                        <img key={i} src={url} alt={`Image ${i + 1}`}
+                          className="w-full rounded border border-[#4f341f] cursor-pointer hover:border-[#d4af37] object-cover"
+                          style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="intake-empty">Run "AI Parse" to automatically extract and assign images, or use "Extract Images" for raw extraction.</div>
+                )}
+                {images.pages.length > 0 && (
+                  <>
+                    <div className="subhead mt-2">Page Thumbnails ({images.pages.length})</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {images.pages.map((url, i) => (
+                        <img key={i} src={url} alt={`Page ${i + 1}`}
+                          className="w-full rounded border border-[#4f341f] cursor-pointer hover:border-[#d4af37] object-cover"
+                          style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {activePanel === "outline" && (
+              <>
+                {isAiResult && scenes.length > 0 && (() => {
+                  const actGroups = scenes.reduce((acc, scene) => {
+                    const act = scene.act || "Scenes";
+                    if (!acc[act]) acc[act] = [];
+                    acc[act].push(scene);
+                    return acc;
+                  }, {});
+                  return (
+                    <div className="space-y-1">
+                      {Object.entries(actGroups).map(([act, actScenes]) => {
+                        const isOpen = expandedActs.has(act);
+                        const toggle = () => setExpandedActs(prev => {
+                          const next = new Set(prev);
+                          isOpen ? next.delete(act) : next.add(act);
+                          return next;
+                        });
+                        return (
+                          <div key={act} className="border border-[#4f341f] rounded overflow-hidden">
+                            {/* Chapter header — clickable to expand/collapse */}
+                            <button
+                              type="button"
+                              className="w-full flex items-center justify-between px-3 py-2 bg-[#1a0f06] hover:bg-[#2a1a0a] text-left"
+                              onClick={toggle}
+                            >
+                              <span className="font-heading text-[#d4af37] text-sm">{act}</span>
+                              <span className="text-[#9b7440] text-xs flex items-center gap-2">
+                                <span>{actScenes.length} scene{actScenes.length !== 1 ? "s" : ""}</span>
+                                <span className="text-base leading-none">{isOpen ? "▲" : "▼"}</span>
+                              </span>
+                            </button>
+
+                            {/* Scenes — only visible when chapter is open */}
+                            {isOpen && (
+                              <ul className="divide-y divide-[#2a1a0a]">
+                                {actScenes.map((scene, i) => (
+                                  <li key={i}
+                                    className="flex gap-2 items-start cursor-pointer hover:bg-[#2a1a0a] px-3 py-2"
+                                    onClick={() => setDetailItem({type:"scene", data:scene})}>
+                                    {scene.image_url && (
+                                      <img src={scene.image_url} alt={scene.title}
+                                        className="w-12 h-10 object-cover rounded border border-[#4f341f] flex-shrink-0 mt-0.5"
+                                        onClick={e => { e.stopPropagation(); setLightbox(scene.image_url); }} />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-semibold text-[#c8a050] text-sm">{scene.title}</div>
+                                      <div className="flex gap-1 flex-wrap mt-0.5">
+                                        {scene.type && <span className="text-[#9b7440] text-xs">({scene.type})</span>}
+                                        {scene.difficulty && scene.difficulty !== "none" && (
+                                          <span className={`text-xs ${scene.difficulty === "deadly" ? "text-red-400" : scene.difficulty === "hard" ? "text-orange-400" : "text-[#7a5a30]"}`}>{scene.difficulty}</span>
+                                        )}
+                                        {scene.location && <span className="text-xs text-[#7a5a30]">· {scene.location}</span>}
+                                      </div>
+                                      {scene.read_aloud && (
+                                        <div className="text-xs text-[#7a5a30] italic mt-0.5 line-clamp-2">{scene.read_aloud.slice(0, 100)}…</div>
+                                      )}
+                                    </div>
+                                    <span className="text-[#4f341f] text-xs flex-shrink-0 mt-1">›</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+                {!isAiResult && acts.length > 0 && (() => {
+                  return (
+                    <div className="space-y-1">
+                      {acts.map((act) => {
+                        const isOpen = expandedActs.has(act.title);
+                        const toggle = () => setExpandedActs(prev => {
+                          const next = new Set(prev);
+                          isOpen ? next.delete(act.title) : next.add(act.title);
+                          return next;
+                        });
+                        return (
+                          <div key={act.title} className="border border-[#4f341f] rounded overflow-hidden">
+                            <button type="button"
+                              className="w-full flex items-center justify-between px-3 py-2 bg-[#1a0f06] hover:bg-[#2a1a0a] text-left"
+                              onClick={toggle}>
+                              <span className="font-heading text-[#d4af37] text-sm">{act.title}</span>
+                              <span className="text-[#9b7440] text-xs">{isOpen ? "▲" : "▼"}</span>
+                            </button>
+                            {isOpen && (
+                              <ul className="divide-y divide-[#2a1a0a]">
+                                {(act.scenes || []).map((scene, i) => (
+                                  <li key={i} className="px-3 py-1.5 text-sm text-[#c8a050]">{scene}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
+
+            {activePanel === "items" && (
+              <div className="space-y-2">
+                {items.length ? items.map((item, i) => (
+                  <div key={item.name || i} className="intake-act-card cursor-pointer hover:border-[#d4af37]"
+                    onClick={() => setDetailItem({type:"item", data:item})}>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="truncate">{item.name}</h3>
+                      {item.magical && <span className="text-xs border border-amber-800 rounded px-1 text-amber-400 flex-shrink-0">magical</span>}
+                    </div>
+                    {item.scene && <p className="text-xs text-[#7a5a30]">{item.scene}</p>}
+                    {item.description && <p className="text-xs text-[#9b7440] mt-0.5">{item.description}</p>}
+                  </div>
+                )) : (
+                  <div className="intake-empty">No items/treasure extracted yet. Run AI Parse on an adventure with loot.</div>
+                )}
+              </div>
+            )}
+
+            {activePanel === "locations" && (
+              <div className="space-y-2">
+                {locations.length ? locations.map((loc) => (
+                  <div key={loc.name || loc} className="intake-act-card cursor-pointer hover:border-[#d4af37]"
+                    onClick={() => isAiResult && setDetailItem({type:"location", data:loc})}>
+                    <h3>{loc.name || loc}</h3>
+                    {loc.description && <p className="text-xs text-[#9b7440]">{loc.description}</p>}
+                  </div>
+                )) : (
+                  <div className="intake-empty">No locations extracted yet.</div>
+                )}
+                {!isAiResult && parseResult?.locations?.length > 0 && (
+                  <ul className="intake-pill-list">
+                    {parseResult.locations.map(l => <li key={l}>{l}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {activePanel === "party" && (
+              <div className="space-y-2">
+                {party.length ? party.map((pc) => (
+                  <div key={pc.name} className="intake-act-card">
+                    <h3>{pc.name}</h3>
+                    <p className="text-xs text-[#9b7440]">
+                      {[pc.race, pc.class_].filter(Boolean).join(" ")}
+                      {pc.level ? ` · Lv ${pc.level}` : ""}
+                      {pc.hp ? ` · HP ${pc.hp}` : ""}
+                      {pc.ac ? ` · AC ${pc.ac}` : ""}
+                    </p>
+                  </div>
+                )) : (
+                  <div className="intake-empty">No player characters found in the uploaded docs.</div>
+                )}
+              </div>
+            )}
+          </PrepPanel>
+        </div>
+
+        {/* Right: NPCs + Reveals */}
+        <div className="xl:col-span-5 min-h-0">
+          <PrepPanel title="Extracted Campaign Data" className="h-full">
+
+            <div className="subhead">NPC Roster</div>
+            {isAiResult && npcs.length ? (
+              <div className="space-y-2 mb-4">
+                {npcs.slice(0, 8).map((npc) => (
+                  <div key={npc.name} className="intake-act-card flex gap-2 cursor-pointer hover:border-[#d4af37]"
+                    onClick={() => setDetailItem({type:"npc", data:npc})}>
+                    {npc.image_url ? (
+                      <img
+                        src={npc.image_url}
+                        alt={npc.name}
+                        className="w-14 h-14 object-cover rounded border border-[#4f341f] flex-shrink-0"
+                        onClick={e => { e.stopPropagation(); setLightbox(npc.image_url); }}
+                      />
+                    ) : (
+                      <div className="w-14 h-14 flex-shrink-0 rounded border border-[#4f341f] bg-[#1a0f06] flex items-center justify-center text-[#4f341f] text-lg font-bold">
+                        {npc.name.slice(0, 2).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <h3 className="truncate">{npc.name}</h3>
+                        <span className="text-xs text-[#9b7440] border border-[#4f341f] rounded px-1 flex-shrink-0">{npc.role}</span>
+                      </div>
+                      {npc.faction && <p className="text-xs text-[#7a5a30]">{npc.faction}</p>}
+                      {npc.personality && <p className="text-xs text-[#9b7440] italic mt-0.5">{npc.personality.slice(0, 80)}{npc.personality.length > 80 ? "…" : ""}</p>}
+                      {npc.motivation && <p className="text-xs text-[#7a5a30]">Wants: {npc.motivation.slice(0, 60)}{npc.motivation.length > 60 ? "…" : ""}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !isAiResult && parseResult?.npcs?.length ? (
+              <ul className="intake-pill-list mb-4">
+                {parseResult.npcs.map(n => <li key={n}>{n}</li>)}
+              </ul>
+            ) : (
+              <div className="intake-empty mb-3">No NPCs extracted yet.</div>
+            )}
+
+            <div className="subhead">Reveals &amp; Plot Hooks</div>
+            {reveals.length ? (
+              <div className="prep-reveal-list">
+                {reveals.map((reveal) => (
+                  <div key={reveal.name || reveal} className="prep-reveal-row cursor-pointer hover:bg-[#2a1a0a] rounded px-1 -mx-1"
+                    onClick={() => isAiResult && setDetailItem({type:"reveal", data:reveal})}>
+                    <span className={`prep-reveal-dot ${TYPE_BADGE[reveal.type] || "amber"}`} />
+                    <span className="prep-reveal-name">{reveal.name || reveal}</span>
+                    <span className="prep-reveal-status text-xs">{reveal.when || reveal.type || ""}</span>
+                  </div>
+                ))}
+              </div>
+            ) : !isAiResult && parseResult?.reveals?.length ? (
+              <ul className="intake-pill-list">
+                {parseResult.reveals.map(r => <li key={r}>{r}</li>)}
+              </ul>
+            ) : (
+              <div className="intake-empty">No reveals extracted yet.</div>
+            )}
+          </PrepPanel>
+        </div>
+
+      </section>
+
+      {/* Detail drawer */}
+      <DetailDrawer item={detailItem} onClose={() => setDetailItem(null)} onLightbox={setLightbox} />
+
+      {/* Lightbox overlay */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 cursor-pointer"
+          onClick={() => setLightbox(null)}
+        >
+          <img
+            src={lightbox}
+            alt="Full size"
+            className="max-w-[90vw] max-h-[90vh] rounded border-2 border-[#d4af37] shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          />
+          <button
+            type="button"
+            className="absolute top-4 right-6 text-[#d4af37] text-3xl font-bold"
+            onClick={() => setLightbox(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── App Root ────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [view, setView] = useState(() => {
-    if (typeof window === "undefined") {
-      return "live";
-    }
+    if (typeof window === "undefined") return "live";
     return resolveViewFromPath(window.location.pathname);
   });
+
+  const [campaignData, setCampaignData] = useState(() => {
+    try {
+      const saved = localStorage.getItem("gm_campaign_data");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const saveCampaignData = (data) => {
+    setCampaignData(data);
+    try {
+      localStorage.setItem("gm_campaign_data", JSON.stringify(data));
+    } catch {
+      /* storage full or unavailable */
+    }
+  };
 
   useEffect(() => {
     const onPopState = () => setView(resolveViewFromPath(window.location.pathname));
@@ -593,10 +1333,7 @@ export default function App() {
   }, []);
 
   const navigateTo = (nextView) => {
-    if (typeof window === "undefined") {
-      setView(nextView);
-      return;
-    }
+    if (typeof window === "undefined") { setView(nextView); return; }
     setView(nextView);
     const target = nextView === "prep" ? PREP_PATH : nextView === "intake" ? INTAKE_PATH : LIVE_PATH;
     if (normalizePath(window.location.pathname) !== normalizePath(target)) {
@@ -606,9 +1343,13 @@ export default function App() {
 
   return (
     <main className={`app-stage min-h-[100dvh] overflow-x-hidden overflow-y-auto p-2 md:p-3 ${view !== "live" ? "prep-mode" : ""}`}>
-      {view === "prep" ? <PrepRoom view={view} onNavigate={navigateTo} /> : null}
-      {view === "intake" ? <AdventureIntake view={view} onNavigate={navigateTo} /> : null}
-      {view === "live" ? <LiveBoard view={view} onNavigate={navigateTo} /> : null}
+      {view === "prep" ? (
+        <PrepRoom view={view} onNavigate={navigateTo} campaignData={campaignData} onUpdateCampaign={saveCampaignData} />
+      ) : view === "intake" ? (
+        <AdventureIntake view={view} onNavigate={navigateTo} campaignData={campaignData} onSaveCampaign={saveCampaignData} />
+      ) : (
+        <LiveBoard view={view} onNavigate={navigateTo} campaignData={campaignData} />
+      )}
     </main>
   );
 }

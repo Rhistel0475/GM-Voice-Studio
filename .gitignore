@@ -38,3 +38,4 @@ preview-react/node_modules/
 
 # Optional: large generated files (uncomment if you don't want them in repo)
 # test.wav
+*.pdf

@@ -38,7 +38,7 @@ def generate_npc_stream(
     Stream NPC profile text tokens from Claude.
     Yields raw text chunks (strings) as they arrive.
     """
-    from llm_brain import _get_client
+    from anthropic_client import get_client as _get_client
 
     user_message = (
         f"Genre: {genre.strip()}\n"

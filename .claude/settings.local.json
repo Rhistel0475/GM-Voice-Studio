@@ -32,7 +32,19 @@
       "Bash(nvm install 20)",
       "Bash(nvm use 20)",
       "Bash(node --version)",
-      "Bash(.venv/bin/python -c \"from ai_service import generate_dialogue; print\\(''config OK''\\)\")"
+      "Bash(.venv/bin/python -c \"from ai_service import generate_dialogue; print\\(''config OK''\\)\")",
+      "Bash(.venv/bin/python -c \":*)",
+      "Bash(source ~/.nvm/nvm.sh)",
+      "Bash(npm run build)",
+      "Bash(python -c \"from ai_service import ai_full_parse; print\\(''ai_full_parse OK''\\)\")",
+      "Bash(python -c \"import server; print\\(''server import OK''\\)\")",
+      "Bash(.venv/bin/python -c \"from ai_service import ai_full_parse; print\\(''ai_full_parse OK''\\)\")",
+      "Bash(.venv/bin/python -c \"import server; print\\(''server import OK''\\)\")",
+      "Bash(curl -s http://localhost:7862/health)",
+      "Bash(curl -s -X POST http://localhost:7862/adventure/ai-parse -F \"files=@D0-HollowsLastHope.pdf\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(.venv/bin/python -c \"from pypdf import PdfReader; r=PdfReader\\(''D0-HollowsLastHope.pdf''\\); imgs=[]; [imgs.extend\\(list\\(p.images\\)\\) for p in r.pages]; print\\(f''Embedded images in PDF: {len\\(imgs\\)}''\\)\")",
+      "Bash(.venv/bin/pip install pdf2image -q)"
     ]
   }
 }
