@@ -29,3 +29,21 @@ def get_db():
 def init_db() -> None:
     from models import Campaign, NPC, Scene, Location  # noqa: F401 — registers models
     Base.metadata.create_all(bind=engine)
+    _ensure_runtime_migrations()
+
+
+def _ensure_runtime_migrations() -> None:
+    """Apply lightweight SQLite migrations for columns added after initial deployment."""
+    if engine.url.get_backend_name() != "sqlite":
+        return
+    _ensure_sqlite_column("campaigns", "data_json", "TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_sqlite_column(table_name: str, column_name: str, column_def: str) -> None:
+    """Add a SQLite column if it doesn't already exist."""
+    with engine.begin() as conn:
+        rows = conn.exec_driver_sql(f"PRAGMA table_info({table_name})").fetchall()
+        existing = {row[1] for row in rows}  # row[1] is column name
+        if column_name in existing:
+            return
+        conn.exec_driver_sql(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}")

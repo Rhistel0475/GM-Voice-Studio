@@ -36,7 +36,8 @@ ABUSE_CLONE_PER_IP_PER_HOUR = int(os.environ.get("ABUSE_CLONE_PER_IP_PER_HOUR", 
 
 # Audio pipeline: clone sample constraints
 CLONE_MIN_DURATION_SEC = float(os.environ.get("CLONE_MIN_DURATION_SEC", "3.0"))
-CLONE_MAX_DURATION_SEC = float(os.environ.get("CLONE_MAX_DURATION_SEC", "30.0"))  # SpeakerEmbedder max
+# Raise default clone limit beyond 30s; override via .env when needed.
+CLONE_MAX_DURATION_SEC = float(os.environ.get("CLONE_MAX_DURATION_SEC", "60.0"))
 CLONE_TARGET_SAMPLE_RATE = 16000
 
 # GDPR: retention (document your policy; delete via DELETE /voices/{voice_id})
@@ -57,6 +58,13 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "").strip()
 PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "co-dm-index").strip()
+
+# Co-DM speech-to-text (Sprint 1)
+DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "").strip()
+DEEPGRAM_MODEL = os.environ.get("DEEPGRAM_MODEL", "nova-3").strip()
+DEEPGRAM_LANGUAGE = os.environ.get("DEEPGRAM_LANGUAGE", "en-US").strip()
+# Auto-dispatch final STT transcripts to Co-DM query path by default.
+AUTO_QUERY_ON_VOICE = os.environ.get("AUTO_QUERY_ON_VOICE", "1").strip().lower() in ("1", "true", "yes", "on")
 
 # Co-DM LLM brain (Sprint 3)
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()

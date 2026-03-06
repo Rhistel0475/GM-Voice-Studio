@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Book,
   Dice5,
@@ -27,6 +27,19 @@ const resolveViewFromPath = (path) => {
   if (normalized.endsWith("/intake")) return "intake";
   return "live";
 };
+const buildWebSocketUrl = (path) => {
+  if (typeof window === "undefined") return "";
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}${path}`;
+};
+const normalizeWakeText = (text) => (text || "")
+  .toLowerCase()
+  .replace(/[^a-z0-9\s]/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+const WAKE_WORD = normalizeWakeText(import.meta.env.VITE_WAKE_WORD || "hey co gm");
+const SILENCE_RMS_THRESHOLD = 0.015;
+const SILENCE_HOLD_MS = 2200;
 
 const WAVE = [20, 45, 28, 60, 35, 70, 26, 52, 41, 63, 30, 47, 22, 58, 37, 66, 29, 49, 31, 54, 24, 62, 34, 57, 27, 64];
 const TOOL_ICONS = [Dice5, Book, Map, ScrollText, Swords, Settings];
@@ -172,10 +185,34 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
   );
 };
 
-const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectNpc }) => {
+const MiddleColumn = ({
+  campaignData,
+  selectedSceneIdx,
+  onSelectScene,
+  onSelectNpc,
+  authFetch,
+  actionLog,
+  coDmQuery,
+  onChangeCoDmQuery,
+  onSubmitCoDmQuery,
+  coDmStatus,
+  isSubmittingQuery,
+  isMicActive,
+  onStartMic,
+  onStopMic,
+  micError,
+  isWakeArmed,
+  onToggleWakeArmed,
+  wakeError,
+  wakePhrase,
+  liveTranscript,
+  autoQueryOnVoice,
+  onToggleAutoQueryOnVoice,
+}) => {
   const [sceneTab, setSceneTab] = useState("text");
   const [isNarrating, setIsNarrating] = useState(false);
   const [narrateError, setNarrateError] = useState("");
+  const actionLogRef = useRef(null);
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
@@ -183,8 +220,15 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
   const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
   const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs.slice(0, 6);
 
+  useEffect(() => {
+    if (sceneTab !== "log") return;
+    const logElement = actionLogRef.current;
+    if (!logElement) return;
+    logElement.scrollTop = logElement.scrollHeight;
+  }, [actionLog, liveTranscript, sceneTab]);
+
   const resolveNarrationVoiceId = async () => {
-    const response = await fetch("/voices/list");
+    const response = await authFetch("/voices/list");
     if (!response.ok) {
       throw new Error("Could not load available voices.");
     }
@@ -202,7 +246,7 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
     setNarrateError("");
     try {
       const voiceId = await resolveNarrationVoiceId();
-      const response = await fetch('/tts/narrate', {
+      const response = await authFetch('/tts/narrate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: scene.read_aloud, voice_id: voiceId }),
@@ -259,6 +303,9 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
           </button>
           <button type="button" className={sceneTab === "party" ? "tab-active" : ""} onClick={() => setSceneTab("party")}>
             Party
+          </button>
+          <button type="button" className={sceneTab === "log" ? "tab-active" : ""} onClick={() => setSceneTab("log")}>
+            Action Log
           </button>
         </div>
 
@@ -336,27 +383,128 @@ const MiddleColumn = ({ campaignData, selectedSceneIdx, onSelectScene, onSelectN
             ))}
           </div>
         )}
+
+        {sceneTab === "log" && (
+          <div className="mt-2 min-h-0 flex-1 flex flex-col gap-2">
+            <div className="text-xs text-[#9b7440] flex items-center justify-between">
+              <span>Live transcription and Co-DM responses</span>
+              <div className="flex items-center gap-2">
+                <span className="uppercase tracking-wide text-[10px]">
+                  {coDmStatus === "open" ? "Connected" : coDmStatus === "connecting" ? "Connecting..." : "Offline (fallback mode)"}
+                </span>
+                <button
+                  type="button"
+                  className="send-btn text-[10px] px-2 py-1"
+                  onClick={isMicActive ? onStopMic : onStartMic}
+                  disabled={coDmStatus !== "open" && !isMicActive}
+                >
+                  {isMicActive ? "Stop Mic" : "Start Mic"}
+                </button>
+                <button
+                  type="button"
+                  className="send-btn text-[10px] px-2 py-1"
+                  onClick={onToggleWakeArmed}
+                >
+                  {isWakeArmed ? "Wake On" : "Wake Off"}
+                </button>
+                <button
+                  type="button"
+                  className="send-btn text-[10px] px-2 py-1"
+                  onClick={onToggleAutoQueryOnVoice}
+                >
+                  {autoQueryOnVoice ? "AutoQuery On" : "AutoQuery Off"}
+                </button>
+              </div>
+            </div>
+            <div className="text-[10px] text-[#8f6a39]">
+              Wake phrase: "{wakePhrase}"
+            </div>
+            {micError && <div className="text-xs text-red-400">{micError}</div>}
+            {wakeError && <div className="text-xs text-red-400">{wakeError}</div>}
+
+            <div ref={actionLogRef} className="flex-1 min-h-[170px] overflow-y-auto border border-[#4f341f] bg-[#120a04] p-2 space-y-2">
+              {actionLog.length ? actionLog.map((entry) => (
+                <div
+                  key={entry.id}
+                  className={`rounded border px-2 py-1 text-xs ${
+                    entry.role === "player"
+                      ? "border-[#5d472a] bg-[#1c120a] text-[#e6c785]"
+                      : entry.role === "error"
+                        ? "border-red-900/70 bg-red-950/20 text-red-300"
+                        : "border-[#37553e] bg-[#102016] text-[#d4f0cf]"
+                  }`}
+                >
+                  <div className="mb-0.5 flex items-center justify-between">
+                    <span className="font-heading text-[10px] tracking-wide uppercase">
+                      {entry.role === "player" ? "Table" : entry.role === "error" ? "System" : "Co-DM"}
+                    </span>
+                    {entry.meta && (
+                      <span className="text-[10px] opacity-80">{entry.meta}</span>
+                    )}
+                  </div>
+                  <div className="whitespace-pre-wrap">{entry.text}</div>
+                </div>
+              )) : (
+                <div className="intake-empty text-xs">
+                  No live entries yet. Ask a rules/lore question below.
+                </div>
+              )}
+              {liveTranscript && (
+                <div className="rounded border border-[#5d472a] bg-[#1a1209] px-2 py-1 text-xs text-[#d7b77d]">
+                  <div className="mb-0.5 flex items-center justify-between">
+                    <span className="font-heading text-[10px] tracking-wide uppercase">Listening...</span>
+                    <span className="text-[10px] opacity-80">STT partial</span>
+                  </div>
+                  <div className="whitespace-pre-wrap">{liveTranscript}</div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Ask Co-DM..."
+                className="chat-input flex-1"
+                value={coDmQuery}
+                onChange={(e) => onChangeCoDmQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && onSubmitCoDmQuery()}
+              />
+              <button
+                type="button"
+                className="send-btn"
+                onClick={onSubmitCoDmQuery}
+                disabled={isSubmittingQuery || !coDmQuery.trim()}
+              >
+                {isSubmittingQuery ? "..." : "Send"}
+              </button>
+            </div>
+          </div>
+        )}
       </Panel>
     </div>
   );
 };
 
-const RightColumn = ({ campaignData, selectedNpcName }) => {
+const RightColumn = ({ campaignData, selectedNpcName, authFetch }) => {
   const [situation, setSituation] = useState("");
   const [dialogue, setDialogue] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [availableVoices, setAvailableVoices] = useState([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
+  const [cloneFile, setCloneFile] = useState(null);
+  const [cloneName, setCloneName] = useState("");
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneStatus, setCloneStatus] = useState("");
 
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const npc = selectedNpcName
     ? (npcs.find(n => n.name === selectedNpcName) || npcs[0])
     : npcs[0];
 
-  useEffect(() => {
+  const reloadVoices = useCallback(() => {
     let cancelled = false;
-    fetch("/voices/list")
+    authFetch("/voices/list")
       .then(r => r.ok ? r.json() : [])
       .then((data) => {
         if (cancelled) return;
@@ -373,14 +521,78 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
         setSelectedVoiceId("");
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [authFetch]);
+
+  useEffect(() => {
+    const cleanup = reloadVoices();
+    return cleanup;
+  }, [reloadVoices]);
+
+  const handleCloneVoice = async () => {
+    if (!cloneFile || isCloning) return;
+    setIsCloning(true);
+    setCloneStatus("Cloning voice...");
+    try {
+      const formData = new FormData();
+      formData.append("audio", cloneFile);
+      formData.append("consent_scope", "tts");
+      if (cloneName.trim()) {
+        formData.append("name", cloneName.trim());
+      }
+
+      const response = await authFetch("/voices/clone", {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Voice clone failed.");
+      }
+
+      const payload = await response.json();
+      if (payload?.voice_id) {
+        setCloneStatus(`Voice created: ${payload.voice_id}`);
+        await reloadVoices();
+        setSelectedVoiceId(payload.voice_id);
+        return;
+      }
+
+      if (payload?.job_id) {
+        setCloneStatus(`Clone queued: ${payload.job_id}`);
+        const maxPolls = 45;
+        for (let attempt = 0; attempt < maxPolls; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const statusResponse = await authFetch(`/jobs/${payload.job_id}`);
+          if (!statusResponse.ok) continue;
+          const statusPayload = await statusResponse.json();
+          const status = (statusPayload?.status || "").toLowerCase();
+          if (status === "completed" && statusPayload?.voice_id) {
+            setCloneStatus(`Voice created: ${statusPayload.voice_id}`);
+            await reloadVoices();
+            setSelectedVoiceId(statusPayload.voice_id);
+            return;
+          }
+          if (status === "failed" || status === "error") {
+            throw new Error(statusPayload?.error || "Queued voice clone failed.");
+          }
+        }
+        throw new Error("Clone job timed out. Check /jobs/{id} for status.");
+      }
+
+      throw new Error("Clone response missing voice_id/job_id.");
+    } catch (error) {
+      setCloneStatus(error?.message || "Voice clone failed.");
+    } finally {
+      setIsCloning(false);
+    }
+  };
 
   const handleGenerateDialogue = async () => {
     if (!situation || !npc) return;
     setIsGenerating(true);
     setDialogue("");
     try {
-      const response = await fetch('/ai/dialogue', {
+      const response = await authFetch('/ai/dialogue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -415,7 +627,7 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
           formData.append('voice_id', selectedVoiceId);
         }
 
-        const response = await fetch('/tts', {
+        const response = await authFetch('/tts', {
             method: 'POST',
             body: formData,
         });
@@ -437,6 +649,37 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
     <div className="h-full min-h-0 grid grid-rows-[.95fr_1.25fr] gap-3">
       <Panel title="Voice Studio">
         <div className="space-y-2">
+          <label className="field-wrap">
+            <span>Clone Voice Sample:</span>
+            <input
+              type="file"
+              accept="audio/*"
+              className="chat-input"
+              onChange={(e) => setCloneFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          <label className="field-wrap">
+            <span>Voice Name:</span>
+            <input
+              type="text"
+              placeholder="Optional display name"
+              className="chat-input"
+              value={cloneName}
+              onChange={(e) => setCloneName(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className="send-btn w-full"
+            onClick={handleCloneVoice}
+            disabled={!cloneFile || isCloning}
+          >
+            {isCloning ? "Cloning..." : "Clone Voice"}
+          </button>
+          {cloneStatus && (
+            <div className="text-xs text-[#b69055]">{cloneStatus}</div>
+          )}
+
           <label className="field-wrap">
             <span>Choose Voice:</span>
             <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}>
@@ -531,11 +774,470 @@ const RightColumn = ({ campaignData, selectedNpcName }) => {
   );
 };
 
-const LiveBoard = ({ view, onNavigate, campaignData }) => {
+const LiveBoard = ({ view, onNavigate, campaignData, authFetch, defaultAutoQueryOnVoice = true }) => {
   const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
   const [selectedNpcName, setSelectedNpcName] = useState(null);
+  const [actionLog, setActionLog] = useState([]);
+  const [coDmQuery, setCoDmQuery] = useState("");
+  const [isSubmittingQuery, setIsSubmittingQuery] = useState(false);
+  const [coDmStatus, setCoDmStatus] = useState("connecting");
+  const [isMicActive, setIsMicActive] = useState(false);
+  const [micError, setMicError] = useState("");
+  const [isWakeArmed, setIsWakeArmed] = useState(false);
+  const [wakeError, setWakeError] = useState("");
+  const [liveTranscript, setLiveTranscript] = useState("");
+  const [autoQueryOnVoice, setAutoQueryOnVoice] = useState(Boolean(defaultAutoQueryOnVoice));
+  const socketRef = useRef(null);
+  const reconnectTimerRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const mediaStreamRef = useRef(null);
+  const wakeRecognitionRef = useRef(null);
+  const wakeRestartTimerRef = useRef(null);
+  const wakeCaptureTimeoutRef = useRef(null);
+  const silenceMonitorFrameRef = useRef(null);
+  const silenceStartAtRef = useRef(0);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const analyserDataRef = useRef(null);
+  const isMicActiveRef = useRef(false);
+  const isWakeArmedRef = useRef(false);
+  const stopMicCaptureRef = useRef(() => {});
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
   const scene = scenes[selectedSceneIdx] || scenes[0];
+
+  const appendActionLog = useCallback((role, text, meta = "") => {
+    if (!text) return;
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role,
+      text,
+      meta,
+    };
+    setActionLog((prev) => [...prev, entry].slice(-100));
+  }, []);
+
+  useEffect(() => {
+    isMicActiveRef.current = isMicActive;
+  }, [isMicActive]);
+
+  useEffect(() => {
+    isWakeArmedRef.current = isWakeArmed;
+  }, [isWakeArmed]);
+
+  useEffect(() => {
+    setAutoQueryOnVoice(Boolean(defaultAutoQueryOnVoice));
+  }, [defaultAutoQueryOnVoice]);
+
+  const stopSilenceMonitoring = useCallback(() => {
+    if (silenceMonitorFrameRef.current) {
+      cancelAnimationFrame(silenceMonitorFrameRef.current);
+      silenceMonitorFrameRef.current = null;
+    }
+    silenceStartAtRef.current = 0;
+    analyserRef.current = null;
+    analyserDataRef.current = null;
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+  }, []);
+
+  const startSilenceMonitoring = useCallback((stream) => {
+    if (typeof window === "undefined") return;
+    const AudioContextApi = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextApi) return;
+
+    stopSilenceMonitoring();
+
+    const audioContext = new AudioContextApi();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+
+    const buffer = new Uint8Array(analyser.fftSize);
+    audioContextRef.current = audioContext;
+    analyserRef.current = analyser;
+    analyserDataRef.current = buffer;
+
+    const monitor = () => {
+      if (!isMicActiveRef.current) return;
+      const currentAnalyser = analyserRef.current;
+      const data = analyserDataRef.current;
+      if (!currentAnalyser || !data) return;
+
+      currentAnalyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i += 1) {
+        const centered = (data[i] - 128) / 128;
+        sumSquares += centered * centered;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+      const now = Date.now();
+
+      if (rms < SILENCE_RMS_THRESHOLD) {
+        if (!silenceStartAtRef.current) {
+          silenceStartAtRef.current = now;
+        } else if (now - silenceStartAtRef.current >= SILENCE_HOLD_MS) {
+          appendActionLog("assistant", "Silence detected. Stopping microphone capture.", "STT");
+          stopMicCaptureRef.current();
+          return;
+        }
+      } else {
+        silenceStartAtRef.current = 0;
+      }
+
+      silenceMonitorFrameRef.current = requestAnimationFrame(monitor);
+    };
+
+    silenceMonitorFrameRef.current = requestAnimationFrame(monitor);
+  }, [appendActionLog, stopSilenceMonitoring]);
+
+  const stopMediaStream = useCallback(() => {
+    const stream = mediaStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    stopSilenceMonitoring();
+  }, [stopSilenceMonitoring]);
+
+  const stopMicCapture = useCallback(() => {
+    if (wakeCaptureTimeoutRef.current) {
+      clearTimeout(wakeCaptureTimeoutRef.current);
+      wakeCaptureTimeoutRef.current = null;
+    }
+    setLiveTranscript("");
+    isMicActiveRef.current = false;
+    stopSilenceMonitoring();
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+      return;
+    }
+    stopMediaStream();
+    setIsMicActive(false);
+  }, [stopMediaStream, stopSilenceMonitoring]);
+
+  useEffect(() => {
+    stopMicCaptureRef.current = stopMicCapture;
+  }, [stopMicCapture]);
+
+  const startMicCapture = useCallback(async ({ fromWakeWord = false } = {}) => {
+    if (isMicActive) return;
+    setMicError("");
+    setLiveTranscript("");
+
+    if (!navigator?.mediaDevices?.getUserMedia) {
+      setMicError("Microphone capture is not supported in this browser.");
+      return;
+    }
+
+    const ws = socketRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setMicError("WebSocket is not connected. Wait for Connected status.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const mimeCandidates = ["audio/webm;codecs=opus", "audio/webm"];
+      const preferredMimeType = mimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+      const recorder = preferredMimeType
+        ? new MediaRecorder(stream, { mimeType: preferredMimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+
+      ws.send(JSON.stringify({
+        type: "audio_start",
+        mime_type: recorder.mimeType || preferredMimeType || "audio/webm",
+      }));
+
+      recorder.ondataavailable = async (event) => {
+        if (!event.data || event.data.size === 0) return;
+        const activeSocket = socketRef.current;
+        if (!activeSocket || activeSocket.readyState !== WebSocket.OPEN) return;
+        try {
+          const chunk = await event.data.arrayBuffer();
+          activeSocket.send(chunk);
+        } catch (error) {
+          setMicError(error?.message || "Failed to stream microphone chunk.");
+        }
+      };
+
+      recorder.onstop = () => {
+        const activeSocket = socketRef.current;
+        if (activeSocket && activeSocket.readyState === WebSocket.OPEN) {
+          activeSocket.send(JSON.stringify({ type: "audio_end" }));
+        }
+        stopMediaStream();
+        mediaRecorderRef.current = null;
+        isMicActiveRef.current = false;
+        setIsMicActive(false);
+      };
+
+      recorder.onerror = () => {
+        setMicError("Microphone recorder error.");
+      };
+
+      recorder.start(400);
+      isMicActiveRef.current = true;
+      setIsMicActive(true);
+      startSilenceMonitoring(stream);
+      appendActionLog("assistant", "Microphone capture started. Speak now.", "STT");
+
+      if (fromWakeWord) {
+        wakeCaptureTimeoutRef.current = setTimeout(() => {
+          stopMicCapture();
+        }, 12000);
+      }
+    } catch (error) {
+      stopMediaStream();
+      mediaRecorderRef.current = null;
+      isMicActiveRef.current = false;
+      setLiveTranscript("");
+      setMicError(error?.message || "Microphone access failed.");
+    }
+  }, [appendActionLog, isMicActive, startSilenceMonitoring, stopMediaStream, stopMicCapture]);
+
+  const stopWakeRecognition = useCallback(() => {
+    if (wakeRestartTimerRef.current) {
+      clearTimeout(wakeRestartTimerRef.current);
+      wakeRestartTimerRef.current = null;
+    }
+    const recognition = wakeRecognitionRef.current;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      wakeRecognitionRef.current = null;
+      try {
+        recognition.stop();
+      } catch {
+        /* no-op */
+      }
+    }
+  }, []);
+
+  const startWakeRecognition = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!isWakeArmedRef.current || isMicActiveRef.current || wakeRecognitionRef.current) return;
+
+    const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionApi) {
+      setWakeError("Wake phrase listener is not supported in this browser.");
+      setIsWakeArmed(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionApi();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const transcript = normalizeWakeText(event.results[i]?.[0]?.transcript || "");
+        if (transcript.includes(WAKE_WORD)) {
+          appendActionLog("assistant", `Wake phrase detected: "${WAKE_WORD}".`, "Wake");
+          setWakeError("");
+          stopWakeRecognition();
+          startMicCapture({ fromWakeWord: true });
+          break;
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "no-speech" || event.error === "aborted") return;
+      setWakeError(`Wake listener error: ${event.error}`);
+    };
+
+    recognition.onend = () => {
+      wakeRecognitionRef.current = null;
+      if (!isWakeArmedRef.current || isMicActiveRef.current) return;
+      wakeRestartTimerRef.current = setTimeout(() => {
+        startWakeRecognition();
+      }, 350);
+    };
+
+    wakeRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+    } catch (error) {
+      wakeRecognitionRef.current = null;
+      setWakeError(error?.message || "Failed to start wake phrase listener.");
+    }
+  }, [appendActionLog, startMicCapture, stopWakeRecognition]);
+
+  const renderBrainPayload = useCallback((payload) => {
+    if (!payload || typeof payload !== "object") {
+      appendActionLog("error", "Received malformed response from Co-DM.");
+      return;
+    }
+    if (payload.type === "status") {
+      const content = (payload.content || "").trim();
+      if (content === "listening-live") {
+        appendActionLog("assistant", "Live streaming transcription active.", "STT");
+      } else if (content === "listening") {
+        appendActionLog("assistant", "Microphone listening started (fallback mode).", "STT");
+      } else if (content) {
+        appendActionLog("assistant", content, "STT");
+      }
+      return;
+    }
+    if (payload.type === "transcript") {
+      const transcript = (payload.content || "").trim();
+      if (payload.final) {
+        setLiveTranscript("");
+        if (transcript) {
+          appendActionLog("player", transcript, "STT");
+          if (autoQueryOnVoice) {
+            const ws = socketRef.current;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "query", text: transcript }));
+            }
+          }
+        } else {
+          appendActionLog("error", "No speech recognized from microphone audio.");
+        }
+      } else {
+        setLiveTranscript(transcript);
+      }
+      return;
+    }
+    if (payload.type === "error") {
+      appendActionLog("error", payload.content || "Unknown Co-DM error");
+      return;
+    }
+    const content = typeof payload.content === "string" ? payload.content : JSON.stringify(payload.content || payload);
+    const parts = [];
+    if (payload.intent) parts.push(payload.intent);
+    if (Array.isArray(payload.sources) && payload.sources.length) parts.push(`${payload.sources.length} sources`);
+    appendActionLog("assistant", content, parts.join(" • "));
+  }, [appendActionLog, autoQueryOnVoice]);
+
+  useEffect(() => {
+    if (!isWakeArmed || isMicActive) {
+      stopWakeRecognition();
+      return;
+    }
+    startWakeRecognition();
+    return () => {
+      stopWakeRecognition();
+    };
+  }, [isMicActive, isWakeArmed, startWakeRecognition, stopWakeRecognition]);
+
+  useEffect(() => {
+    let isActive = true;
+    let reconnectAttempt = 0;
+    const wsUrl = buildWebSocketUrl("/ws/audio");
+
+    const connect = () => {
+      if (!isActive || !wsUrl) return;
+      setCoDmStatus("connecting");
+      const ws = new WebSocket(wsUrl);
+      socketRef.current = ws;
+
+      ws.onopen = () => {
+        if (!isActive) return;
+        reconnectAttempt = 0;
+        setCoDmStatus("open");
+        if (isWakeArmedRef.current) {
+          setWakeError("");
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (!isActive) return;
+        try {
+          const payload = JSON.parse(event.data);
+          renderBrainPayload(payload);
+        } catch {
+          appendActionLog("assistant", String(event.data || ""));
+        }
+      };
+
+      ws.onerror = () => {
+        if (!isActive) return;
+        setCoDmStatus("error");
+      };
+
+      ws.onclose = () => {
+        if (!isActive) return;
+        setCoDmStatus("closed");
+        if (isWakeArmedRef.current) {
+          setWakeError("WebSocket disconnected. Wake listener stays armed but capture will fail until reconnect.");
+        }
+        stopMicCapture();
+        const retryDelay = Math.min(4000, 1000 * (reconnectAttempt + 1));
+        reconnectAttempt += 1;
+        reconnectTimerRef.current = setTimeout(connect, retryDelay);
+      };
+    };
+
+    connect();
+    return () => {
+      isActive = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+      stopMicCapture();
+      stopMediaStream();
+    };
+  }, [appendActionLog, renderBrainPayload, stopMediaStream, stopMicCapture]);
+
+  const submitCoDmQuery = useCallback(async () => {
+    const text = coDmQuery.trim();
+    if (!text || isSubmittingQuery) return;
+
+    appendActionLog("player", text);
+    setCoDmQuery("");
+
+    const ws = socketRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "query", text }));
+      return;
+    }
+
+    setIsSubmittingQuery(true);
+    try {
+      const response = await authFetch("/brain/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: text }),
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to query Co-DM.");
+      }
+      const data = await response.json();
+      renderBrainPayload(data);
+    } catch (error) {
+      appendActionLog("error", error?.message || "Failed to query Co-DM.");
+    } finally {
+      setIsSubmittingQuery(false);
+    }
+  }, [appendActionLog, authFetch, coDmQuery, isSubmittingQuery, renderBrainPayload]);
+
+  const toggleWakeArmed = useCallback(() => {
+    setWakeError("");
+    setIsWakeArmed((current) => {
+      const next = !current;
+      appendActionLog("assistant", next ? `Wake listener armed for "${WAKE_WORD}".` : "Wake listener disabled.", "Wake");
+      return next;
+    });
+  }, [appendActionLog]);
+
+  const toggleAutoQueryOnVoice = useCallback(() => {
+    setAutoQueryOnVoice((current) => !current);
+  }, []);
+
   return (
     <div className="dm-shell dm-fit mx-auto">
       <Header view={view} onNavigate={onNavigate} campaignData={campaignData} />
@@ -549,10 +1251,28 @@ const LiveBoard = ({ view, onNavigate, campaignData }) => {
             selectedSceneIdx={selectedSceneIdx}
             onSelectScene={setSelectedSceneIdx}
             onSelectNpc={setSelectedNpcName}
+            authFetch={authFetch}
+            actionLog={actionLog}
+            coDmQuery={coDmQuery}
+            onChangeCoDmQuery={setCoDmQuery}
+            onSubmitCoDmQuery={submitCoDmQuery}
+            coDmStatus={coDmStatus}
+            isSubmittingQuery={isSubmittingQuery}
+            isMicActive={isMicActive}
+            onStartMic={startMicCapture}
+            onStopMic={stopMicCapture}
+            micError={micError}
+            isWakeArmed={isWakeArmed}
+            onToggleWakeArmed={toggleWakeArmed}
+            wakeError={wakeError}
+            wakePhrase={WAKE_WORD}
+            liveTranscript={liveTranscript}
+            autoQueryOnVoice={autoQueryOnVoice}
+            onToggleAutoQueryOnVoice={toggleAutoQueryOnVoice}
           />
         </div>
         <div className="xl:col-span-4 min-h-0">
-          <RightColumn campaignData={campaignData} selectedNpcName={selectedNpcName} />
+          <RightColumn campaignData={campaignData} selectedNpcName={selectedNpcName} authFetch={authFetch} />
         </div>
       </section>
     </div>
@@ -1025,7 +1745,7 @@ const DetailDrawer = ({ item, onClose, onLightbox }) => {
   );
 };
 
-const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => {
+const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authFetch }) => {
   const [files, setFiles] = useState([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isExtractingImages, setIsExtractingImages] = useState(false);
@@ -1043,12 +1763,12 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
 
   useEffect(() => {
     setLoadingCampaigns(true);
-    fetch("/api/campaigns")
+    authFetch("/api/campaigns")
       .then(r => r.ok ? r.json() : [])
       .then(data => setSavedCampaigns(Array.isArray(data) ? data : []))
       .catch(() => setSavedCampaigns([]))
       .finally(() => setLoadingCampaigns(false));
-  }, []);
+  }, [authFetch]);
 
   const onFileChange = (e) => {
     setFiles(Array.from(e.target.files || []));
@@ -1067,7 +1787,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
     try {
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f));
-      const res = await fetch(endpoint, { method: "POST", body: formData });
+      const res = await authFetch(endpoint, { method: "POST", body: formData });
       const raw = await res.text();
       let payload = null;
       try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
@@ -1075,7 +1795,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
       if (!payload) throw new Error("Parse returned no data.");
       setParseResult(payload);
       // Refresh saved campaigns list (new campaign was just persisted to DB)
-      fetch("/api/campaigns")
+      authFetch("/api/campaigns")
         .then(r => r.ok ? r.json() : [])
         .then(data => setSavedCampaigns(Array.isArray(data) ? data : []))
         .catch(() => {});
@@ -1103,7 +1823,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
     try {
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f));
-      const res = await fetch("/adventure/images", { method: "POST", body: formData });
+      const res = await authFetch("/adventure/images", { method: "POST", body: formData });
       const raw = await res.text();
       let payload = null;
       try { payload = raw ? JSON.parse(raw) : null; } catch { payload = null; }
@@ -1126,7 +1846,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign }) => 
   const loadSavedCampaign = async (id) => {
     setLoadingCampaignId(id);
     try {
-      const res = await fetch(`/api/campaigns/${id}`);
+      const res = await authFetch(`/api/campaigns/${id}`);
       if (!res.ok) return;
       const data = await res.json();
       setParseResult({
@@ -1637,6 +2357,9 @@ export default function App() {
       return null;
     }
   });
+  const [requireApiKey, setRequireApiKey] = useState(false);
+  const [defaultAutoQueryOnVoice, setDefaultAutoQueryOnVoice] = useState(true);
+  const [apiKey, setApiKey] = useState("");
 
   const saveCampaignData = (data) => {
     setCampaignData(data);
@@ -1653,6 +2376,36 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/config")
+      .then(r => r.ok ? r.json() : { require_api_key: false, auto_query_on_voice: true })
+      .then((cfg) => {
+        if (cancelled) return;
+        setRequireApiKey(Boolean(cfg?.require_api_key));
+        setDefaultAutoQueryOnVoice(cfg?.auto_query_on_voice !== false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRequireApiKey(false);
+        setDefaultAutoQueryOnVoice(true);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const getAuthHeaders = useCallback(() => {
+    const key = apiKey.trim();
+    return key ? { "X-API-Key": key } : {};
+  }, [apiKey]);
+
+  const authFetch = useCallback((input, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    for (const [k, v] of Object.entries(getAuthHeaders())) {
+      headers.set(k, v);
+    }
+    return fetch(input, { ...init, headers });
+  }, [getAuthHeaders]);
+
   const navigateTo = (nextView) => {
     if (typeof window === "undefined") { setView(nextView); return; }
     setView(nextView);
@@ -1664,12 +2417,37 @@ export default function App() {
 
   return (
     <main className={`app-stage min-h-[100dvh] overflow-x-hidden overflow-y-auto p-2 md:p-3 ${view !== "live" ? "prep-mode" : ""}`}>
+      {requireApiKey && (
+        <div className="mx-auto mb-2 w-full max-w-sm rounded border border-[#6f4a27] bg-[#1a0f06] p-2 text-xs text-[#d2ab68]">
+          <label className="block mb-1 font-heading text-[#e7c27a]">API Key Required</label>
+          <input
+            type="password"
+            className="w-full bg-[#120a04] border border-[#4f341f] text-[#e8c887] rounded px-2 py-1"
+            placeholder="Enter API key"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            autoComplete="off"
+          />
+        </div>
+      )}
       {view === "prep" ? (
         <PrepRoom view={view} onNavigate={navigateTo} campaignData={campaignData} onUpdateCampaign={saveCampaignData} />
       ) : view === "intake" ? (
-        <AdventureIntake view={view} onNavigate={navigateTo} campaignData={campaignData} onSaveCampaign={saveCampaignData} />
+        <AdventureIntake
+          view={view}
+          onNavigate={navigateTo}
+          campaignData={campaignData}
+          onSaveCampaign={saveCampaignData}
+          authFetch={authFetch}
+        />
       ) : (
-        <LiveBoard view={view} onNavigate={navigateTo} campaignData={campaignData} />
+        <LiveBoard
+          view={view}
+          onNavigate={navigateTo}
+          campaignData={campaignData}
+          authFetch={authFetch}
+          defaultAutoQueryOnVoice={defaultAutoQueryOnVoice}
+        />
       )}
     </main>
   );

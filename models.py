@@ -14,6 +14,8 @@ class Campaign(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     title = Column(String, nullable=False, default="")
     summary = Column(Text, nullable=False, default="")
+    # Canonical serialized campaign payload (party, reveals, items, scene links, images, etc.).
+    data_json = Column(Text, nullable=False, default="")
 
     # One campaign → many NPCs, Scenes, Locations (cascade delete-orphan)
     npcs = relationship("NPC", back_populates="campaign", cascade="all, delete-orphan")

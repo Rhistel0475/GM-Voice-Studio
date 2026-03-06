@@ -7,6 +7,7 @@ export default defineConfig({
   base: "/preview/",
   server: {
     proxy: {
+      "/api": "http://localhost:7862",
       "/adventure": "http://localhost:7862",
       "/ai": "http://localhost:7862",
       "/rag": "http://localhost:7862",
@@ -15,6 +16,10 @@ export default defineConfig({
       "/voices": "http://localhost:7862",
       "/npc": "http://localhost:7862",
       "/campaign-assets": "http://localhost:7862",
+      "/ws": {
+        target: "ws://localhost:7862",
+        ws: true,
+      },
     },
   },
   build: {

@@ -11,18 +11,24 @@ except ImportError:
     pass
 
 import io
+import json
 import logging
 import os
 import re
 import time
 import tempfile
 import uuid
+import asyncio
+import contextlib
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import Counter
 from typing import Optional
 
 import numpy as np
 import soundfile as sf
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from pathlib import Path
@@ -38,6 +44,10 @@ from config import (
     API_KEYS,
     CELERY_BROKER_URL,
     CORS_ORIGINS,
+    AUTO_QUERY_ON_VOICE,
+    DEEPGRAM_API_KEY,
+    DEEPGRAM_LANGUAGE,
+    DEEPGRAM_MODEL,
     HF_TOKEN,
     NARRATE_RESULT_PATH,
     PENDING_CLONE_PATH,
@@ -54,6 +64,11 @@ from text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
 from tts_service import generate as tts_generate, get_preset_voices, get_supported_language_tags, _is_preset_voice
 from voice_clone import clone_voice
 from voice_store import delete_voice, get_metadata, list_voices, load_embedding_path, update_metadata
+
+try:
+    import websockets
+except ImportError:  # pragma: no cover - optional runtime dependency
+    websockets = None
 
 def _lang_tags():
     """Preset accents from the loaded model (or default list)."""
@@ -119,6 +134,381 @@ def _cleanup_old_sessions(assets_dir: Path, max_age_seconds: int = 3600) -> None
         if child.is_dir() and (now - child.stat().st_mtime) > max_age_seconds:
             import shutil as _shutil
             _shutil.rmtree(child, ignore_errors=True)
+
+
+def _campaign_payload_from_json_record(campaign) -> Optional[dict]:
+    """
+    Parse and normalize Campaign.data_json payload.
+    Returns None when payload is missing/invalid so callers can use relational fallback.
+    """
+    raw = (getattr(campaign, "data_json", "") or "").strip()
+    if not raw:
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        logging.warning("Campaign %s has invalid data_json; using relational fallback", campaign.id)
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    payload["id"] = campaign.id
+    payload["title"] = campaign.title or payload.get("title", "")
+    payload["summary"] = campaign.summary or payload.get("summary", "")
+    for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images"):
+        if not isinstance(payload.get(key), list):
+            payload[key] = []
+    return payload
+
+
+def _campaign_payload_from_relations(campaign) -> dict:
+    """Legacy fallback payload built from normalized relational tables."""
+    return {
+        "id": campaign.id,
+        "title": campaign.title,
+        "summary": campaign.summary,
+        "npcs": [
+            {
+                "id": n.id,
+                "name": n.name,
+                "role": n.role,
+                "personality": n.personality,
+                "faction": n.faction,
+                "description": n.description,
+                "motivation": n.motivation,
+                "secrets": n.secrets,
+                "hp": n.hp,
+                "ac": n.ac,
+                "cr": n.cr,
+                "image_url": n.image_url,
+            }
+            for n in campaign.npcs
+        ],
+        "party": [],
+        "scenes": [
+            {
+                "id": s.id,
+                "title": s.title,
+                "act": s.act,
+                "type": s.type,
+                "read_aloud": s.read_aloud,
+                "difficulty": s.difficulty,
+                "rewards": s.rewards,
+                "notes": s.notes,
+                "image_url": s.image_url,
+                "location": "",
+                "npcs": [],
+                "reveals": [],
+                "items": [],
+            }
+            for s in campaign.scenes
+        ],
+        "locations": [
+            {"id": loc.id, "name": loc.name, "description": loc.description, "image_url": loc.image_url}
+            for loc in campaign.locations
+        ],
+        "reveals": [],
+        "items": [],
+        "images": [],
+    }
+
+
+def _transcribe_with_deepgram(audio_bytes: bytes, mime_type: str = "audio/webm") -> str:
+    """Send recorded audio bytes to Deepgram and return transcript text."""
+    if not DEEPGRAM_API_KEY:
+        raise RuntimeError("Deepgram is not configured. Set DEEPGRAM_API_KEY in your environment.")
+    if not audio_bytes:
+        return ""
+
+    params = {
+        "model": DEEPGRAM_MODEL or "nova-3",
+        "punctuate": "true",
+        "smart_format": "true",
+    }
+    if DEEPGRAM_LANGUAGE:
+        params["language"] = DEEPGRAM_LANGUAGE
+
+    query = urllib.parse.urlencode(params)
+    url = f"https://api.deepgram.com/v1/listen?{query}"
+    request = urllib.request.Request(url, data=audio_bytes, method="POST")
+    request.add_header("Authorization", f"Token {DEEPGRAM_API_KEY}")
+    request.add_header("Content-Type", (mime_type or "audio/webm").strip())
+
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"Deepgram request failed ({exc.code}): {detail or exc.reason}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"Deepgram connection error: {exc.reason}") from exc
+
+    results = payload.get("results") or {}
+    channels = results.get("channels") or []
+    if not channels:
+        return ""
+    alternatives = channels[0].get("alternatives") or []
+    if not alternatives:
+        return ""
+    return (alternatives[0].get("transcript") or "").strip()
+
+
+@app.websocket("/ws/audio")
+async def ws_audio(websocket: WebSocket):
+    """
+    Lightweight WebSocket channel for live Co-DM interactions.
+    Client messages:
+      - {"type":"query","text":"..."} -> routes to llm_brain.handle_query()
+      - {"type":"audio_start","mime_type":"audio/webm"} -> begin buffered mic capture
+      - binary frames -> appended to buffered audio
+      - {"type":"audio_end"} -> Deepgram transcription and transcript push
+      - {"type":"transcript","text":"..."} -> echoes as chat payload (UI smoke-test path)
+    """
+    await websocket.accept()
+    send_lock = asyncio.Lock()
+
+    async def safe_send_json(payload: dict) -> None:
+        async with send_lock:
+            with contextlib.suppress(RuntimeError, WebSocketDisconnect):
+                await websocket.send_json(payload)
+
+    audio_chunks = bytearray()
+    is_audio_active = False
+    audio_mime_type = "audio/webm"
+    max_audio_bytes = 10 * 1024 * 1024
+    deepgram_ws = None
+    deepgram_listener_task = None
+    deepgram_streaming = False
+    deepgram_last_partial = ""
+    deepgram_final_emitted = False
+
+    async def close_deepgram_stream(send_finalize: bool = False) -> None:
+        nonlocal deepgram_ws, deepgram_listener_task, deepgram_streaming, deepgram_last_partial
+        ws_conn = deepgram_ws
+        listener_task = deepgram_listener_task
+        deepgram_ws = None
+        deepgram_listener_task = None
+        deepgram_streaming = False
+        deepgram_last_partial = ""
+
+        if ws_conn is not None:
+            if send_finalize:
+                with contextlib.suppress(Exception):
+                    await ws_conn.send(json.dumps({"type": "Finalize"}))
+                    await asyncio.sleep(0.35)
+            with contextlib.suppress(Exception):
+                await ws_conn.close()
+
+        if listener_task is not None:
+            listener_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await listener_task
+
+    async def start_deepgram_stream() -> bool:
+        nonlocal deepgram_ws, deepgram_listener_task, deepgram_streaming, deepgram_last_partial, deepgram_final_emitted
+
+        if not DEEPGRAM_API_KEY or websockets is None:
+            return False
+
+        params = {
+            "model": DEEPGRAM_MODEL or "nova-3",
+            "interim_results": "true",
+            "punctuate": "true",
+            "smart_format": "true",
+        }
+        if DEEPGRAM_LANGUAGE:
+            params["language"] = DEEPGRAM_LANGUAGE
+        deepgram_url = f"wss://api.deepgram.com/v1/listen?{urllib.parse.urlencode(params)}"
+        headers = {"Authorization": f"Token {DEEPGRAM_API_KEY}"}
+
+        try:
+            try:
+                deepgram_ws = await websockets.connect(
+                    deepgram_url,
+                    additional_headers=headers,
+                    ping_interval=10,
+                    ping_timeout=20,
+                    max_size=8 * 1024 * 1024,
+                )
+            except TypeError:
+                # Back-compat with older websockets versions.
+                deepgram_ws = await websockets.connect(
+                    deepgram_url,
+                    extra_headers=headers,
+                    ping_interval=10,
+                    ping_timeout=20,
+                    max_size=8 * 1024 * 1024,
+                )
+        except Exception as e:
+            await safe_send_json({"type": "error", "content": f"Deepgram live stream unavailable: {e}"})
+            deepgram_ws = None
+            return False
+
+        deepgram_streaming = True
+        deepgram_last_partial = ""
+        deepgram_final_emitted = False
+
+        async def _deepgram_listener():
+            nonlocal deepgram_last_partial, deepgram_final_emitted
+            try:
+                async for deepgram_message in deepgram_ws:
+                    if not isinstance(deepgram_message, str):
+                        continue
+                    try:
+                        event = json.loads(deepgram_message)
+                    except json.JSONDecodeError:
+                        continue
+
+                    event_type = str(event.get("type") or "").lower()
+                    if event_type == "error":
+                        await safe_send_json({
+                            "type": "error",
+                            "content": event.get("description") or "Deepgram streaming error.",
+                        })
+                        continue
+
+                    channel = event.get("channel") or {}
+                    alternatives = channel.get("alternatives") or []
+                    transcript = ((alternatives[0].get("transcript") if alternatives else "") or "").strip()
+                    if not transcript:
+                        continue
+
+                    is_final = bool(event.get("is_final"))
+                    if is_final:
+                        deepgram_final_emitted = True
+                        deepgram_last_partial = ""
+                    else:
+                        if transcript == deepgram_last_partial:
+                            continue
+                        deepgram_last_partial = transcript
+
+                    await safe_send_json({
+                        "type": "transcript",
+                        "intent": "general_chat",
+                        "content": transcript,
+                        "sources": [],
+                        "final": is_final,
+                    })
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                await safe_send_json({"type": "error", "content": f"Deepgram stream interrupted: {e}"})
+
+        deepgram_listener_task = asyncio.create_task(_deepgram_listener())
+        return True
+
+    try:
+        while True:
+            message = await websocket.receive()
+
+            raw_text = message.get("text")
+            raw_bytes = message.get("bytes")
+            if raw_text is None and raw_bytes is not None:
+                if not is_audio_active:
+                    await safe_send_json({"type": "error", "content": "Send {\"type\":\"audio_start\"} before streaming audio bytes."})
+                    continue
+                audio_chunks.extend(raw_bytes)
+                if len(audio_chunks) > max_audio_bytes:
+                    audio_chunks.clear()
+                    is_audio_active = False
+                    await close_deepgram_stream()
+                    await safe_send_json({"type": "error", "content": "Audio capture exceeded 10MB limit. Please record a shorter sample."})
+                    continue
+
+                if deepgram_streaming and deepgram_ws is not None:
+                    try:
+                        await deepgram_ws.send(raw_bytes)
+                    except Exception as e:
+                        await safe_send_json({"type": "error", "content": f"Deepgram live stream failed, falling back to final-only mode: {e}"})
+                        await close_deepgram_stream()
+                continue
+            if raw_text is None:
+                continue
+
+            try:
+                payload = json.loads(raw_text)
+            except json.JSONDecodeError:
+                payload = {"type": "query", "text": raw_text}
+
+            msg_type = (payload.get("type") or "").strip()
+            text = (payload.get("text") or "").strip()
+
+            if msg_type == "audio_start":
+                audio_chunks.clear()
+                is_audio_active = True
+                audio_mime_type = (payload.get("mime_type") or "audio/webm").strip() or "audio/webm"
+                deepgram_final_emitted = False
+                await close_deepgram_stream()
+                live_stream_started = await start_deepgram_stream()
+                if DEEPGRAM_API_KEY and websockets is None:
+                    await safe_send_json({
+                        "type": "error",
+                        "content": "Install Python package 'websockets' to enable Deepgram live streaming.",
+                    })
+                await safe_send_json({"type": "status", "content": "listening-live" if live_stream_started else "listening"})
+                continue
+
+            if msg_type == "audio_end":
+                if not is_audio_active:
+                    await safe_send_json({"type": "error", "content": "No active audio stream to finalize."})
+                    continue
+                is_audio_active = False
+                if not audio_chunks:
+                    await close_deepgram_stream()
+                    await safe_send_json({"type": "error", "content": "No audio received from microphone stream."})
+                    continue
+                if deepgram_streaming:
+                    await close_deepgram_stream(send_finalize=True)
+                    if deepgram_final_emitted:
+                        audio_chunks.clear()
+                        deepgram_final_emitted = False
+                        continue
+
+                try:
+                    transcript = await run_in_threadpool(_transcribe_with_deepgram, bytes(audio_chunks), audio_mime_type)
+                except RuntimeError as e:
+                    await safe_send_json({"type": "error", "content": str(e)})
+                else:
+                    await safe_send_json({
+                        "type": "transcript",
+                        "intent": "general_chat",
+                        "content": transcript,
+                        "sources": [],
+                        "final": True,
+                    })
+                finally:
+                    audio_chunks.clear()
+                    deepgram_final_emitted = False
+                continue
+
+            if not text:
+                await safe_send_json({"type": "error", "content": "Empty message."})
+                continue
+
+            if msg_type == "transcript":
+                await safe_send_json({"type": "chat", "intent": "general_chat", "content": text, "sources": []})
+                continue
+
+            if msg_type == "query":
+                from llm_brain import handle_query
+                try:
+                    result = await run_in_threadpool(handle_query, text)
+                except RuntimeError as e:
+                    await safe_send_json({"type": "error", "content": str(e)})
+                    continue
+                await safe_send_json(result)
+                continue
+
+            await safe_send_json({"type": "error", "content": f"Unsupported message type: {msg_type or '(missing)'}"})
+    except WebSocketDisconnect:
+        return
+    except RuntimeError as e:
+        # Starlette may raise RuntimeError on receive() after disconnect instead of WebSocketDisconnect.
+        if "disconnect message" in str(e).lower():
+            return
+        raise
+    finally:
+        await close_deepgram_stream()
 if CORS_ORIGINS:
     origins = [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()]
     if origins:
@@ -163,7 +553,10 @@ def startup():
 @app.get("/config")
 def get_config():
     """Return client config so the frontend can show API key input when required."""
-    return {"require_api_key": REQUIRE_API_KEY}
+    return {
+        "require_api_key": REQUIRE_API_KEY,
+        "auto_query_on_voice": AUTO_QUERY_ON_VOICE,
+    }
 
 # --- Health and readiness ---
 @app.get("/health")
@@ -319,7 +712,15 @@ def job_result(job_id: str):
 # --- List all voices (for UI dropdown and My voices panel) ---
 @app.get("/voices/list")
 def voices_list(request: Request, owner_id: Optional[str] = Depends(get_owner_id)):
-    return list_voices(owner_id=owner_id)
+    voices = list_voices(owner_id=owner_id)
+    usable = []
+    for voice in voices:
+        voice_id = (voice or {}).get("voice_id")
+        if not voice_id:
+            continue
+        if load_embedding_path(voice_id):
+            usable.append(voice)
+    return usable
 
 # --- GDPR: get voice metadata / delete voice ---
 @app.get("/voices/{voice_id}")
@@ -732,6 +1133,20 @@ async def ai_parse_adventure_docs(
             campaign = Campaign(
                 title=result.get("title", ""),
                 summary=result.get("summary", ""),
+                data_json=json.dumps(
+                    {
+                        "title": result.get("title", ""),
+                        "summary": result.get("summary", ""),
+                        "npcs": result.get("npcs", []),
+                        "party": result.get("party", []),
+                        "scenes": result.get("scenes", []),
+                        "locations": result.get("locations", []),
+                        "reveals": result.get("reveals", []),
+                        "items": result.get("items", []),
+                        "images": result.get("images", []),
+                    },
+                    ensure_ascii=False,
+                ),
             )
             db.add(campaign)
             db.flush()  # populate campaign.id before children
@@ -800,7 +1215,7 @@ async def list_campaigns(request: Request, _auth: None = Depends(verify_api_key)
 @app.get("/api/campaigns/{campaign_id}")
 @limiter.limit("60/minute")
 async def get_campaign(campaign_id: int, request: Request, _auth: None = Depends(verify_api_key)):
-    """Return a single campaign with all NPCs, Scenes, and Locations."""
+    """Return a single campaign payload (full JSON when available, relational fallback otherwise)."""
     from database import SessionLocal
     from models import Campaign
     db = SessionLocal()
@@ -808,27 +1223,10 @@ async def get_campaign(campaign_id: int, request: Request, _auth: None = Depends
         c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
         if c is None:
             raise HTTPException(404, "Campaign not found")
-        return {
-            "id": c.id,
-            "title": c.title,
-            "summary": c.summary,
-            "npcs": [
-                {"id": n.id, "name": n.name, "role": n.role, "personality": n.personality,
-                 "faction": n.faction, "description": n.description, "motivation": n.motivation,
-                 "secrets": n.secrets, "hp": n.hp, "ac": n.ac, "cr": n.cr, "image_url": n.image_url}
-                for n in c.npcs
-            ],
-            "scenes": [
-                {"id": s.id, "title": s.title, "act": s.act, "type": s.type,
-                 "read_aloud": s.read_aloud, "difficulty": s.difficulty,
-                 "rewards": s.rewards, "notes": s.notes, "image_url": s.image_url}
-                for s in c.scenes
-            ],
-            "locations": [
-                {"id": loc.id, "name": loc.name, "description": loc.description, "image_url": loc.image_url}
-                for loc in c.locations
-            ],
-        }
+        payload = _campaign_payload_from_json_record(c)
+        if payload is not None:
+            return payload
+        return _campaign_payload_from_relations(c)
     finally:
         db.close()
 

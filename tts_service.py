@@ -16,7 +16,17 @@ import torch
 from config import AUDIO_CACHE_SIZE
 
 KANI_SAMPLE_RATE = 22050
-DEFAULT_LANGUAGE_TAGS = ["en"]
+
+# KaniTTS-2 English variants exposed by the model.
+DEFAULT_LANGUAGE_TAG = "en_us"
+SUPPORTED_LANGUAGE_TAGS = [
+    "en_us",
+    "en_nyork",
+    "en_oakl",
+    "en_glasg",
+    "en_bost",
+    "en_scou",
+]
 
 _model = None
 _audio_cache: list[str] = []
@@ -36,7 +46,7 @@ def is_model_loaded() -> bool:
 
 
 def get_supported_language_tags() -> list[str]:
-    return list(DEFAULT_LANGUAGE_TAGS)
+    return list(SUPPORTED_LANGUAGE_TAGS)
 
 
 def get_preset_voices() -> list[str]:
@@ -47,6 +57,18 @@ def get_preset_voices() -> list[str]:
 def _is_preset_voice(voice_id: str) -> bool:
     """KaniTTS-2 has no named preset voices; always returns False."""
     return False
+
+
+def _normalize_language_tag(language_tag: Optional[str]) -> str:
+    """Map legacy/simplified tags to a valid KaniTTS-2 language tag."""
+    tag = (language_tag or "").strip().lower()
+    if not tag or tag == "en":
+        return DEFAULT_LANGUAGE_TAG
+    if tag not in SUPPORTED_LANGUAGE_TAGS:
+        raise ValueError(
+            "Unsupported language_tag. Use one of: " + ", ".join(SUPPORTED_LANGUAGE_TAGS)
+        )
+    return tag
 
 
 def _evict_old_audio():
@@ -60,7 +82,7 @@ def _evict_old_audio():
 
 def generate(
     text: str,
-    language_tag: Optional[str] = "en",
+    language_tag: Optional[str] = DEFAULT_LANGUAGE_TAG,
     speaker_emb_path: Optional[str] = None,
     temperature: float = 1.0,
     top_p: float = 0.95,
@@ -68,11 +90,12 @@ def generate(
 ) -> tuple[np.ndarray, int]:
     """Generate speech.
     speaker_emb_path: path to a .pt speaker embedding file produced by clone_voice().
-    Pass None for a random/default voice. language_tag is ignored (English only).
+    Pass None for a random/default voice.
     """
     text = (text or "").strip()
     if not text:
         raise ValueError("Text is required")
+    normalized_language_tag = _normalize_language_tag(language_tag)
 
     if speaker_emb_path and speaker_emb_path.strip():
         p = Path(speaker_emb_path.strip())
@@ -86,9 +109,14 @@ def generate(
     try:
         kwargs = dict(temperature=temperature, top_p=top_p, repetition_penalty=repetition_penalty)
         if emb is not None:
-            audio, _out_text = model(text, speaker_emb=emb, **kwargs)
+            audio, _out_text = model(
+                text,
+                language_tag=normalized_language_tag,
+                speaker_emb=emb,
+                **kwargs,
+            )
         else:
-            audio, _out_text = model(text, **kwargs)
+            audio, _out_text = model(text, language_tag=normalized_language_tag, **kwargs)
         arr = np.array(audio) if not isinstance(audio, np.ndarray) else audio
     except Exception as e:
         logging.exception("TTS generate failed")
@@ -99,7 +127,7 @@ def generate(
 
 def generate_to_file(
     text: str,
-    language_tag: Optional[str] = "en",
+    language_tag: Optional[str] = DEFAULT_LANGUAGE_TAG,
     speaker_emb_path: Optional[str] = None,
 ) -> str:
     audio, sample_rate = generate(text, language_tag=language_tag, speaker_emb_path=speaker_emb_path)

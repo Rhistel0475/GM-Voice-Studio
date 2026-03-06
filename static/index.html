@@ -913,7 +913,7 @@
             <input type="text" id="clone_voice_name" placeholder="e.g. Dragon Queen, Guard Captain" aria-label="Character or NPC name">
             <label for="clone_voice_faction"><strong>Faction / Group (optional):</strong></label>
             <input type="text" id="clone_voice_faction" placeholder="e.g., The O'Bannion Syndicate, Silver Court Mages" aria-label="Faction or group">
-            <label for="clone_audio"><strong>Upload a clean 5–30 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
+            <label for="clone_audio"><strong>Upload a clean 5–60 second audio clip (WAV/MP3, 16 kHz preferred):</strong></label>
             <input type="file" id="clone_audio" accept="audio/wav, audio/mp3, audio/ogg, audio/*" aria-label="Upload audio for cloning">
             <p class="hint">Or record with your microphone: 15–25 s in a quiet room, speaking naturally.</p>
             <div class="record-btn-row">
@@ -1284,8 +1284,8 @@
             setRecordPlayback(recordedBlob);
             const dur = Math.round(decoded.duration);
             let msg = "Recording ready (" + dur + " s, 16 kHz). Play back below, then Create Voice.";
-            if (dur < 5) msg = "Too short (" + dur + " s) — use 5–30 s for best results.";
-            else if (dur > 30) msg = "Recording ready (" + dur + " s). Server will use first 30 s.";
+            if (dur < 5) msg = "Too short (" + dur + " s) — use 5–60 s for best results.";
+            else if (dur > 60) msg = "Recording ready (" + dur + " s). Server will use first 60 s.";
             statusEl.textContent = msg;
             updateCreateVoiceDisabled();
           } catch (e) {
@@ -1296,7 +1296,7 @@
         recordStartTime = Date.now();
         startBtn.disabled = true;
         stopBtn.disabled = false;
-        statusEl.textContent = "Recording... (5–30 s recommended)";
+        statusEl.textContent = "Recording... (5–60 s recommended)";
         recordTimer = setInterval(function() {
           const sec = Math.floor((Date.now() - recordStartTime) / 1000);
           statusEl.textContent = "Recording... " + sec + " s";
