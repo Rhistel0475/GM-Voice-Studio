@@ -803,16 +803,14 @@ def _dedupe_keep_order(items: list[str], limit: int = 10) -> list[str]:
 
 def _extract_pdf_text(data: bytes) -> tuple[str, int]:
     try:
-        from pypdf import PdfReader
+        import pymupdf4llm
+        import pymupdf
     except Exception as e:
-        raise RuntimeError("PDF parsing requires 'pypdf'. Install requirements-rag.txt.") from e
-    reader = PdfReader(io.BytesIO(data))
-    chunks: list[str] = []
-    for page in reader.pages:
-        text = (page.extract_text() or "").strip()
-        if text:
-            chunks.append(text)
-    return "\n".join(chunks), len(reader.pages)
+        raise RuntimeError("PDF parsing requires 'pymupdf4llm'. Install requirements-rag.txt.") from e
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    page_count = doc.page_count
+    md_text = pymupdf4llm.to_markdown(doc)
+    return md_text, page_count
 
 
 async def _read_adventure_upload(upload: UploadFile) -> tuple[str, dict]:
