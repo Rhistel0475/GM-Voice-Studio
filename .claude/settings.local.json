@@ -55,7 +55,9 @@
       "Bash(python3 -c \"import ast; ast.parse\\(open\\(''server.py''\\).read\\(\\)\\); print\\(''OK''\\)\")",
       "Bash(node --input-type=module --eval \"import\\(''/home/brian/GM-Voice-Studio/preview-react/src/App.jsx''\\)\")",
       "Bash(echo \"exit:$?\")",
-      "Bash(npx --yes vite build)"
+      "Bash(npx --yes vite build)",
+      "Bash(timeout 10 .venv/bin/python server.py)",
+      "Bash(echo \"EXIT: $?\")"
     ]
   }
 }

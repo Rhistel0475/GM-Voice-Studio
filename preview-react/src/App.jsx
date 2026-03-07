@@ -14,6 +14,7 @@ import {
   Zap,
   Save,
   CheckCircle,
+  Trash2,
 } from "lucide-react";
 
 const normalizePath = (path) => (path || "/").replace(/\/+$/, "") || "/";
@@ -212,6 +213,14 @@ const MiddleColumn = ({
   const [sceneTab, setSceneTab] = useState("text");
   const [isNarrating, setIsNarrating] = useState(false);
   const [narrateError, setNarrateError] = useState("");
+  const [npcGenre, setNpcGenre] = useState("1930s noir fantasy");
+  const [npcLocation, setNpcLocation] = useState("");
+  const [npcName, setNpcName] = useState("");
+  const [npcRole, setNpcRole] = useState("");
+  const [npcGenText, setNpcGenText] = useState("");
+  const [npcGenStreaming, setNpcGenStreaming] = useState(false);
+  const [npcGenError, setNpcGenError] = useState("");
+  const [npcGenSpeaking, setNpcGenSpeaking] = useState(false);
   const actionLogRef = useRef(null);
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
@@ -266,6 +275,63 @@ const MiddleColumn = ({
     }
   };
 
+  const handleNpcGen = async () => {
+    if (!npcName || npcGenStreaming) return;
+    setNpcGenStreaming(true);
+    setNpcGenText("");
+    setNpcGenError("");
+    try {
+      const response = await authFetch("/npc/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ genre: npcGenre, location: npcLocation, name: npcName, role: npcRole }),
+      });
+      if (!response.ok) throw new Error(await response.text() || "Generation failed.");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const evt = JSON.parse(line.slice(6));
+            if (evt.token) setNpcGenText(t => t + evt.token);
+            if (evt.error) setNpcGenError(evt.error);
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch (e) {
+      setNpcGenError(e?.message || "NPC generation failed.");
+    } finally {
+      setNpcGenStreaming(false);
+    }
+  };
+
+  const handleSpeakNpcProfile = async () => {
+    if (!npcGenText || npcGenSpeaking) return;
+    setNpcGenSpeaking(true);
+    try {
+      const voiceId = await resolveNarrationVoiceId();
+      const response = await authFetch("/tts/narrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: npcGenText, voice_id: voiceId }),
+      });
+      if (!response.ok) throw new Error(await response.text() || "TTS failed.");
+      const blob = await response.blob();
+      new Audio(URL.createObjectURL(blob)).play();
+    } catch (e) {
+      setNpcGenError(e?.message || "Speak failed.");
+    } finally {
+      setNpcGenSpeaking(false);
+    }
+  };
+
   return (
     <div className="h-full min-h-0">
       <Panel className="h-full">
@@ -306,6 +372,9 @@ const MiddleColumn = ({
           </button>
           <button type="button" className={sceneTab === "log" ? "tab-active" : ""} onClick={() => setSceneTab("log")}>
             Action Log
+          </button>
+          <button type="button" className={sceneTab === "npcgen" ? "tab-active" : ""} onClick={() => setSceneTab("npcgen")}>
+            NPC Gen
           </button>
         </div>
 
@@ -426,23 +495,23 @@ const MiddleColumn = ({
               {actionLog.length ? actionLog.map((entry) => (
                 <div
                   key={entry.id}
-                  className={`rounded border px-2 py-1 text-xs ${
-                    entry.role === "player"
-                      ? "border-[#5d472a] bg-[#1c120a] text-[#e6c785]"
-                      : entry.role === "error"
-                        ? "border-red-900/70 bg-red-950/20 text-red-300"
-                        : "border-[#37553e] bg-[#102016] text-[#d4f0cf]"
-                  }`}
+                  className={`rounded border px-2 py-1 text-xs ${{
+                    player:     "border-[#5d472a] bg-[#1c120a] text-[#e6c785]",
+                    error:      "border-red-900/70 bg-red-950/20 text-red-300",
+                    stat_block: "border-[#c79f5b] bg-[#0e1a0e] text-[#ffe08a]",
+                    lore:       "border-[#7a5a30] bg-[#eddcb8]/10 text-[#c8a97a]",
+                  }[entry.role] ?? "border-[#37553e] bg-[#102016] text-[#d4f0cf]"}`}
                 >
                   <div className="mb-0.5 flex items-center justify-between">
                     <span className="font-heading text-[10px] tracking-wide uppercase">
-                      {entry.role === "player" ? "Table" : entry.role === "error" ? "System" : "Co-DM"}
+                      {entry.role === "player" ? "Table" : entry.role === "error" ? "System" : entry.role === "stat_block" ? "Stat Block" : entry.role === "lore" ? "Lore" : "Co-DM"}
                     </span>
-                    {entry.meta && (
-                      <span className="text-[10px] opacity-80">{entry.meta}</span>
-                    )}
+                    {entry.meta && <span className="text-[10px] opacity-80">{entry.meta}</span>}
                   </div>
-                  <div className="whitespace-pre-wrap">{entry.text}</div>
+                  {entry.role === "stat_block"
+                    ? <pre className="whitespace-pre-wrap font-mono text-xs">{entry.text}</pre>
+                    : <div className="whitespace-pre-wrap">{entry.text}</div>
+                  }
                 </div>
               )) : (
                 <div className="intake-empty text-xs">
@@ -478,6 +547,55 @@ const MiddleColumn = ({
                 {isSubmittingQuery ? "..." : "Send"}
               </button>
             </div>
+          </div>
+        )}
+
+        {sceneTab === "npcgen" && (
+          <div className="mt-2 flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] uppercase tracking-wide text-[#9b7440]">Genre</label>
+                <input className="chat-input" value={npcGenre} onChange={e => setNpcGenre(e.target.value)} placeholder="1930s noir fantasy" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] uppercase tracking-wide text-[#9b7440]">Location</label>
+                <input className="chat-input" value={npcLocation} onChange={e => setNpcLocation(e.target.value)} placeholder="The Silver Dagger Inn" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] uppercase tracking-wide text-[#9b7440]">Name / Type</label>
+                <input className="chat-input" value={npcName} onChange={e => setNpcName(e.target.value)} placeholder="Viktor Crane" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] uppercase tracking-wide text-[#9b7440]">Role</label>
+                <input className="chat-input" value={npcRole} onChange={e => setNpcRole(e.target.value)} placeholder="corrupt detective" />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="cta-secondary"
+              onClick={handleNpcGen}
+              disabled={!npcName || npcGenStreaming}
+            >
+              {npcGenStreaming ? "Generating..." : "Generate NPC"}
+            </button>
+            {npcGenError && <div className="text-xs text-red-400">{npcGenError}</div>}
+            {npcGenText && (
+              <>
+                <div className="border border-[#4f341f] bg-[#0e0906] rounded p-2 max-h-64 overflow-y-auto">
+                  <pre className="whitespace-pre-wrap font-mono text-xs text-[#e6c785]">{npcGenText}</pre>
+                </div>
+                {!npcGenStreaming && (
+                  <button
+                    type="button"
+                    className="cta-secondary"
+                    onClick={handleSpeakNpcProfile}
+                    disabled={npcGenSpeaking}
+                  >
+                    {npcGenSpeaking ? "Speaking..." : <><Play size={13} className="inline-block mr-1" />Speak Profile</>}
+                  </button>
+                )}
+              </>
+            )}
           </div>
         )}
       </Panel>
@@ -1110,6 +1228,16 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, defaultAutoQuery
     }
     if (payload.type === "error") {
       appendActionLog("error", payload.content || "Unknown Co-DM error");
+      return;
+    }
+    if (payload.type === "stat_block") {
+      const meta = [payload.intent, payload.sources?.length ? `${payload.sources.length} sources` : ""].filter(Boolean).join(" • ");
+      appendActionLog("stat_block", payload.content || "", meta);
+      return;
+    }
+    if (payload.type === "lore") {
+      const meta = [payload.intent, payload.sources?.length ? `${payload.sources.length} sources` : ""].filter(Boolean).join(" • ");
+      appendActionLog("lore", payload.content || "", meta);
       return;
     }
     const content = typeof payload.content === "string" ? payload.content : JSON.stringify(payload.content || payload);
@@ -1757,6 +1885,19 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
   const [lightbox, setLightbox] = useState(null); // URL of enlarged image
   const [detailItem, setDetailItem] = useState(null); // {type, data} for detail drawer
   const [expandedActs, setExpandedActs] = useState(new Set()); // which chapter headers are open
+
+  const deleteAssignedImage = (idx) =>
+    setParseResult(r => ({ ...r, images: r.images.filter(img => img.idx !== idx) }));
+  const deleteEmbeddedImage = (i) =>
+    setImages(s => ({ ...s, embedded: s.embedded.filter((_, j) => j !== i) }));
+  const deletePageImage = (i) =>
+    setImages(s => ({ ...s, pages: s.pages.filter((_, j) => j !== i) }));
+  const assignImageTo = (idx, entityName) =>
+    setParseResult(r => ({
+      ...r,
+      images: r.images.map(img => img.idx === idx ? { ...img, assigned_to: entityName } : img),
+    }));
+
   const [savedCampaigns, setSavedCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loadingCampaignId, setLoadingCampaignId] = useState(null);
@@ -1865,6 +2006,13 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
     }
   };
 
+  const deleteSavedCampaign = async (id) => {
+    if (!window.confirm("Delete this campaign? This cannot be undone.")) return;
+    await authFetch(`/api/campaigns/${id}`, { method: "DELETE" });
+    setSavedCampaigns(prev => prev.filter(c => c.id !== id));
+    if (parseResult?.id === id) { setParseResult(null); setSaved(false); }
+  };
+
   const npcs = parseResult?.npcs?.length ? parseResult.npcs : [];
   const party = parseResult?.party?.length ? parseResult.party : [];
   const scenes = parseResult?.scenes?.length ? parseResult.scenes : [];
@@ -1899,19 +2047,34 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                     fontFamily:"Cinzel,serif", letterSpacing:"0.04em", marginBottom:"0.3rem" }}>
                     Active Campaign:
                   </label>
-                  <select
-                    value={parseResult?.id ?? ""}
-                    onChange={e => { if (e.target.value) loadSavedCampaign(Number(e.target.value)); }}
-                    style={{ width:"100%", background:"#1a0f06", color:"#e7c27a",
-                      border:"1px solid #5a3e1b", borderRadius:"4px",
-                      padding:"0.4rem 0.5rem", fontFamily:"Cinzel,serif", fontSize:"0.8rem",
-                      cursor:"pointer" }}
-                  >
-                    <option value="" style={{ color:"#6b5230" }}>— Select Campaign —</option>
-                    {savedCampaigns.map(c => (
-                      <option key={c.id} value={c.id}>{c.title || `Campaign #${c.id}`}</option>
-                    ))}
-                  </select>
+                  <div style={{ display:"flex", gap:"0.4rem", alignItems:"center" }}>
+                    <select
+                      value={parseResult?.id ?? ""}
+                      onChange={e => { if (e.target.value) loadSavedCampaign(Number(e.target.value)); }}
+                      style={{ flex:1, background:"#1a0f06", color:"#e7c27a",
+                        border:"1px solid #5a3e1b", borderRadius:"4px",
+                        padding:"0.4rem 0.5rem", fontFamily:"Cinzel,serif", fontSize:"0.8rem",
+                        cursor:"pointer" }}
+                    >
+                      <option value="" style={{ color:"#6b5230" }}>— Select Campaign —</option>
+                      {savedCampaigns.map(c => (
+                        <option key={c.id} value={c.id}>{c.title || `Campaign #${c.id}`}</option>
+                      ))}
+                    </select>
+                    {parseResult?.id && (
+                      <button
+                        onClick={() => deleteSavedCampaign(parseResult.id)}
+                        title="Delete campaign"
+                        style={{ background:"none", border:"1px solid #7a2020", borderRadius:"4px",
+                          color:"#c05050", padding:"0.35rem 0.5rem", cursor:"pointer", flexShrink:0,
+                          display:"flex", alignItems:"center" }}
+                        onMouseEnter={e => { e.currentTarget.style.background="#3a0f0f"; e.currentTarget.style.color="#ff6b6b"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background="none"; e.currentTarget.style.color="#c05050"; }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
                   {loadingCampaignId && (
                     <p style={{ color:"#9c7a3a", fontSize:"0.72rem", marginTop:"0.3rem" }}>Loading…</p>
                   )}
@@ -2041,20 +2204,46 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                   <>
                     <div className="subhead">Extracted Images ({parseResult.images.length}) — auto-assigned</div>
                     <div className="grid grid-cols-2 gap-2">
-                      {parseResult.images.map((img) => (
-                        <div key={img.idx} className="relative group cursor-pointer" onClick={() => setLightbox(img.url)}>
-                          <img
-                            src={img.url}
-                            alt={img.label || `Image ${img.idx}`}
-                            className="w-full rounded border border-[#4f341f] group-hover:border-[#d4af37] object-cover"
-                            style={{ maxHeight: "120px" }}
-                          />
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[#d4af37] text-[10px] px-1 py-0.5 rounded-b truncate">
-                            {img.assigned_to ? `→ ${img.assigned_to}` : img.type || "illustration"}
-                            {img.label ? ` · ${img.label}` : ""}
+                      {parseResult.images.map((img) => {
+                        const assignOptions = [
+                          ...(parseResult.npcs || []).map(n => ({ label: `NPC: ${n.name}`, value: n.name })),
+                          ...(parseResult.scenes || []).map(s => ({ label: `Scene: ${s.title}`, value: s.title })),
+                        ];
+                        return (
+                          <div key={img.idx} className="relative group">
+                            <img
+                              src={img.url}
+                              alt={img.label || `Image ${img.idx}`}
+                              className="w-full rounded border border-[#4f341f] group-hover:border-[#d4af37] object-cover cursor-pointer"
+                              style={{ maxHeight: "120px" }}
+                              onClick={() => setLightbox(img.url)}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => deleteAssignedImage(img.idx)}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-red-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80"
+                              title="Remove image"
+                            >×</button>
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 rounded-b px-1 py-0.5">
+                              <div className="text-[#d4af37] text-[10px] truncate">
+                                {img.assigned_to ? `→ ${img.assigned_to}` : img.type || "illustration"}
+                                {img.label ? ` · ${img.label}` : ""}
+                              </div>
+                              {assignOptions.length > 0 && (
+                                <select
+                                  className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-[10px] rounded mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  value={img.assigned_to || ""}
+                                  onChange={e => assignImageTo(img.idx, e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                >
+                                  <option value="">Assign to...</option>
+                                  {assignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 ) : images.embedded.length > 0 ? (
@@ -2062,9 +2251,17 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                     <div className="subhead">Maps &amp; Artwork ({images.embedded.length})</div>
                     <div className="grid grid-cols-2 gap-2">
                       {images.embedded.map((url, i) => (
-                        <img key={i} src={url} alt={`Image ${i + 1}`}
-                          className="w-full rounded border border-[#4f341f] cursor-pointer hover:border-[#d4af37] object-cover"
-                          style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
+                        <div key={i} className="relative group">
+                          <img src={url} alt={`Image ${i + 1}`}
+                            className="w-full rounded border border-[#4f341f] cursor-pointer group-hover:border-[#d4af37] object-cover"
+                            style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
+                          <button
+                            type="button"
+                            onClick={() => deleteEmbeddedImage(i)}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-red-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80"
+                            title="Remove image"
+                          >×</button>
+                        </div>
                       ))}
                     </div>
                   </>
@@ -2076,9 +2273,17 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                     <div className="subhead mt-2">Page Thumbnails ({images.pages.length})</div>
                     <div className="grid grid-cols-2 gap-2">
                       {images.pages.map((url, i) => (
-                        <img key={i} src={url} alt={`Page ${i + 1}`}
-                          className="w-full rounded border border-[#4f341f] cursor-pointer hover:border-[#d4af37] object-cover"
-                          style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
+                        <div key={i} className="relative group">
+                          <img src={url} alt={`Page ${i + 1}`}
+                            className="w-full rounded border border-[#4f341f] cursor-pointer group-hover:border-[#d4af37] object-cover"
+                            style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
+                          <button
+                            type="button"
+                            onClick={() => deletePageImage(i)}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-red-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80"
+                            title="Remove image"
+                          >×</button>
+                        </div>
                       ))}
                     </div>
                   </>

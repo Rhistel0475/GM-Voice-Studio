@@ -1037,19 +1037,38 @@ def _extract_embedded_images(raw_pdf: bytes, embedded_dir: Path, start_counter: 
     total_pages = 0
     img_counter = start_counter
     try:
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(raw_pdf))
-        total_pages = len(reader.pages)
-        for page_num, page in enumerate(reader.pages):
-            for img_obj in page.images:
-                try:
-                    data = img_obj.data
-                    if len(data) < 50_000:  # skip decorative/small images
+        import fitz  # PyMuPDF
+        doc = fitz.open(stream=raw_pdf, filetype="pdf")
+        total_pages = doc.page_count
+        import hashlib
+        seen_hashes: set[str] = set()
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            page_area = page.rect.width * page.rect.height
+            for img_info in page.get_images(full=True):
+                xref, _smask, w, h = img_info[0], img_info[1], img_info[2], img_info[3]
+                if w < 150 or h < 150:
+                    continue
+                aspect = w / h
+                if aspect > 3.0 or aspect < 0.33:
+                    continue
+                rects = page.get_image_rects(xref)
+                if rects:
+                    r = rects[0]
+                    if (r.x1 - r.x0) * (r.y1 - r.y0) > 0.9 * page_area:
                         continue
-                    ext = "jpg" if data[:3] == b"\xff\xd8\xff" else "png"
+                try:
+                    pix = fitz.Pixmap(doc, xref)
+                    if pix.n > 4:
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+                    img_data = pix.tobytes("png")
+                    img_hash = hashlib.md5(img_data).hexdigest()
+                    if img_hash in seen_hashes:
+                        continue
+                    seen_hashes.add(img_hash)
                     img_counter += 1
-                    fname = f"img_{img_counter:04d}.{ext}"
-                    (embedded_dir / fname).write_bytes(data)
+                    fname = f"img_{img_counter:04d}.png"
+                    (embedded_dir / fname).write_bytes(img_data)
                     raw_images.append({
                         "idx": img_counter,
                         "page": page_num + 1,
@@ -1229,6 +1248,24 @@ async def get_campaign(campaign_id: int, request: Request, _auth: None = Depends
         db.close()
 
 
+@app.delete("/api/campaigns/{campaign_id}")
+@limiter.limit("30/minute")
+async def delete_campaign(campaign_id: int, request: Request, _auth: None = Depends(verify_api_key)):
+    """Delete a campaign and all related NPCs, scenes, and locations."""
+    from database import SessionLocal
+    from models import Campaign
+    db = SessionLocal()
+    try:
+        c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if c is None:
+            raise HTTPException(404, "Campaign not found")
+        db.delete(c)
+        db.commit()
+        return {"deleted": campaign_id}
+    finally:
+        db.close()
+
+
 def _extract_images_from_pdf(
     raw: bytes,
     embedded_dir: Path,
@@ -1244,25 +1281,39 @@ def _extract_images_from_pdf(
     page_urls: list[str] = []
     img_counter = img_counter_start
 
-    # --- Embedded images via pypdf ---
+    # --- Embedded images via PyMuPDF ---
     try:
-        from pypdf import PdfReader
-        reader = PdfReader(io.BytesIO(raw))
-        for page in reader.pages:
-            for img_obj in page.images:
-                try:
-                    data = img_obj.data
-                    if data[:3] == b"\xff\xd8\xff":
-                        ext = "jpg"
-                    elif data[:8] == b"\x89PNG\r\n\x1a\n":
-                        ext = "png"
-                    else:
-                        ext = "png"
-                    if len(data) < 5000:
+        import fitz  # PyMuPDF
+        import hashlib
+        doc = fitz.open(stream=raw, filetype="pdf")
+        seen_hashes: set[str] = set()
+        for page_num in range(doc.page_count):
+            page = doc[page_num]
+            page_area = page.rect.width * page.rect.height
+            for img_info in page.get_images(full=True):
+                xref, _smask, w, h = img_info[0], img_info[1], img_info[2], img_info[3]
+                if w < 150 or h < 150:
+                    continue
+                aspect = w / h
+                if aspect > 3.0 or aspect < 0.33:
+                    continue
+                rects = page.get_image_rects(xref)
+                if rects:
+                    r = rects[0]
+                    if (r.x1 - r.x0) * (r.y1 - r.y0) > 0.9 * page_area:
                         continue
+                try:
+                    pix = fitz.Pixmap(doc, xref)
+                    if pix.n > 4:
+                        pix = fitz.Pixmap(fitz.csRGB, pix)
+                    img_data = pix.tobytes("png")
+                    img_hash = hashlib.md5(img_data).hexdigest()
+                    if img_hash in seen_hashes:
+                        continue
+                    seen_hashes.add(img_hash)
                     img_counter += 1
-                    fname = f"img_{img_counter:04d}.{ext}"
-                    (embedded_dir / fname).write_bytes(data)
+                    fname = f"img_{img_counter:04d}.png"
+                    (embedded_dir / fname).write_bytes(img_data)
                     embedded_urls.append(f"/campaign-assets/{session_id}/embedded/{fname}")
                 except Exception:
                     continue

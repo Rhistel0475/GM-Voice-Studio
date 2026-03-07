@@ -142,11 +142,10 @@ def handle_query(query: str) -> dict:
     sources: list[dict] = []
 
     if intent == "npc_request":
-        # Sprint 4 placeholder
         return {
             "type": "chat",
             "intent": intent,
-            "content": "NPC generation is coming in Sprint 4. For now, try asking me about rules or lore.",
+            "content": "Use the NPC Gen tab in the middle panel to generate a full character profile (genre, location, name, role).",
             "sources": [],
         }
 
