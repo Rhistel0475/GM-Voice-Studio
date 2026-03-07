@@ -64,7 +64,14 @@ const SILENCE_RMS_THRESHOLD = 0.015;
 const SILENCE_HOLD_MS = 2200;
 
 const WAVE = [20, 45, 28, 60, 35, 70, 26, 52, 41, 63, 30, 47, 22, 58, 37, 66, 29, 49, 31, 54, 24, 62, 34, 57, 27, 64];
-const TOOL_ICONS = [Dice5, Book, Map, ScrollText, Swords, Settings];
+const QUICK_TOOLS = [
+  { name: "Dice Roller",    Icon: Dice5 },
+  { name: "Lore Lookup",    Icon: Book },
+  { name: "Battle Map",     Icon: Map },
+  { name: "Scene Notes",    Icon: ScrollText },
+  { name: "Combat Tracker", Icon: Swords },
+  { name: "Settings",       Icon: Settings },
+];
 
 // Fallback defaults (shown when no campaign data is loaded)
 const DEFAULT_PARTY = [
@@ -132,6 +139,26 @@ const Header = ({ view, onNavigate, campaignData }) => (
   </header>
 );
 
+const ToolModal = ({ isOpen, onClose, title, children }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      onClick={onClose}>
+      <div className="panel-ornate max-w-lg w-full shadow-2xl relative"
+        onClick={e => e.stopPropagation()}>
+        <div className="panel-head flex justify-between items-center px-4">
+          <div className="plaque text-sm">{title}</div>
+          <button type="button" onClick={onClose}
+            className="text-[#d4af37] hover:text-white text-xl font-bold px-2">×</button>
+        </div>
+        <div className="panel-body p-6 text-center">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
 
@@ -144,13 +171,16 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
   const allReveals = campaignData?.reveals || [];
   const sceneReveals = (scene?.reveals || []).map(revealName => allReveals.find(r => r.name === revealName)).filter(Boolean);
 
+  const [activeTool, setActiveTool] = useState(null);
+
   return (
     <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
       <Panel title="Quick Tools">
         <div className="grid grid-cols-3 gap-2 h-full">
-          {TOOL_ICONS.map((Icon, idx) => (
-            <button key={idx} type="button" className="quick-tile">
-              <Icon size={30} className="text-[#a98547]" />
+          {QUICK_TOOLS.map((tool) => (
+            <button key={tool.name} type="button" className="quick-tile"
+              onClick={() => setActiveTool(tool)}>
+              <tool.Icon size={30} className="text-[#a98547]" />
             </button>
           ))}
         </div>
@@ -203,6 +233,18 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
           ))}
         </div>
       </Panel>
+      <ToolModal
+        isOpen={!!activeTool}
+        onClose={() => setActiveTool(null)}
+        title={activeTool?.name || "Tool"}
+      >
+        <p className="text-[#e8c787] font-heading text-lg mb-4">
+          {activeTool?.name} Module
+        </p>
+        <p className="text-[#b88b46] text-sm italic">
+          Interface coming soon. This will hook into our backend API for live generation.
+        </p>
+      </ToolModal>
     </div>
   );
 };

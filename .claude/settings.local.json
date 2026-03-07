@@ -57,7 +57,8 @@
       "Bash(echo \"exit:$?\")",
       "Bash(npx --yes vite build)",
       "Bash(timeout 10 .venv/bin/python server.py)",
-      "Bash(echo \"EXIT: $?\")"
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(npx vite build)"
     ]
   }
 }
