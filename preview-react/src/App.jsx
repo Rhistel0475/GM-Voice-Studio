@@ -1,4 +1,25 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState, Component } from "react";
+
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(err) { return { error: err }; }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ background: "#1a0f06", color: "#ff6b6b", padding: "2rem", fontFamily: "monospace", fontSize: "13px", minHeight: "100vh" }}>
+          <div style={{ color: "#d4af37", fontFamily: "Cinzel,serif", fontSize: "1.1rem", marginBottom: "1rem" }}>Library Render Error</div>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#ff6b6b" }}>{this.state.error?.message}</pre>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#9b7440", marginTop: "0.5rem", fontSize: "11px" }}>{this.state.error?.stack}</pre>
+          <button
+            style={{ marginTop: "1.5rem", background: "#2a1a0a", border: "1px solid #c8a050", color: "#c8a050", padding: "0.5rem 1rem", cursor: "pointer", borderRadius: "4px" }}
+            onClick={() => { localStorage.removeItem("gm_parse_result"); localStorage.removeItem("gm_parse_images"); window.location.reload(); }}
+          >Clear saved data &amp; reload</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import {
   Book,
   Dice5,
@@ -1879,12 +1900,24 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
   const [isExtractingImages, setIsExtractingImages] = useState(false);
   const [parseError, setParseError] = useState("");
   const [parseResult, setParseResult] = useState(() => {
-    try { const s = localStorage.getItem("gm_parse_result"); return s ? JSON.parse(s) : null; }
-    catch { return null; }
+    try {
+      const s = localStorage.getItem("gm_parse_result");
+      if (!s) return null;
+      const parsed = JSON.parse(s);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch { return null; }
   });
   const [images, setImages] = useState(() => {
-    try { const s = localStorage.getItem("gm_parse_images"); return s ? JSON.parse(s) : { embedded: [], pages: [] }; }
-    catch { return { embedded: [], pages: [] }; }
+    try {
+      const s = localStorage.getItem("gm_parse_images");
+      if (!s) return { embedded: [], pages: [] };
+      const parsed = JSON.parse(s);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed) &&
+          Array.isArray(parsed.embedded) && Array.isArray(parsed.pages)) {
+        return parsed;
+      }
+      return { embedded: [], pages: [] };
+    } catch { return { embedded: [], pages: [] }; }
   });
   const [saved, setSaved] = useState(false);
   const [activePanel, setActivePanel] = useState("outline");
@@ -2292,17 +2325,18 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                                   : <span style={{ color:"#7a6040" }}>{img.type || "illustration"}{img.label ? ` · ${img.label}` : ""}</span>
                                 }
                               </div>
-                              {assignOptions.length > 0 && (
-                                <select
-                                  value={img.assigned_to || ""}
-                                  onChange={e => assignImageTo(img.idx, e.target.value)}
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor:"pointer" }}
-                                >
-                                  <option value="">Assign to...</option>
-                                  {assignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                              )}
+                              <select
+                                value={img.assigned_to || ""}
+                                onChange={e => assignOptions.length && assignImageTo(img.idx, e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                disabled={assignOptions.length === 0}
+                                style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color: assignOptions.length ? "#c8a050" : "#5a3e1b", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor: assignOptions.length ? "pointer" : "default", opacity: assignOptions.length ? 1 : 0.5 }}
+                              >
+                                {assignOptions.length === 0
+                                  ? <option value="">Run AI Parse to assign</option>
+                                  : <><option value="">Assign to...</option>{assignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</>
+                                }
+                              </select>
                             </div>
                           </div>
                         );
@@ -2341,17 +2375,18 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                                   <span style={{ color:"#d4af37", fontWeight:600 }}>Linked to: {assignedLabel.replace(/^(NPC|Scene): /, "")}</span>
                                 </div>
                               )}
-                              {embedAssignOptions.length > 0 && (
-                                <select
-                                  value={currentVal}
-                                  onChange={e => handleAssignImage(url, e.target.value)}
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor:"pointer" }}
-                                >
-                                  <option value="">Assign to...</option>
-                                  {embedAssignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                              )}
+                              <select
+                                value={currentVal}
+                                onChange={e => handleAssignImage(url, e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                disabled={embedAssignOptions.length === 0}
+                                style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color: embedAssignOptions.length ? "#c8a050" : "#5a3e1b", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor: embedAssignOptions.length ? "pointer" : "default", opacity: embedAssignOptions.length ? 1 : 0.5 }}
+                              >
+                                {embedAssignOptions.length === 0
+                                  ? <option value="">Run AI Parse to assign</option>
+                                  : <><option value="">Assign to...</option>{embedAssignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</>
+                                }
+                              </select>
                             </div>
                           </div>
                         );
@@ -2393,17 +2428,18 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                                   <span style={{ color:"#d4af37", fontWeight:600 }}>Linked to: {assignedLabel.replace(/^(NPC|Scene): /, "")}</span>
                                 </div>
                               )}
-                              {pageAssignOptions.length > 0 && (
-                                <select
-                                  value={currentVal}
-                                  onChange={e => handleAssignImage(url, e.target.value)}
-                                  onClick={e => e.stopPropagation()}
-                                  style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor:"pointer" }}
-                                >
-                                  <option value="">Assign to...</option>
-                                  {pageAssignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                                </select>
-                              )}
+                              <select
+                                value={currentVal}
+                                onChange={e => handleAssignImage(url, e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                disabled={pageAssignOptions.length === 0}
+                                style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color: pageAssignOptions.length ? "#c8a050" : "#5a3e1b", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor: pageAssignOptions.length ? "pointer" : "default", opacity: pageAssignOptions.length ? 1 : 0.5 }}
+                              >
+                                {pageAssignOptions.length === 0
+                                  ? <option value="">Run AI Parse to assign</option>
+                                  : <><option value="">Assign to...</option>{pageAssignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</>
+                                }
+                              </select>
                             </div>
                           </div>
                         );
@@ -2600,11 +2636,11 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <h3 className="truncate">{npc.name}</h3>
-                        <span className="text-xs text-[#9b7440] border border-[#4f341f] rounded px-1 flex-shrink-0">{npc.role}</span>
+                        <span className="text-xs text-[#9b7440] border border-[#4f341f] rounded px-1 flex-shrink-0">{typeof npc.role === "string" ? npc.role : ""}</span>
                       </div>
-                      {npc.faction && <p className="text-xs text-[#7a5a30]">{npc.faction}</p>}
-                      {npc.personality && <p className="text-xs text-[#9b7440] italic mt-0.5">{npc.personality.slice(0, 80)}{npc.personality.length > 80 ? "…" : ""}</p>}
-                      {npc.motivation && <p className="text-xs text-[#7a5a30]">Wants: {npc.motivation.slice(0, 60)}{npc.motivation.length > 60 ? "…" : ""}</p>}
+                      {npc.faction && <p className="text-xs text-[#7a5a30]">{typeof npc.faction === "string" ? npc.faction : ""}</p>}
+                      {npc.personality && typeof npc.personality === "string" && <p className="text-xs text-[#9b7440] italic mt-0.5">{npc.personality.slice(0, 80)}{npc.personality.length > 80 ? "…" : ""}</p>}
+                      {npc.motivation && typeof npc.motivation === "string" && <p className="text-xs text-[#7a5a30]">Wants: {npc.motivation.slice(0, 60)}{npc.motivation.length > 60 ? "…" : ""}</p>}
                     </div>
                   </div>
                 ))}
@@ -2761,13 +2797,15 @@ export default function App() {
       {view === "prep" ? (
         <PrepRoom view={view} onNavigate={navigateTo} campaignData={campaignData} onUpdateCampaign={saveCampaignData} />
       ) : view === "intake" ? (
-        <AdventureIntake
-          view={view}
-          onNavigate={navigateTo}
-          campaignData={campaignData}
-          onSaveCampaign={saveCampaignData}
-          authFetch={authFetch}
-        />
+        <ErrorBoundary>
+          <AdventureIntake
+            view={view}
+            onNavigate={navigateTo}
+            campaignData={campaignData}
+            onSaveCampaign={saveCampaignData}
+            authFetch={authFetch}
+          />
+        </ErrorBoundary>
       ) : (
         <LiveBoard
           view={view}
