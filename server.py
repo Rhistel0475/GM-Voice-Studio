@@ -26,6 +26,8 @@ import urllib.request
 from collections import Counter
 from typing import Optional
 
+import hashlib
+import fitz
 import numpy as np
 import soundfile as sf
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -1029,46 +1031,42 @@ async def parse_adventure_docs(
 
 
 def _extract_embedded_images(raw_pdf: bytes, embedded_dir: Path, start_counter: int, session_id: str) -> tuple[list[dict], int]:
-    """
-    Synchronous: extract meaningful embedded images from a PDF into embedded_dir.
-    Returns (raw_images list, total_pages).
-    """
+    import fitz
+    import hashlib
     raw_images: list[dict] = []
     total_pages = 0
     img_counter = start_counter
+    seen_hashes = set()
     try:
-        import fitz  # PyMuPDF
         doc = fitz.open(stream=raw_pdf, filetype="pdf")
         total_pages = doc.page_count
-        import hashlib
-        seen_hashes: set[str] = set()
-        for page_num in range(doc.page_count):
-            page = doc[page_num]
-            page_area = page.rect.width * page.rect.height
-            for img_info in page.get_images(full=True):
-                xref, _smask, w, h = img_info[0], img_info[1], img_info[2], img_info[3]
-                if w < 150 or h < 150:
-                    continue
-                aspect = w / h
-                if aspect > 3.0 or aspect < 0.33:
-                    continue
-                rects = page.get_image_rects(xref)
-                if rects:
-                    r = rects[0]
-                    if (r.x1 - r.x0) * (r.y1 - r.y0) > 0.9 * page_area:
-                        continue
+        for page_num in range(total_pages):
+            page = doc.load_page(page_num)
+            for img in page.get_images(full=True):
                 try:
-                    pix = fitz.Pixmap(doc, xref)
-                    if pix.n > 4:
-                        pix = fitz.Pixmap(fitz.csRGB, pix)
-                    img_data = pix.tobytes("png")
-                    img_hash = hashlib.md5(img_data).hexdigest()
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    data = base_image["image"]
+
+                    # 1. Deduplication Filter
+                    img_hash = hashlib.md5(data).hexdigest()
                     if img_hash in seen_hashes:
                         continue
                     seen_hashes.add(img_hash)
+
+                    # 2. Dimensions & Aspect Ratio Filter
+                    width = base_image.get("width", 0)
+                    height = base_image.get("height", 0)
+                    if width < 150 or height < 150:
+                        continue
+                    aspect_ratio = width / height if height > 0 else 0
+                    if aspect_ratio > 3.0 or aspect_ratio < 0.33:
+                        continue
+
+                    ext = base_image["ext"]
                     img_counter += 1
-                    fname = f"img_{img_counter:04d}.png"
-                    (embedded_dir / fname).write_bytes(img_data)
+                    fname = f"img_{img_counter:04d}.{ext}"
+                    (embedded_dir / fname).write_bytes(data)
                     raw_images.append({
                         "idx": img_counter,
                         "page": page_num + 1,
@@ -1273,56 +1271,48 @@ def _extract_images_from_pdf(
     img_counter_start: int,
     session_id: str,
 ) -> tuple[list[str], list[str]]:
-    """
-    Synchronous: extract embedded images and page thumbnails from a PDF.
-    Returns (embedded_urls, page_urls).
-    """
+    import fitz
+    import hashlib
+    from pdf2image import convert_from_bytes
     embedded_urls: list[str] = []
     page_urls: list[str] = []
     img_counter = img_counter_start
+    seen_hashes = set()
 
-    # --- Embedded images via PyMuPDF ---
+    # --- Embedded images via PyMuPDF (fitz) ---
     try:
-        import fitz  # PyMuPDF
-        import hashlib
         doc = fitz.open(stream=raw, filetype="pdf")
-        seen_hashes: set[str] = set()
         for page_num in range(doc.page_count):
-            page = doc[page_num]
-            page_area = page.rect.width * page.rect.height
-            for img_info in page.get_images(full=True):
-                xref, _smask, w, h = img_info[0], img_info[1], img_info[2], img_info[3]
-                if w < 150 or h < 150:
-                    continue
-                aspect = w / h
-                if aspect > 3.0 or aspect < 0.33:
-                    continue
-                rects = page.get_image_rects(xref)
-                if rects:
-                    r = rects[0]
-                    if (r.x1 - r.x0) * (r.y1 - r.y0) > 0.9 * page_area:
-                        continue
+            page = doc.load_page(page_num)
+            for img in page.get_images(full=True):
                 try:
-                    pix = fitz.Pixmap(doc, xref)
-                    if pix.n > 4:
-                        pix = fitz.Pixmap(fitz.csRGB, pix)
-                    img_data = pix.tobytes("png")
-                    img_hash = hashlib.md5(img_data).hexdigest()
+                    xref = img[0]
+                    base_image = doc.extract_image(xref)
+                    data = base_image["image"]
+
+                    img_hash = hashlib.md5(data).hexdigest()
                     if img_hash in seen_hashes:
                         continue
                     seen_hashes.add(img_hash)
+
+                    width = base_image.get("width", 0)
+                    height = base_image.get("height", 0)
+                    if width < 150 or height < 150:
+                        continue
+                    aspect_ratio = width / height if height > 0 else 0
+                    if aspect_ratio > 3.0 or aspect_ratio < 0.33:
+                        continue
+                    ext = base_image["ext"]
                     img_counter += 1
-                    fname = f"img_{img_counter:04d}.png"
-                    (embedded_dir / fname).write_bytes(img_data)
+                    fname = f"img_{img_counter:04d}.{ext}"
+                    (embedded_dir / fname).write_bytes(data)
                     embedded_urls.append(f"/campaign-assets/{session_id}/embedded/{fname}")
                 except Exception:
                     continue
     except Exception as e:
         logging.warning("Embedded image extraction failed: %s", e)
-
     # --- Page thumbnails via pdf2image ---
     try:
-        from pdf2image import convert_from_bytes
         pages = convert_from_bytes(raw, dpi=96, fmt="jpeg", thread_count=2)
         for i, page_img in enumerate(pages):
             fname = f"page_{i + 1:04d}.jpg"
@@ -1330,7 +1320,6 @@ def _extract_images_from_pdf(
             page_urls.append(f"/campaign-assets/{session_id}/pages/{fname}")
     except Exception as e:
         logging.warning("Page thumbnail extraction failed: %s", e)
-
     return embedded_urls, page_urls
 
 

@@ -1828,7 +1828,7 @@ const DetailDrawer = ({ item, onClose, onLightbox }) => {
             <div className="flex gap-3 items-start">
               {data.image_url
                 ? <img src={data.image_url} alt={data.name} className="w-20 h-20 object-cover rounded border border-[#4f341f] flex-shrink-0 cursor-pointer" onClick={() => onLightbox(data.image_url)} />
-                : <div className="w-20 h-20 flex-shrink-0 rounded border border-[#4f341f] bg-[#120a04] flex items-center justify-center text-[#4f341f] text-2xl font-bold">{data.name.slice(0,2).toUpperCase()}</div>
+                : <div className="w-20 h-20 flex-shrink-0 rounded border border-[#4f341f] bg-[#120a04] flex items-center justify-center text-[#4f341f] text-2xl font-bold">{(data.name || "?").slice(0,2).toUpperCase()}</div>
               }
               <div>
                 <div className="flex gap-2 flex-wrap text-xs mb-1">
@@ -1878,8 +1878,14 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
   const [isParsing, setIsParsing] = useState(false);
   const [isExtractingImages, setIsExtractingImages] = useState(false);
   const [parseError, setParseError] = useState("");
-  const [parseResult, setParseResult] = useState(null);
-  const [images, setImages] = useState({ embedded: [], pages: [] });
+  const [parseResult, setParseResult] = useState(() => {
+    try { const s = localStorage.getItem("gm_parse_result"); return s ? JSON.parse(s) : null; }
+    catch { return null; }
+  });
+  const [images, setImages] = useState(() => {
+    try { const s = localStorage.getItem("gm_parse_images"); return s ? JSON.parse(s) : { embedded: [], pages: [] }; }
+    catch { return { embedded: [], pages: [] }; }
+  });
   const [saved, setSaved] = useState(false);
   const [activePanel, setActivePanel] = useState("outline");
   const [lightbox, setLightbox] = useState(null); // URL of enlarged image
@@ -1893,14 +1899,68 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
   const deletePageImage = (i) =>
     setImages(s => ({ ...s, pages: s.pages.filter((_, j) => j !== i) }));
   const assignImageTo = (idx, entityName) =>
-    setParseResult(r => ({
-      ...r,
-      images: r.images.map(img => img.idx === idx ? { ...img, assigned_to: entityName } : img),
-    }));
+    setParseResult(r => {
+      const targetImg = r.images.find(img => img.idx === idx);
+      const url = targetImg?.url || null;
+      const updatedImages = r.images.map(img =>
+        img.idx === idx ? { ...img, assigned_to: entityName } : img
+      );
+      const updatedNpcs = (r.npcs || []).map(n => {
+        if (entityName && n.name === entityName) return { ...n, image_url: url };
+        if (!entityName && n.image_url === url) return { ...n, image_url: null };
+        return n;
+      });
+      const updatedScenes = (r.scenes || []).map(s => {
+        if (entityName && s.title === entityName) return { ...s, image_url: url };
+        if (!entityName && s.image_url === url) return { ...s, image_url: null };
+        return s;
+      });
+      return { ...r, images: updatedImages, npcs: updatedNpcs, scenes: updatedScenes };
+    });
+
+  const handleAssignImage = (imageUrl, selection) =>
+    setParseResult(r => {
+      if (!r) return r;
+      const [type, idxStr] = (selection || "").split(":");
+      const i = parseInt(idxStr, 10);
+      const updatedNpcs = (r.npcs || []).map((n, ni) =>
+        type === "npc" && ni === i ? { ...n, image_url: imageUrl }
+        : n.image_url === imageUrl ? { ...n, image_url: null } : n
+      );
+      const updatedScenes = (r.scenes || []).map((s, si) =>
+        type === "scene" && si === i ? { ...s, image_url: imageUrl }
+        : s.image_url === imageUrl ? { ...s, image_url: null } : s
+      );
+      return { ...r, npcs: updatedNpcs, scenes: updatedScenes };
+    });
+
+  const getAssignedLabel = (url) => {
+    if (!parseResult) return null;
+    const npc = (parseResult.npcs || []).find(n => n.image_url === url);
+    if (npc) return `NPC: ${npc.name}`;
+    const scene = (parseResult.scenes || []).find(s => s.image_url === url);
+    if (scene) return `Scene: ${scene.title}`;
+    return null;
+  };
 
   const [savedCampaigns, setSavedCampaigns] = useState([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(false);
   const [loadingCampaignId, setLoadingCampaignId] = useState(null);
+
+  useEffect(() => {
+    try {
+      if (parseResult) localStorage.setItem("gm_parse_result", JSON.stringify(parseResult));
+      else localStorage.removeItem("gm_parse_result");
+    } catch {}
+  }, [parseResult]);
+
+  useEffect(() => {
+    try {
+      if (images.embedded.length || images.pages.length)
+        localStorage.setItem("gm_parse_images", JSON.stringify(images));
+      else localStorage.removeItem("gm_parse_images");
+    } catch {}
+  }, [images]);
 
   useEffect(() => {
     setLoadingCampaigns(true);
@@ -2210,31 +2270,34 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                           ...(parseResult.scenes || []).map(s => ({ label: `Scene: ${s.title}`, value: s.title })),
                         ];
                         return (
-                          <div key={img.idx} className="relative group">
+                          <div key={img.idx} style={{ position: "relative" }}>
                             <img
                               src={img.url}
                               alt={img.label || `Image ${img.idx}`}
-                              className="w-full rounded border border-[#4f341f] group-hover:border-[#d4af37] object-cover cursor-pointer"
-                              style={{ maxHeight: "120px" }}
+                              style={{ maxHeight: "120px", width: "100%", borderRadius: "4px", border: "1px solid #4f341f", objectFit: "cover", cursor: "pointer", display: "block" }}
                               onClick={() => setLightbox(img.url)}
                             />
                             <button
                               type="button"
                               onClick={() => deleteAssignedImage(img.idx)}
-                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-red-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80"
                               title="Remove image"
+                              style={{ position:"absolute", top:"5px", right:"5px", width:"20px", height:"20px", borderRadius:"50%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"12px", lineHeight:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", zIndex:2, transition:"border-color 0.15s, box-shadow 0.15s, color 0.15s" }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor="#c05050"; e.currentTarget.style.color="#ff6b6b"; e.currentTarget.style.boxShadow="0 0 6px #c0505088"; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor="#c8a050"; e.currentTarget.style.color="#c8a050"; e.currentTarget.style.boxShadow="none"; }}
                             >×</button>
-                            <div className="absolute bottom-0 left-0 right-0 bg-black/70 rounded-b px-1 py-0.5">
-                              <div className="text-[#d4af37] text-[10px] truncate">
-                                {img.assigned_to ? `→ ${img.assigned_to}` : img.type || "illustration"}
-                                {img.label ? ` · ${img.label}` : ""}
+                            <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.72)", borderBottomLeftRadius:"4px", borderBottomRightRadius:"4px", padding:"3px 5px" }}>
+                              <div style={{ fontSize:"10px", marginBottom:"2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                {img.assigned_to
+                                  ? <span style={{ color:"#d4af37", fontWeight:600 }}>Linked to: {img.assigned_to}</span>
+                                  : <span style={{ color:"#7a6040" }}>{img.type || "illustration"}{img.label ? ` · ${img.label}` : ""}</span>
+                                }
                               </div>
                               {assignOptions.length > 0 && (
                                 <select
-                                  className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-[10px] rounded mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                                   value={img.assigned_to || ""}
                                   onChange={e => assignImageTo(img.idx, e.target.value)}
                                   onClick={e => e.stopPropagation()}
+                                  style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor:"pointer" }}
                                 >
                                   <option value="">Assign to...</option>
                                   {assignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -2250,19 +2313,49 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                   <>
                     <div className="subhead">Maps &amp; Artwork ({images.embedded.length})</div>
                     <div className="grid grid-cols-2 gap-2">
-                      {images.embedded.map((url, i) => (
-                        <div key={i} className="relative group">
-                          <img src={url} alt={`Image ${i + 1}`}
-                            className="w-full rounded border border-[#4f341f] cursor-pointer group-hover:border-[#d4af37] object-cover"
-                            style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
-                          <button
-                            type="button"
-                            onClick={() => deleteEmbeddedImage(i)}
-                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-red-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80"
-                            title="Remove image"
-                          >×</button>
-                        </div>
-                      ))}
+                      {images.embedded.map((url, i) => {
+                        const assignedLabel = getAssignedLabel(url);
+                        const npcIdx = (parseResult?.npcs || []).findIndex(n => n.image_url === url);
+                        const sceneIdx = (parseResult?.scenes || []).findIndex(s => s.image_url === url);
+                        const currentVal = npcIdx >= 0 ? `npc:${npcIdx}` : sceneIdx >= 0 ? `scene:${sceneIdx}` : "";
+                        const embedAssignOptions = [
+                          ...(parseResult?.npcs || []).map((n, ni) => ({ label: `NPC: ${n.name}`, value: `npc:${ni}` })),
+                          ...(parseResult?.scenes || []).map((s, si) => ({ label: `Scene: ${s.title}`, value: `scene:${si}` })),
+                        ];
+                        return (
+                          <div key={i} style={{ position: "relative" }}>
+                            <img src={url} alt={`Image ${i + 1}`}
+                              style={{ maxHeight: "130px", width: "100%", borderRadius: "4px", border: "1px solid #4f341f", objectFit: "cover", cursor: "pointer", display: "block" }}
+                              onClick={() => setLightbox(url)} />
+                            <button
+                              type="button"
+                              onClick={() => deleteEmbeddedImage(i)}
+                              title="Remove image"
+                              style={{ position:"absolute", top:"5px", right:"5px", width:"20px", height:"20px", borderRadius:"50%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"12px", lineHeight:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", zIndex:2, transition:"border-color 0.15s, box-shadow 0.15s, color 0.15s" }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor="#c05050"; e.currentTarget.style.color="#ff6b6b"; e.currentTarget.style.boxShadow="0 0 6px #c0505088"; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor="#c8a050"; e.currentTarget.style.color="#c8a050"; e.currentTarget.style.boxShadow="none"; }}
+                            >×</button>
+                            <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.72)", borderBottomLeftRadius:"4px", borderBottomRightRadius:"4px", padding:"3px 5px" }}>
+                              {assignedLabel && (
+                                <div style={{ fontSize:"10px", marginBottom:"2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                  <span style={{ color:"#d4af37", fontWeight:600 }}>Linked to: {assignedLabel.replace(/^(NPC|Scene): /, "")}</span>
+                                </div>
+                              )}
+                              {embedAssignOptions.length > 0 && (
+                                <select
+                                  value={currentVal}
+                                  onChange={e => handleAssignImage(url, e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor:"pointer" }}
+                                >
+                                  <option value="">Assign to...</option>
+                                  {embedAssignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 ) : (
@@ -2272,19 +2365,49 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                   <>
                     <div className="subhead mt-2">Page Thumbnails ({images.pages.length})</div>
                     <div className="grid grid-cols-2 gap-2">
-                      {images.pages.map((url, i) => (
-                        <div key={i} className="relative group">
-                          <img src={url} alt={`Page ${i + 1}`}
-                            className="w-full rounded border border-[#4f341f] cursor-pointer group-hover:border-[#d4af37] object-cover"
-                            style={{ maxHeight: "130px" }} onClick={() => setLightbox(url)} />
-                          <button
-                            type="button"
-                            onClick={() => deletePageImage(i)}
-                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-red-400 text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-900/80"
-                            title="Remove image"
-                          >×</button>
-                        </div>
-                      ))}
+                      {images.pages.map((url, i) => {
+                        const assignedLabel = getAssignedLabel(url);
+                        const npcIdx = (parseResult?.npcs || []).findIndex(n => n.image_url === url);
+                        const sceneIdx = (parseResult?.scenes || []).findIndex(s => s.image_url === url);
+                        const currentVal = npcIdx >= 0 ? `npc:${npcIdx}` : sceneIdx >= 0 ? `scene:${sceneIdx}` : "";
+                        const pageAssignOptions = [
+                          ...(parseResult?.npcs || []).map((n, ni) => ({ label: `NPC: ${n.name}`, value: `npc:${ni}` })),
+                          ...(parseResult?.scenes || []).map((s, si) => ({ label: `Scene: ${s.title}`, value: `scene:${si}` })),
+                        ];
+                        return (
+                          <div key={i} style={{ position: "relative" }}>
+                            <img src={url} alt={`Page ${i + 1}`}
+                              style={{ maxHeight: "130px", width: "100%", borderRadius: "4px", border: "1px solid #4f341f", objectFit: "cover", cursor: "pointer", display: "block" }}
+                              onClick={() => setLightbox(url)} />
+                            <button
+                              type="button"
+                              onClick={() => deletePageImage(i)}
+                              title="Remove image"
+                              style={{ position:"absolute", top:"5px", right:"5px", width:"20px", height:"20px", borderRadius:"50%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"12px", lineHeight:1, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", zIndex:2, transition:"border-color 0.15s, box-shadow 0.15s, color 0.15s" }}
+                              onMouseEnter={e => { e.currentTarget.style.borderColor="#c05050"; e.currentTarget.style.color="#ff6b6b"; e.currentTarget.style.boxShadow="0 0 6px #c0505088"; }}
+                              onMouseLeave={e => { e.currentTarget.style.borderColor="#c8a050"; e.currentTarget.style.color="#c8a050"; e.currentTarget.style.boxShadow="none"; }}
+                            >×</button>
+                            <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"rgba(0,0,0,0.72)", borderBottomLeftRadius:"4px", borderBottomRightRadius:"4px", padding:"3px 5px" }}>
+                              {assignedLabel && (
+                                <div style={{ fontSize:"10px", marginBottom:"2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                                  <span style={{ color:"#d4af37", fontWeight:600 }}>Linked to: {assignedLabel.replace(/^(NPC|Scene): /, "")}</span>
+                                </div>
+                              )}
+                              {pageAssignOptions.length > 0 && (
+                                <select
+                                  value={currentVal}
+                                  onChange={e => handleAssignImage(url, e.target.value)}
+                                  onClick={e => e.stopPropagation()}
+                                  style={{ width:"100%", background:"#1a0f06", border:"1px solid #c8a050", color:"#c8a050", fontSize:"10px", borderRadius:"3px", padding:"1px 2px", cursor:"pointer" }}
+                                >
+                                  <option value="">Assign to...</option>
+                                  {pageAssignOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                                </select>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -2415,8 +2538,8 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
 
             {activePanel === "locations" && (
               <div className="space-y-2">
-                {locations.length ? locations.map((loc) => (
-                  <div key={loc.name || loc} className="intake-act-card cursor-pointer hover:border-[#d4af37]"
+                {locations.length ? locations.filter(Boolean).map((loc) => (
+                  <div key={loc.name || String(loc)} className="intake-act-card cursor-pointer hover:border-[#d4af37]"
                     onClick={() => isAiResult && setDetailItem({type:"location", data:loc})}>
                     <h3>{loc.name || loc}</h3>
                     {loc.description && <p className="text-xs text-[#9b7440]">{loc.description}</p>}
@@ -2471,7 +2594,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                       />
                     ) : (
                       <div className="w-14 h-14 flex-shrink-0 rounded border border-[#4f341f] bg-[#1a0f06] flex items-center justify-center text-[#4f341f] text-lg font-bold">
-                        {npc.name.slice(0, 2).toUpperCase()}
+                        {(npc.name || "?").slice(0, 2).toUpperCase()}
                       </div>
                     )}
                     <div className="flex-1 min-w-0">
