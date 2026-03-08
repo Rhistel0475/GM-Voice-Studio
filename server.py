@@ -125,6 +125,10 @@ _ASSETS_DIR = Path(__file__).resolve().parent / "static" / "campaign_assets"
 _ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/campaign-assets", StaticFiles(directory=_ASSETS_DIR), name="campaign_assets")
 
+_IMG_DIR = Path(__file__).resolve().parent / "static" / "img"
+_IMG_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/static/img", StaticFiles(directory=_IMG_DIR), name="static_img")
+
 from database import init_db
 init_db()
 
