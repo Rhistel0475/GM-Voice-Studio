@@ -5,7 +5,7 @@ Run after each refactor phase to confirm the app still works. Execute from proje
 ## Prerequisites
 
 - Backend: `pip install -r requirements-core.txt && pip install -r requirements-server.txt` (and optionally `requirements-rag.txt` if testing RAG).
-- Frontend (for preview): `cd preview-react && npm install && npm run build` (or `cd frontend && ...` after Phase 1).
+- Frontend (for preview): `cd frontend && npm install && npm run build` (or from root: `./scripts/build-frontend.sh`).
 - Default port: 7862 (override with `PORT` env var).
 
 ## 1. Health
