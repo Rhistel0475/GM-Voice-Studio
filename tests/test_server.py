@@ -14,7 +14,7 @@ def test_health_payload():
 
 def test_ready_raises_503_when_model_not_loaded(monkeypatch):
     """ready() raises HTTP 503 if TTS model is not loaded yet."""
-    import tts_service
+    from app.services import tts_service
 
     monkeypatch.setattr(tts_service, "is_model_loaded", lambda: False)
     with pytest.raises(HTTPException) as excinfo:
@@ -25,7 +25,7 @@ def test_ready_raises_503_when_model_not_loaded(monkeypatch):
 
 def test_ready_returns_ok_when_model_loaded(monkeypatch):
     """ready() returns ready status once model is loaded."""
-    import tts_service
+    from app.services import tts_service
 
     monkeypatch.setattr(tts_service, "is_model_loaded", lambda: True)
     data = ready()

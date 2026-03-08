@@ -2,6 +2,10 @@
 
 AI voice engine: use built-in voices or clone a voice from a short recording, then generate speech with [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (Kyutai). English only; CPU-optimized, no GPU required.
 
+## Architecture
+
+FastAPI backend with React preview UI at `/preview`. Domains: voice (TTS, clone), campaign (adventure/campaigns), live (WebSocket Co-DM), ai (RAG, LLM). See [docs/architecture.md](docs/architecture.md) for overview and [docs/current-architecture.md](docs/current-architecture.md) for detailed layout. API summary: [docs/api.md](docs/api.md). Deployment: [docs/deployment.md](docs/deployment.md).
+
 ## Run the server
 
 ```bash
@@ -27,19 +31,21 @@ python server.py
 
 ### React Preview UI (`/preview`)
 
-`/preview` now serves a React app build when available (fallback: legacy `static/index.preview.html`).
+`/preview` serves the React app build when available (fallback: legacy `static/index.preview.html`). The React app in `frontend/` is the **primary preview UI**.
 
 ```bash
 # One-time install
-cd preview-react
+cd frontend
 npm install
 
-# Build into static/preview-react (served by FastAPI at /preview)
+# Build into static/frontend (served by FastAPI at /preview)
 npm run build
 
-# Optional local dev server for frontend iteration
-npm run dev
+# Or from repo root (installs deps if needed)
+./scripts/build-frontend.sh
 ```
+
+**Optional:** Run `npm run dev` in `frontend/` for hot reload; Vite proxies API and WebSocket to the backend (see [docs/frontend.md](docs/frontend.md)).
 
 After `npm run build`, open **http://localhost:7862/preview**.
 
@@ -53,7 +59,7 @@ After `npm run build`, open **http://localhost:7862/preview**.
 | `API_KEYS` | (empty) | Comma-separated API keys; header `X-API-Key` |
 | `REQUIRE_API_KEY` | (unset) | Set to `1`/`true`/`yes` to require key for TTS/clone |
 
-Optional features (see [config.py](config.py) for full list):
+Optional features (see [app/core/config.py](app/core/config.py) for full list):
 
 | Variable | Description |
 |----------|-------------|
@@ -98,7 +104,11 @@ pytest tests/ -v
 
 By default, slow tests (POST /tts, which loads the model) are skipped. To run them: `pytest tests/ -v -m slow`.
 
+**Scripts:** From repo root, `./scripts/test.sh` runs the same; `./scripts/test.sh --slow` includes slow tests. See [docs/testing.md](docs/testing.md) for markers and smoke validation. Where to add routes, services, adapters, and tests: [docs/contributing.md](docs/contributing.md).
+
 ## Deploy
+
+See [docs/deployment.md](docs/deployment.md) for production checklist, migrations, env, rate limiting, and health/readiness.
 
 **Docker:** Build and run the API (default port 7862):
 
@@ -115,7 +125,7 @@ docker compose up -d app
 # docker compose --profile celery up -d redis && docker compose run -e CELERY_BROKER_URL=redis://redis:6379/0 app celery -A celery_app worker --loglevel=info
 ```
 
-**Env:** Set `PORT`, `VOICE_STORAGE_PATH` (or use a volume), and optionally `API_KEYS`, `REQUIRE_API_KEY`, `DATABASE_URL`, `CELERY_BROKER_URL`, `CORS_ORIGINS` (see Config table). For production, back up `voice_storage` and your database (SQLite file or PostgreSQL).
+**Env:** Set `PORT`, `VOICE_STORAGE_PATH` (or use a volume), and optionally `API_KEYS`, `REQUIRE_API_KEY`, `DATABASE_URL`, `CELERY_BROKER_URL`, `CORS_ORIGINS` (see Config table). For production, back up `voice_storage` and your database (SQLite file or PostgreSQL). See [docs/deployment.md](docs/deployment.md).
 
 ## Use from a TTRPG app (GM Voice Studio API)
 

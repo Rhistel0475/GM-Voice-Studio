@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gm-voice-studio"
+version = "0.1.0"
+description = "GM Voice Studio — Pocket TTS API with voice clone, narrate, Co-DM RAG and live board"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.5.0",
+    "soundfile>=0.13.0",
+    "kani-tts-2",
+    "python-dotenv>=1.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.22.0",
+    "slowapi>=0.1.9",
+    "websockets>=12.0",
+    "gradio>=6.6.0",
+    "alembic>=1.18.0",
+    "anthropic>=0.50.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+]
+rag = [
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-pinecone>=0.2.0",
+    "langchain-community>=0.3.0",
+    "openai>=1.50.0",
+    "pinecone>=5.0.0",
+    "pypdf>=4.0.0",
+    "pymupdf4llm>=0.0.17",
+    "pymupdf_layout",
+]
+optional = [
+    "boto3>=1.28.0",
+    "celery[redis]>=5.3.0",
+    "psycopg2-binary>=2.9.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["app", "server.py", "tests"]
+exclude = [".venv", "frontend", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
