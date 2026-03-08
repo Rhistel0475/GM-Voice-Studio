@@ -58,7 +58,8 @@
       "Bash(npx --yes vite build)",
       "Bash(timeout 10 .venv/bin/python server.py)",
       "Bash(echo \"EXIT: $?\")",
-      "Bash(npx vite build)"
+      "Bash(npx vite build)",
+      "Bash(node -e \"import\\(''./vite.config.js''\\).then\\(\\(\\) => console.log\\(''ok''\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")"
     ]
   }
 }
