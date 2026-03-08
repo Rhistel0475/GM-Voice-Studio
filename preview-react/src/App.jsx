@@ -60,17 +60,18 @@ const normalizeWakeText = (text) => (text || "")
   .replace(/\s+/g, " ")
   .trim();
 const WAKE_WORD = normalizeWakeText(import.meta.env.VITE_WAKE_WORD || "hey co gm");
+const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
 const SILENCE_RMS_THRESHOLD = 0.015;
 const SILENCE_HOLD_MS = 2200;
 
 const WAVE = [20, 45, 28, 60, 35, 70, 26, 52, 41, 63, 30, 47, 22, 58, 37, 66, 29, 49, 31, 54, 24, 62, 34, 57, 27, 64];
 const QUICK_TOOLS = [
-  { name: "Dice Roller",    Icon: Dice5 },
-  { name: "Lore Lookup",    Icon: Book },
-  { name: "Battle Map",     Icon: Map },
-  { name: "Scene Notes",    Icon: ScrollText },
-  { name: "Combat Tracker", Icon: Swords },
-  { name: "Settings",       Icon: Settings },
+  { id: "dice",     name: "Roll Dice",   img: `${BACKEND_URL}/static/img/Dices.png` },
+  { id: "spells",   name: "Grimoire",    img: `${BACKEND_URL}/static/img/Spellbook.png` },
+  { id: "map",      name: "World Map",   img: `${BACKEND_URL}/static/img/Maps.png` },
+  { id: "loot",     name: "Loot Table",  img: `${BACKEND_URL}/static/img/Loottable.png` },
+  { id: "combat",   name: "Encounter",   img: `${BACKEND_URL}/static/img/Swords.png` },
+  { id: "settings", name: "Settings",    img: `${BACKEND_URL}/static/img/Settings.png` },
 ];
 
 // Fallback defaults (shown when no campaign data is loaded)
@@ -178,9 +179,13 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
       <Panel title="Quick Tools">
         <div className="grid grid-cols-3 gap-2 h-full">
           {QUICK_TOOLS.map((tool) => (
-            <button key={tool.name} type="button" className="quick-tile"
+            <button key={tool.id} type="button" className="quick-tile"
+              style={{ width: "100%", height: "100%", padding: 0, position: "relative", overflow: "hidden" }}
               onClick={() => setActiveTool(tool)}>
-              <tool.Icon size={30} className="text-[#a98547]" />
+              <img src={tool.img} alt={tool.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <span style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.55)", color: "#e7c27a", fontFamily: "Cinzel,serif", fontSize: "9px", textAlign: "center", padding: "2px 2px 3px", letterSpacing: "0.04em", lineHeight: 1.2 }}>
+                {tool.name}
+              </span>
             </button>
           ))}
         </div>
