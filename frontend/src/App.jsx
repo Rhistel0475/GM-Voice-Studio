@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useRef, useState, Component } from "reac
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
 import AppShell from "./layout/AppShell";
-import LiveBoardPage from "./pages/LiveBoardPage";
-import CodexPage from "./pages/CodexPage";
-import NPCWorkshopPage from "./pages/NPCWorkshopPage";
-import VoiceStudioPage from "./pages/VoiceStudioPage";
+import LiveBoardPage from "./app/live-board";
+import CodexPage from "./app/codex";
+import NPCWorkshopPage from "./app/npcs";
+import VoiceStudioPage from "./app/voices";
 import SettingsPage from "./pages/SettingsPage";
 
 class ErrorBoundary extends Component {
@@ -67,7 +67,8 @@ const resolveViewFromPath = (path) => {
 };
 
 const pathToView = (path) => {
-  const p = (path || "/").replace(/\/+$/, "") || "/";
+  let p = (path || "/").replace(/\/+$/, "").trim() || "/";
+  if (!p.startsWith("/")) p = `/${p}`;
   if (p === "/codex") return "codex";
   if (p === "/npcs") return "npc-workshop";
   if (p === "/voices") return "voice-studio";

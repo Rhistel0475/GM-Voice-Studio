@@ -1,80 +1,66 @@
 import React from "react";
-import { FantasyButton } from "../shared";
+import CodexSearchBar from "./CodexSearchBar";
+import CodexFilterPanel from "./CodexFilterPanel";
 
-const SECTIONS = ["Campaign", "Adventures", "Locations", "NPCs", "Lore", "Rules"];
-
+/**
+ * Left sidebar: campaign selector, search bar, filter panel (category + tags).
+ * Used by CodexScreen for the research view.
+ */
 export default function CodexSidebar({
-  section,
-  onSectionChange,
-  scenes = [],
-  locations = [],
-  npcs = [],
-  selectedDoc,
-  onSelectDoc,
+  campaignData,
+  campaigns = [],
+  onCampaignSelect,
+  filterState,
+  onFilterChange,
+  availableTags = [],
 }) {
+  const currentCampaignName = campaignData?.title || "No campaign loaded";
+
   return (
-    <div className="flex flex-col gap-2 overflow-auto h-full">
-      <div className="plaque mb-2">Sections</div>
-      <div className="flex flex-col gap-1">
-        {SECTIONS.map((sec) => (
-          <FantasyButton
-            key={sec}
-            variant={section === sec ? "primary" : "secondary"}
-            className="text-left w-full"
-            onClick={() => {
-              onSectionChange(sec);
-              onSelectDoc(null);
-            }}
-          >
-            {sec}
-          </FantasyButton>
-        ))}
+    <div className="flex flex-col gap-3 overflow-auto h-full min-h-0">
+      <div className="plaque mb-1 shrink-0">Research</div>
+      <div className="flex flex-col gap-1 shrink-0">
+        <label className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider">
+          Campaign
+        </label>
+        <select
+          className="chat-input w-full"
+          value={campaignData?.id ?? ""}
+          onChange={(e) => {
+            const val = e.target.value;
+            const id = val === "" ? null : Number(val);
+            onCampaignSelect?.(id);
+          }}
+          aria-label="Select campaign"
+        >
+          <option value="">Current: {currentCampaignName}</option>
+          {campaigns.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.title || `Campaign #${c.id}`}
+            </option>
+          ))}
+        </select>
+        {campaigns.length === 0 && (
+          <p className="text-xs text-[var(--text-2)]">Load campaigns from Library.</p>
+        )}
       </div>
-      {section === "Adventures" && (
-        <div className="mt-2 space-y-1 overflow-auto">
-          {scenes.map((s, i) => (
-            <button
-              key={i}
-              type="button"
-              className="w-full text-left border border-[#5c3e23] bg-[#1a1008] p-2 text-sm text-[var(--text-1)] hover:border-[var(--gold)]"
-              onClick={() => onSelectDoc(s)}
-            >
-              {s.title || `Scene ${i + 1}`}
-            </button>
-          ))}
-          {!scenes.length && <div className="intake-empty text-xs">No scenes. Use Library to parse.</div>}
-        </div>
-      )}
-      {section === "Locations" && (
-        <div className="mt-2 space-y-1 overflow-auto">
-          {locations.map((loc, i) => (
-            <button
-              key={i}
-              type="button"
-              className="w-full text-left border border-[#5c3e23] bg-[#1a1008] p-2 text-sm text-[var(--text-1)] hover:border-[var(--gold)]"
-              onClick={() => onSelectDoc(typeof loc === "string" ? { title: loc, body: "" } : loc)}
-            >
-              {typeof loc === "string" ? loc : loc.name || loc}
-            </button>
-          ))}
-          {!locations.length && <div className="intake-empty text-xs">No locations.</div>}
-        </div>
-      )}
-      {section === "NPCs" && (
-        <div className="mt-2 space-y-1 overflow-auto">
-          {npcs.map((n) => (
-            <button
-              key={n.name}
-              type="button"
-              className="w-full text-left border border-[#5c3e23] bg-[#1a1008] p-2 text-sm text-[var(--text-1)] hover:border-[var(--gold)]"
-              onClick={() => onSelectDoc(n)}
-            >
-              {n.name}
-            </button>
-          ))}
-          {!npcs.length && <div className="intake-empty text-xs">No NPCs.</div>}
-        </div>
-      )}
+      <div className="flex flex-col gap-1 shrink-0">
+        <label className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider">
+          Search
+        </label>
+        <CodexSearchBar
+          value={filterState.query || ""}
+          onChange={(q) => onFilterChange((prev) => ({ ...prev, query: q }))}
+          placeholder="Search codex…"
+        />
+      </div>
+      <div className="shrink-0">
+        <CodexFilterPanel
+          filterState={filterState}
+          onFilterChange={onFilterChange}
+          availableTags={availableTags}
+        />
+      </div>
     </div>
   );
 }

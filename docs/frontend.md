@@ -2,6 +2,49 @@
 
 The React app in `frontend/` is the **primary preview UI** for GM Voice Studio. It is built into `static/frontend/` and served by FastAPI at `/preview` (and `/preview/` for SPA subpaths).
 
+## UI framework and design system
+
+The app uses a shared layout and fantasy-themed design system so all product views (Live Board, Codex, NPC Workshop, Voice Studio) feel consistent.
+
+### Layout
+
+- **AppShell** (`src/layout/AppShell.jsx`) — Wraps the app: TopBanner, SidebarNav, and main content (Outlet).
+- **TopBanner** — Campaign name, active scene, session timer, audio status.
+- **SidebarNav** — Nav links for Live Board, Codex, NPC Workshop, Voice Studio, Prep, Library, Settings. On tablet (md) the sidebar collapses to icons only; on desktop (xl) it shows labels.
+- **WorkspaceContainer** — Optional wrapper for page content.
+- **WorkspaceHeader** — Page title with optional icon (emoji or Lucide) and subtitle; use on each workspace view.
+
+### Shared components (`src/components/shared/`)
+
+- **ParchmentCard** — Card with optional title, headerAction, children, footer. Uses parchment styling.
+- **FantasyButton** — Variants: primary, secondary, ghost, danger.
+- **SectionHeader** — Subhead bar with optional icon, title, subtitle, action.
+- **StatusPill** — Status labels: ready, recording, generating, playing, offline, saved, training, failed.
+- **SearchInput** — Shared search field (chat-input style) for Codex, NPC list, Voice library.
+- **EmptyState** — Message and optional icon/action when a list is empty.
+- **LoadingState** — Spinner and message.
+- **AudioPlayer** — Stub play/pause control and status; wire to audio source when used.
+- **ModalShell** — Overlay modal with title and close.
+
+### Theme
+
+- **Palette** — `src/styles/theme.css` defines: `--background-dark`, `--parchment`, `--gold`, `--wood`, `--accent`. Main `styles.css` imports it and adds wood gradients, panel styles, and typography (Cinzel for headings, Crimson Text / Inter for body).
+
+### Routes
+
+Routes are defined in `App.jsx` (React Router). Paths: `/` (Live Board), `/codex`, `/npcs`, `/voices`, `/settings`, `/prep`, `/intake`. The shell renders an `<Outlet />`; `CurrentView` resolves the path and renders the corresponding page.
+
+**App feature entries** (`src/app/`) — Each product view has an entry under `app/`:
+
+- `app/codex/` — Codex (campaign research)
+- `app/npcs/` — NPC Workshop
+- `app/voices/` — Voice Studio
+- `app/live-board/` — Live Board
+
+Each exports the page component used by the router; feature-specific components remain under `components/` (e.g. `components/codex/`, `components/npcs/`, `components/voices/`, `components/live-board/`).
+
+---
+
 ## Quick start
 
 ```bash

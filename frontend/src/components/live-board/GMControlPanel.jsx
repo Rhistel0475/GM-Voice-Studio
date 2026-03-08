@@ -21,8 +21,8 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
   const sceneReveals = (scene?.reveals || []).map((revealName) => allReveals.find((r) => r.name === revealName)).filter(Boolean);
 
   return (
-    <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
-      <section className="panel-ornate min-h-0 flex flex-col">
+    <div className="h-full min-h-0 flex flex-col gap-3">
+      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">
         <div className="panel-head">
           <div className="plaque">Quick Tools</div>
         </div>
@@ -65,7 +65,7 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
         </div>
       </section>
 
-      <section className="panel-ornate min-h-0 flex flex-col">
+      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden flex-shrink-0">
         <div className="panel-head">
           <div className="plaque">Party Roster</div>
         </div>

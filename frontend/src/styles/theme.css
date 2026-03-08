@@ -1,0 +1,19 @@
+/**
+ * Central theme: fantasy GM desk palette.
+ * Imported by styles.css. Use these variables for consistency.
+ */
+:root {
+  --background-dark: #1b1a17;
+  --parchment: #f5e6c8;
+  --gold: #caa74b;
+  --wood: #3b2a1f;
+  --accent: #7b5b3e;
+
+  /* Spacing scale (for layout consistency) */
+  --space-shell: 12px;
+  --space-banner-inner: 16px;
+  --space-sidebar: 8px;
+  --space-panel-head: 8px 12px;
+  --space-panel-body: 12px;
+  --space-main: 12px;
+}

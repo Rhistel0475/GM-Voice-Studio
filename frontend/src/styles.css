@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;800&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&family=Caveat:wght@400;500;600&display=swap");
+@import "./styles/theme.css";
 @import "tailwindcss";
 
 :root {
@@ -61,7 +62,7 @@ body {
 .dm-shell {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-shell);
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.35), rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.35)),
     repeating-linear-gradient(90deg, var(--dark-wood), var(--dark-wood) 8px, var(--wood-2) 8px, var(--wood-2) 16px);
@@ -72,7 +73,7 @@ body {
     0 0 0 2px #0b0704,
     0 18px 40px rgba(0, 0, 0, 0.6);
   border-radius: 14px;
-  padding: 10px;
+  padding: var(--space-shell);
   overflow: visible;
 }
 
@@ -90,15 +91,17 @@ body {
 
 .dm-header {
   flex-shrink: 0;
-  padding-top: 18px;
-  padding-bottom: 18px;
+  padding: var(--space-banner-inner) 20px;
   border: 3px solid #6a4728;
-  border-radius: 8px;
+  border-radius: 10px;
   position: relative;
   z-index: 0;
   overflow: hidden;
   display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px 0;
   place-items: center;
+  text-align: center;
   background:
     radial-gradient(circle at 30% 80%, rgba(255, 162, 61, 0.4), rgba(255, 162, 61, 0.05) 26%, transparent 48%),
     linear-gradient(180deg, rgba(19, 16, 25, 0.95), rgba(39, 30, 20, 0.9)),
@@ -165,6 +168,31 @@ body {
   cursor: not-allowed;
 }
 
+/* Sidebar nav: clearer separation and hit targets */
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-sidebar);
+}
+
+.sidebar-nav .nav-glyph-btn {
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.sidebar-nav .nav-glyph-btn:hover:not(.is-active) {
+  background:
+    linear-gradient(180deg, #422f1c 0%, #2e2012 100%),
+    repeating-linear-gradient(90deg, #4e3421, #4e3421 6px, #492f1d 6px, #492f1d 12px);
+}
+
+.sidebar-nav .nav-glyph-btn.is-active {
+  background:
+    linear-gradient(180deg, #3d2a18 0%, #2a1d10 100%),
+    repeating-linear-gradient(90deg, #5a3d24, #5a3d24 6px, #4e3421 6px, #4e3421 12px);
+}
+
 .panel-ornate {
   min-height: 0;
   display: flex;
@@ -181,9 +209,20 @@ body {
 .panel-head {
   border-bottom: 2px solid #5c3e23;
   background: linear-gradient(180deg, #2d1e12, #1d130b);
-  padding: 6px 8px;
+  padding: var(--space-panel-head);
   display: flex;
+  align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+}
+
+.panel-head:has(.plaque) {
+  justify-content: center;
+}
+
+.panel-head.panel-head--row {
+  justify-content: space-between;
+  text-align: left;
 }
 
 .plaque {
@@ -203,10 +242,10 @@ body {
 .panel-body {
   min-height: 0;
   flex: 1;
-  padding: 8px;
+  padding: var(--space-panel-body);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-sidebar);
   overflow: auto;
 }
 
@@ -239,6 +278,13 @@ body {
   font-size: clamp(12px, 0.95vw, 26px);
 }
 
+.tracker-row.is-active,
+button.tracker-row.is-active {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 1px rgba(202, 167, 75, 0.4);
+  background: linear-gradient(180deg, #2d1f12, #1f150b);
+}
+
 .map-slot {
   height: 100%;
   min-height: 120px;
@@ -263,8 +309,14 @@ body {
   color: #b38a4d;
   font-size: clamp(11px, 0.92vw, 25px);
   line-height: 1;
-  padding: 6px 10px;
+  padding: 8px 12px;
   cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.tab-strip button:hover:not(.tab-active) {
+  color: #d4a55a;
+  background: rgba(255, 210, 122, 0.06);
 }
 
 .tab-strip button:last-child {
@@ -285,8 +337,20 @@ body {
   font-family: "Crimson Text", "Georgia", serif;
   font-size: clamp(14px, 1.05vw, 20px);
   line-height: 1.45;
-  padding: 12px;
+  padding: 0;
   box-shadow: inset 0 0 22px rgba(0, 0, 0, 0.2), 0 6px 24px rgba(0, 0, 0, 0.5);
+}
+
+.parchment .panel-head {
+  color: #2d1f12;
+}
+
+.parchment .panel-head .font-heading {
+  color: #2d1f12;
+}
+
+.parchment .panel-body {
+  padding: var(--space-panel-body);
 }
 
 .subhead {
@@ -295,7 +359,16 @@ body {
   color: #e0bb76;
   font-size: clamp(11px, 0.95vw, 20px);
   line-height: 1;
-  padding: 6px 10px;
+  padding: 8px 12px;
+}
+
+/* Voice Studio: training progress bar subtle pulse when active */
+.voice-training-pulse {
+  animation: voice-training-pulse 1.5s ease-in-out infinite;
+}
+@keyframes voice-training-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
 }
 
 .portrait-card {
@@ -425,10 +498,22 @@ body {
   border: 1px solid #6e4926;
   background: #16100a;
   color: #e6c785;
-  padding: 4px 10px;
-  font-family: "Inter", sans-serif;
-  font-size: clamp(11px, 0.9vw, 17px);
-  line-height: 1;
+  padding: 6px 12px;
+  font-family: "Crimson Text", "Georgia", serif;
+  font-size: clamp(12px, 0.95vw, 17px);
+  line-height: 1.4;
+  border-radius: 6px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.chat-input:hover {
+  border-color: #7a5329;
+}
+
+.chat-input:focus {
+  outline: none;
+  border-color: #9a6b38;
+  box-shadow: 0 0 0 2px rgba(202, 167, 75, 0.25);
 }
 
 .chat-input::placeholder {

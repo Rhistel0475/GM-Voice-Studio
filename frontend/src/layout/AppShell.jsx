@@ -5,7 +5,8 @@ import TopBanner from "../components/layout/TopBanner";
 import SidebarNav from "../components/layout/SidebarNav";
 
 function pathToView(path) {
-  const p = (path || "/").replace(/\/+$/, "").replace(/^\/preview\/?/, "") || "/";
+  let p = (path || "/").replace(/\/+$/, "").replace(/^\/preview\/?/, "").trim() || "/";
+  if (!p.startsWith("/")) p = `/${p}`;
   if (p === "/" || p === "") return "live";
   if (p === "/codex") return "codex";
   if (p === "/npcs") return "npc-workshop";
@@ -44,11 +45,11 @@ export default function AppShell() {
         sessionTime={bannerState.sessionTime}
         audioStatus={bannerState.audioStatus}
       />
-      <div className="flex flex-1 min-h-0 gap-3 mt-3">
-        <aside className="flex-shrink-0 w-40 xl:w-48 panel-ornate rounded border border-[#734f2c] overflow-auto">
+      <div className="flex flex-1 min-h-0 gap-4 mt-1">
+        <aside className="flex-shrink-0 w-40 md:w-14 xl:w-48 panel-ornate rounded overflow-auto">
           <SidebarNav />
         </aside>
-        <main className="app-stage flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto p-2 md:p-3">
+        <main className="app-stage flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto p-3 md:p-4">
           <Outlet />
         </main>
       </div>

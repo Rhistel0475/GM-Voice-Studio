@@ -13,11 +13,15 @@ export default function CodexQuickView({
   onSelect,
   onInsertIntoNarration,
 }) {
+  const cardBase =
+    "codex-quick-card border border-[#5c3e23] bg-[#1a1008]/90 rounded-md p-2.5 cursor-pointer transition-colors hover:border-[var(--gold)] hover:bg-[#221808]";
+  const cardSelected = "ring-1 ring-[var(--gold)] border-[var(--gold)]";
+
   const renderDocuments = () =>
     documents.map((doc) => (
       <div
         key={doc.id}
-        className={`border border-[#5c3e23] bg-[#1a1008] p-2 cursor-pointer hover:border-[var(--gold)] ${codexSelection?.id === doc.id ? "ring-1 ring-[var(--gold)]" : ""}`}
+        className={`${cardBase} ${codexSelection?.id === doc.id ? cardSelected : ""}`}
         onClick={() => onSelect(codexSelection?.id === doc.id ? null : doc)}
       >
         <div className="font-heading text-[var(--text-1)] text-sm">{doc.title}</div>
@@ -42,7 +46,7 @@ export default function CodexQuickView({
       npcs.map((n) => (
         <div
           key={n.name}
-          className={`border border-[#5c3e23] bg-[#1a1008] p-2 cursor-pointer hover:border-[var(--gold)] ${codexSelection?.name === n.name ? "ring-1 ring-[var(--gold)]" : ""}`}
+          className={`${cardBase} ${codexSelection?.name === n.name ? cardSelected : ""}`}
           onClick={() => onSelect(codexSelection?.name === n.name ? null : n)}
         >
           <div className="font-heading text-[var(--text-1)] text-sm">{n.name}</div>
@@ -74,7 +78,7 @@ export default function CodexQuickView({
         return (
           <div
             key={key}
-            className={`border border-[#5c3e23] bg-[#1a1008] p-2 cursor-pointer hover:border-[var(--gold)] ${codexSelection === loc ? "ring-1 ring-[var(--gold)]" : ""}`}
+            className={`${cardBase} ${codexSelection === loc ? cardSelected : ""}`}
             onClick={() => onSelect(codexSelection === loc ? null : loc)}
           >
             <div className="font-heading text-[var(--text-1)] text-sm">{name}</div>

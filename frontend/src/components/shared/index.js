@@ -6,3 +6,5 @@ export { default as EmptyState } from "./EmptyState";
 export { default as LoadingState } from "./LoadingState";
 export { default as ModalShell } from "./ModalShell";
 export { default as TabGroup } from "./TabGroup";
+export { default as SearchInput } from "./SearchInput";
+export { default as AudioPlayer } from "./AudioPlayer";
