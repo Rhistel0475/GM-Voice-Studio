@@ -31,11 +31,11 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
         </div>
       </section>
 
-      <section className="panel-ornate min-h-0 flex flex-col">
+      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">
         <div className="panel-head">
           <div className="plaque">Active Scene</div>
         </div>
-        <div className="panel-body space-y-2 overflow-auto">
+        <div className="panel-body space-y-2 overflow-y-auto min-h-[120px] max-h-[220px]">
           {sceneNpcs.map((npc) => (
             <button
               key={npc.name}

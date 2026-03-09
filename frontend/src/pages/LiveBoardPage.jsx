@@ -18,10 +18,10 @@ export default function LiveBoardPage({
   middleColumn,
 }) {
   return (
-    <section className="live-board min-h-0 flex flex-col gap-4">
-      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-4 xl:gap-5">
+    <section className="live-board min-h-0 flex flex-col gap-5 xl:gap-6">
+      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-5 xl:gap-6">
         {/* LEFT: GM Control Panel — quick tools, active scene, party roster */}
-        <aside className="xl:col-span-3 min-h-0 flex flex-col gap-2">
+        <aside className="xl:col-span-3 min-h-0 flex flex-col gap-3">
           <SectionHeader title="GM Control" className="rounded-t-lg" />
           <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
             <GMControlPanel
@@ -34,7 +34,7 @@ export default function LiveBoardPage({
         </aside>
 
         {/* CENTER: Session stream — SessionLog, NarrationComposer, AudioPlaybackCard (via middleColumn) */}
-        <main className="xl:col-span-5 min-h-0 flex flex-col gap-2">
+        <main className="xl:col-span-5 min-h-0 flex flex-col gap-3">
           <SectionHeader title="Live Session" className="rounded-t-lg" />
           <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
             <SessionStream>{middleColumn}</SessionStream>
@@ -42,7 +42,7 @@ export default function LiveBoardPage({
         </main>
 
         {/* RIGHT: Codex — Documents, NPCs, Locations, Rules tabs + quick preview cards */}
-        <aside className="xl:col-span-4 min-h-0 flex flex-col gap-2">
+        <aside className="xl:col-span-4 min-h-0 flex flex-col gap-3">
           <SectionHeader title="Codex" className="rounded-t-lg" />
           <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
             <CodexSidePanel

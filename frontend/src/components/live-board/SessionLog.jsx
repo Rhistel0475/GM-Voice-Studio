@@ -13,7 +13,7 @@ export default function SessionLog({ actionLog = [], liveTranscript = "" }) {
   return (
     <div
       ref={logRef}
-      className="flex-1 min-h-[170px] overflow-y-auto border border-[#4f341f] bg-[#120a04] p-2 space-y-2"
+      className="flex-1 min-h-[180px] overflow-y-auto border border-[#4f341f] bg-[#120a04] rounded-b p-3 space-y-2"
     >
       {actionLog.length > 0 ? (
         actionLog.map((entry) => <SessionLogEntry key={entry.id} entry={entry} />)

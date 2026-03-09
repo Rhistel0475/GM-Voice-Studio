@@ -7,6 +7,8 @@ import CodexPage from "./app/codex";
 import NPCWorkshopPage from "./app/npcs";
 import VoiceStudioPage from "./app/voices";
 import SettingsPage from "./pages/SettingsPage";
+import SessionLog from "./components/live-board/SessionLog";
+import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -347,6 +349,7 @@ const MiddleColumn = ({
   autoQueryOnVoice,
   onToggleAutoQueryOnVoice,
   onAudioStatusChange,
+  audioStatus = "idle",
 }) => {
   const [sceneTab, setSceneTab] = useState("text");
   const [isNarrating, setIsNarrating] = useState(false);
@@ -359,20 +362,12 @@ const MiddleColumn = ({
   const [npcGenStreaming, setNpcGenStreaming] = useState(false);
   const [npcGenError, setNpcGenError] = useState("");
   const [npcGenSpeaking, setNpcGenSpeaking] = useState(false);
-  const actionLogRef = useRef(null);
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
   const scene = scenes[selectedSceneIdx] || scenes[0];
   const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
   const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs.slice(0, 6);
-
-  useEffect(() => {
-    if (sceneTab !== "log") return;
-    const logElement = actionLogRef.current;
-    if (!logElement) return;
-    logElement.scrollTop = logElement.scrollHeight;
-  }, [actionLog, liveTranscript, sceneTab]);
 
   const resolveNarrationVoiceId = async () => {
     const response = await authFetch("/voices/list");
@@ -513,9 +508,6 @@ const MiddleColumn = ({
           <button type="button" className={sceneTab === "party" ? "tab-active" : ""} onClick={() => setSceneTab("party")}>
             Party
           </button>
-          <button type="button" className={sceneTab === "log" ? "tab-active" : ""} onClick={() => setSceneTab("log")}>
-            Action Log
-          </button>
           <button type="button" className={sceneTab === "npcgen" ? "tab-active" : ""} onClick={() => setSceneTab("npcgen")}>
             NPC Gen
           </button>
@@ -523,40 +515,89 @@ const MiddleColumn = ({
 
         {sceneTab === "text" && (
           <>
-            {scene.type && (
-              <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
-            )}
-            <div className="parchment mt-1 text-lg">
-              {scene.read_aloud || scene.title
-                ? (scene.read_aloud || `Scene: ${scene.title}`)
-                : "Upload adventure docs via Library to load scene read-aloud text here."}
-            </div>
-
-            {scene.read_aloud && (
-              <div className="mt-3 text-center">
-                <button
-                  type="button"
-                  className="cta-secondary"
-                  onClick={handleNarrate}
-                  disabled={isNarrating}
-                >
-                  {isNarrating ? (
-                    'Generating...'
-                  ) : (
-                    <>
-                      <Play size={13} className="inline-block mr-1" /> Narrate Scene
-                    </>
-                  )}
-                </button>
-                {narrateError && (
-                  <div className="text-xs text-red-400 mt-2">{narrateError}</div>
+            {/* Narration area: scene title, text, button, audio */}
+            <div className="mb-3">
+              <h2 className="font-heading text-[var(--gold)] text-base mb-1.5">{scene?.title || "Current scene"}</h2>
+              {scene.type && (
+                <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
+              )}
+              <div className="parchment rounded p-3 text-[15px] leading-relaxed min-h-[80px]">
+                {scene.read_aloud || scene.title
+                  ? (scene.read_aloud || `Scene: ${scene.title}`)
+                  : "Upload adventure docs via Library to load scene read-aloud text here."}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {scene.read_aloud && (
+                  <button
+                    type="button"
+                    className="cta-secondary transition-all hover:brightness-110"
+                    onClick={handleNarrate}
+                    disabled={isNarrating}
+                  >
+                    {isNarrating ? "Generating…" : <><Play size={13} className="inline-block mr-1" /> Narrate Scene</>}
+                  </button>
+                )}
+                {narrateError && <span className="text-xs text-red-400">{narrateError}</span>}
+              </div>
+              {/* Audio playback: card when active, placeholder when idle */}
+              <div className="mt-2">
+                {audioStatus !== "idle" ? (
+                  <AudioPlaybackCard
+                    audioStatus={audioStatus}
+                    voiceName="Narration"
+                    onPlayPause={() => {}}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-[#5c3e23] bg-[#1a1008]/60 border-dashed p-3 text-center text-xs text-[var(--text-2)]">
+                    Audio will appear here when you narrate a scene.
+                  </div>
                 )}
               </div>
-            )}
+              {scene.notes && (
+                <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
+              )}
+            </div>
 
-            {scene.notes && (
-              <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
-            )}
+            {/* Session Log section */}
+            <div className="flex flex-col gap-2 min-h-0 flex-1">
+              <div className="subhead rounded-t px-3 py-1.5 text-sm font-heading">Session Log</div>
+              <div className="flex-1 min-h-[200px] flex flex-col rounded-b border border-[#4f341f] border-t-0 overflow-hidden">
+                <div className="text-xs text-[#9b7440] flex items-center justify-between flex-wrap gap-1 px-2 py-1 bg-[#120a04]/80">
+                  <span>Player actions · NPC dialogue · Narration · System</span>
+                  <div className="flex items-center gap-1">
+                    <span className="uppercase tracking-wide text-[10px]">
+                      {coDmStatus === "open" ? "Connected" : coDmStatus === "connecting" ? "Connecting…" : "Offline"}
+                    </span>
+                    <button type="button" className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110" onClick={isMicActive ? onStopMic : onStartMic} disabled={coDmStatus !== "open" && !isMicActive}>
+                      {isMicActive ? "Stop Mic" : "Start Mic"}
+                    </button>
+                    <button type="button" className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110" onClick={onToggleWakeArmed}>
+                      {isWakeArmed ? "Wake On" : "Wake Off"}
+                    </button>
+                    <button type="button" className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110" onClick={onToggleAutoQueryOnVoice}>
+                      {autoQueryOnVoice ? "AutoQuery On" : "AutoQuery Off"}
+                    </button>
+                  </div>
+                </div>
+                <SessionLog actionLog={actionLog} liveTranscript={liveTranscript} />
+                {micError && <div className="text-xs text-red-400 px-2 pb-1">{micError}</div>}
+                {wakeError && <div className="text-xs text-red-400 px-2 pb-1">{wakeError}</div>}
+                <div className="text-[10px] text-[#8f6a39] px-2 pb-1">Wake phrase: "{wakePhrase}"</div>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ask Co-DM…"
+                  className="chat-input flex-1"
+                  value={coDmQuery}
+                  onChange={(e) => onChangeCoDmQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && onSubmitCoDmQuery()}
+                />
+                <button type="button" className="send-btn transition-all hover:brightness-110" onClick={onSubmitCoDmQuery} disabled={isSubmittingQuery || !coDmQuery.trim()}>
+                  {isSubmittingQuery ? "…" : "Send"}
+                </button>
+              </div>
+            </div>
           </>
         )}
 
@@ -593,103 +634,6 @@ const MiddleColumn = ({
                 </div>
               </article>
             ))}
-          </div>
-        )}
-
-        {sceneTab === "log" && (
-          <div className="mt-2 min-h-0 flex-1 flex flex-col gap-2">
-            <div className="text-xs text-[#9b7440] flex items-center justify-between">
-              <span>Live transcription and Co-DM responses</span>
-              <div className="flex items-center gap-2">
-                <span className="uppercase tracking-wide text-[10px]">
-                  {coDmStatus === "open" ? "Connected" : coDmStatus === "connecting" ? "Connecting..." : "Offline (fallback mode)"}
-                </span>
-                <button
-                  type="button"
-                  className="send-btn text-[10px] px-2 py-1"
-                  onClick={isMicActive ? onStopMic : onStartMic}
-                  disabled={coDmStatus !== "open" && !isMicActive}
-                >
-                  {isMicActive ? "Stop Mic" : "Start Mic"}
-                </button>
-                <button
-                  type="button"
-                  className="send-btn text-[10px] px-2 py-1"
-                  onClick={onToggleWakeArmed}
-                >
-                  {isWakeArmed ? "Wake On" : "Wake Off"}
-                </button>
-                <button
-                  type="button"
-                  className="send-btn text-[10px] px-2 py-1"
-                  onClick={onToggleAutoQueryOnVoice}
-                >
-                  {autoQueryOnVoice ? "AutoQuery On" : "AutoQuery Off"}
-                </button>
-              </div>
-            </div>
-            <div className="text-[10px] text-[#8f6a39]">
-              Wake phrase: "{wakePhrase}"
-            </div>
-            {micError && <div className="text-xs text-red-400">{micError}</div>}
-            {wakeError && <div className="text-xs text-red-400">{wakeError}</div>}
-
-            <div ref={actionLogRef} className="flex-1 min-h-[170px] overflow-y-auto border border-[#4f341f] bg-[#120a04] p-2 space-y-2">
-              {actionLog.length ? actionLog.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`rounded border px-2 py-1 text-xs ${{
-                    player:     "border-[#5d472a] bg-[#1c120a] text-[#e6c785]",
-                    error:      "border-red-900/70 bg-red-950/20 text-red-300",
-                    stat_block: "border-[#c79f5b] bg-[#0e1a0e] text-[#ffe08a]",
-                    lore:       "border-[#7a5a30] bg-[#eddcb8]/10 text-[#c8a97a]",
-                  }[entry.role] ?? "border-[#37553e] bg-[#102016] text-[#d4f0cf]"}`}
-                >
-                  <div className="mb-0.5 flex items-center justify-between">
-                    <span className="font-heading text-[10px] tracking-wide uppercase">
-                      {entry.role === "player" ? "Table" : entry.role === "error" ? "System" : entry.role === "stat_block" ? "Stat Block" : entry.role === "lore" ? "Lore" : "Co-DM"}
-                    </span>
-                    {entry.meta && <span className="text-[10px] opacity-80">{entry.meta}</span>}
-                  </div>
-                  {entry.role === "stat_block"
-                    ? <pre className="whitespace-pre-wrap font-mono text-xs">{entry.text}</pre>
-                    : <div className="whitespace-pre-wrap">{entry.text}</div>
-                  }
-                </div>
-              )) : (
-                <div className="intake-empty text-xs">
-                  No live entries yet. Ask a rules/lore question below.
-                </div>
-              )}
-              {liveTranscript && (
-                <div className="rounded border border-[#5d472a] bg-[#1a1209] px-2 py-1 text-xs text-[#d7b77d]">
-                  <div className="mb-0.5 flex items-center justify-between">
-                    <span className="font-heading text-[10px] tracking-wide uppercase">Listening...</span>
-                    <span className="text-[10px] opacity-80">STT partial</span>
-                  </div>
-                  <div className="whitespace-pre-wrap">{liveTranscript}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Ask Co-DM..."
-                className="chat-input flex-1"
-                value={coDmQuery}
-                onChange={(e) => onChangeCoDmQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onSubmitCoDmQuery()}
-              />
-              <button
-                type="button"
-                className="send-btn"
-                onClick={onSubmitCoDmQuery}
-                disabled={isSubmittingQuery || !coDmQuery.trim()}
-              >
-                {isSubmittingQuery ? "..." : "Send"}
-              </button>
-            </div>
           </div>
         )}
 
@@ -1653,6 +1597,7 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
             autoQueryOnVoice={autoQueryOnVoice}
             onToggleAutoQueryOnVoice={toggleAutoQueryOnVoice}
             onAudioStatusChange={setAudioStatus}
+            audioStatus={audioStatus}
           />
         }
       />
