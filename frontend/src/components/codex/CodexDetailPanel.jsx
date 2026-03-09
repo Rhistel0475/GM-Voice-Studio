@@ -21,6 +21,7 @@ export default function CodexDetailPanel({
   authFetch,
   onSummarizeResult,
   onAskResult,
+  onAddToLiveBoard,
 }) {
   const [askQuery, setAskQuery] = useState("");
   const [askResult, setAskResult] = useState("");
@@ -84,6 +85,7 @@ export default function CodexDetailPanel({
   const stubAddToLiveBoard = () => {
     if (typeof window !== "undefined") window.alert("Add to Live Board — coming soon.");
   };
+  const handleAddToLiveBoard = onAddToLiveBoard ? () => onAddToLiveBoard(item) : stubAddToLiveBoard;
 
   if (!item) {
     return (
@@ -136,7 +138,7 @@ export default function CodexDetailPanel({
         askLoading={isAsking}
         onExtractNpcs={stubExtractNpcs}
         onExtractLocations={stubExtractLocations}
-        onAddToLiveBoard={stubAddToLiveBoard}
+        onAddToLiveBoard={handleAddToLiveBoard}
       />
       {summarizeResult && (
         <KnowledgeCard title="Summary">{summarizeResult}</KnowledgeCard>

@@ -31,7 +31,7 @@ function filterItems(items, filterState) {
   return out;
 }
 
-export default function CodexScreen({ campaignData, authFetch, campaigns = [], onCampaignSelect }) {
+export default function CodexScreen({ campaignData, authFetch, campaigns = [], onCampaignSelect, onAddToLiveBoard }) {
   const [filterState, setFilterState] = useState(defaultCodexFilterState());
   const [selectedItem, setSelectedItem] = useState(null);
 
@@ -82,6 +82,7 @@ export default function CodexScreen({ campaignData, authFetch, campaigns = [], o
         <CodexDetailPanel
           item={selectedItem}
           authFetch={authFetch}
+          onAddToLiveBoard={onAddToLiveBoard}
         />
       </div>
     </section>

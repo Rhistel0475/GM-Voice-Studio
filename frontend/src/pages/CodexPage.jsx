@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAppState } from "../context/AppStateContext";
+import { useCampaignOptional } from "../context/CampaignContext";
 import CodexScreen from "../components/codex/CodexScreen";
 import { getCampaigns } from "../lib/api/codex";
 
@@ -8,6 +9,7 @@ export default function CodexPage({ campaignData: campaignDataProp, authFetch: a
   const campaignData = campaignDataProp ?? appState.campaignData;
   const authFetch = authFetchProp ?? appState.authFetch;
   const setCampaignData = appState.setCampaignData;
+  const campaignCtx = useCampaignOptional();
 
   const [campaigns, setCampaigns] = useState([]);
 
@@ -41,6 +43,11 @@ export default function CodexPage({ campaignData: campaignDataProp, authFetch: a
       authFetch={authFetch}
       campaigns={campaigns}
       onCampaignSelect={handleCampaignSelect}
+      onAddToLiveBoard={
+        campaignCtx
+          ? (entry) => campaignCtx.addCodexEntryToScene(entry?.id ?? entry?.title, campaignCtx.activeSceneIndex)
+          : undefined
+      }
     />
   );
 }

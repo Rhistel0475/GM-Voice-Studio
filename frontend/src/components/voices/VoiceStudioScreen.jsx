@@ -3,6 +3,7 @@ import { LayoutGrid, List } from "lucide-react";
 import { defaultVoiceFilterState } from "../../types/voice";
 import { getVoices, getGeneratedAudio, submitClone, getCloneJobStatus } from "../../lib/api/voices";
 import { getNPCs } from "../../lib/api/npcs";
+import { useCampaignOptional } from "../../context/CampaignContext";
 import { FantasyButton } from "../shared";
 import VoiceSearchInput from "./VoiceSearchInput";
 import VoiceLibraryFilters from "./VoiceLibraryFilters";
@@ -40,6 +41,7 @@ function filterVoices(voices, filterState) {
  * Right: detail panel (selected voice, sample player, metadata, assignment) and clone wizard.
  */
 export default function VoiceStudioScreen({ campaignData, authFetch }) {
+  const campaignCtx = useCampaignOptional();
   const [voices, setVoices] = useState([]);
   const [generatedAudio, setGeneratedAudio] = useState([]);
   const [filterState, setFilterState] = useState(defaultVoiceFilterState());
@@ -162,10 +164,20 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
     [authFetch]
   );
 
-  const handleAssignToNpc = useCallback((voiceId, npcId) => {
-    if (typeof window !== "undefined" && window.toast) window.toast("Assign to NPC: coming soon.");
-    else window.alert("Assign to NPC: coming soon.");
-  }, []);
+  const handleAssignToNpc = useCallback(
+    (voiceId, npcId) => {
+      if (campaignCtx?.assignVoiceToNpc && voiceId && npcId) {
+        campaignCtx.assignVoiceToNpc(npcId, voiceId);
+        if (typeof window !== "undefined" && window.toast) window.toast("Voice assigned to NPC (campaign state updated).");
+        else if (typeof window !== "undefined") window.alert("Voice assigned to NPC.");
+      } else {
+        if (typeof window !== "undefined" && window.toast) window.toast("Assign to NPC: coming soon.");
+        else if (typeof window !== "undefined") window.alert("Assign to NPC: coming soon.");
+      }
+      // TODO: Backend — persist voice assignment via PATCH /api/npcs/:id or PATCH /api/campaigns/:id/npcs.
+    },
+    [campaignCtx]
+  );
 
   const handleUnassignNpc = useCallback((voiceId, npcId) => {
     if (typeof window !== "undefined" && window.toast) window.toast("Unassign: coming soon.");

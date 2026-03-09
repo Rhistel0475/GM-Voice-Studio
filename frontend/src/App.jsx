@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, Component } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
+import { CampaignProvider, useCampaignOptional } from "./context/CampaignContext";
 import AppShell from "./layout/AppShell";
 import LiveBoardPage from "./app/live-board";
 import CodexPage from "./app/codex";
@@ -1070,9 +1071,12 @@ const RightColumn = ({ campaignData, selectedNpcName, authFetch, onInsertIntoNar
 };
 
 const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, defaultAutoQueryOnVoice = true }) => {
-  const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
+  const campaignCtx = useCampaignOptional();
+  const useSharedCampaign = Boolean(campaignCtx);
+
+  const [selectedSceneIdxLocal, setSelectedSceneIdxLocal] = useState(0);
   const [selectedNpcName, setSelectedNpcName] = useState(null);
-  const [actionLog, setActionLog] = useState([]);
+  const [actionLogLocal, setActionLogLocal] = useState([]);
   const [coDmQuery, setCoDmQuery] = useState("");
   const [isSubmittingQuery, setIsSubmittingQuery] = useState(false);
   const [coDmStatus, setCoDmStatus] = useState("connecting");
@@ -1100,8 +1104,24 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
   const isMicActiveRef = useRef(false);
   const isWakeArmedRef = useRef(false);
   const stopMicCaptureRef = useRef(() => {});
-  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
-  const scene = scenes[selectedSceneIdx] || scenes[0];
+
+  const campaign = campaignCtx?.campaign ?? campaignData;
+  const scenes = campaign?.scenes?.length ? campaign.scenes : DEFAULT_SCENES;
+  const selectedSceneIdx = useSharedCampaign ? campaignCtx.activeSceneIndex : selectedSceneIdxLocal;
+  const setSelectedSceneIdx = useSharedCampaign ? campaignCtx.setActiveSceneIndex : setSelectedSceneIdxLocal;
+  const scene = useSharedCampaign ? campaignCtx.activeScene : (scenes[selectedSceneIdxLocal] || scenes[0]);
+  const actionLog = useSharedCampaign ? campaignCtx.actionLog : actionLogLocal;
+  const appendActionLogLocal = useCallback((role, text, meta = "") => {
+    if (!text) return;
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role,
+      text,
+      meta,
+    };
+    setActionLogLocal((prev) => [...prev, entry].slice(-100));
+  }, []);
+  const appendActionLog = useSharedCampaign ? campaignCtx.appendActionLog : appendActionLogLocal;
 
   useEffect(() => {
     if (sessionStartRef.current == null) sessionStartRef.current = Date.now();
@@ -1121,17 +1141,6 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
       }));
     }
   }, [sessionTimer, scene?.title, audioStatus, setBannerState]);
-
-  const appendActionLog = useCallback((role, text, meta = "") => {
-    if (!text) return;
-    const entry = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      role,
-      text,
-      meta,
-    };
-    setActionLog((prev) => [...prev, entry].slice(-100));
-  }, []);
 
   useEffect(() => {
     isMicActiveRef.current = isMicActive;
@@ -1567,14 +1576,14 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
 
   return (
     <LiveBoardPage
-        campaignData={campaignData}
+        campaignData={campaign}
         scene={scene}
         selectedNpcName={selectedNpcName}
         onSelectNpc={setSelectedNpcName}
         onInsertIntoNarration={(text) => setCoDmQuery((prev) => (prev ? prev + "\n" + text : text))}
         middleColumn={
           <MiddleColumn
-            campaignData={campaignData}
+            campaignData={campaign}
             selectedSceneIdx={selectedSceneIdx}
             onSelectScene={setSelectedSceneIdx}
             onSelectNpc={setSelectedNpcName}
@@ -2941,13 +2950,15 @@ function CurrentView() {
 export default function App() {
   return (
     <AppStateProvider>
-      <BrowserRouter basename="/preview">
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="*" element={<CurrentView />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <CampaignProvider>
+        <BrowserRouter basename="/preview">
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="*" element={<CurrentView />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </CampaignProvider>
     </AppStateProvider>
   );
 }

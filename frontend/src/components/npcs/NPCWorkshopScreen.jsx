@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { defaultNpcFilterState, defaultNpcDraft } from "../../types/npc";
 import { getNPCs } from "../../lib/api/npcs";
 import { saveNPC, pushToLiveBoard } from "../../lib/api/npcs";
+import { useCampaignOptional } from "../../context/CampaignContext";
 import NPCRosterSidebar from "./NPCRosterSidebar";
 import NPCGeneratorForm from "./NPCGeneratorForm";
 import NPCPreviewCard from "./NPCPreviewCard";
@@ -77,6 +78,7 @@ function mergeProfile(selectedNpc, draft, npcName, personalityText) {
 }
 
 export default function NPCWorkshopScreen({ campaignData, authFetch }) {
+  const campaignCtx = useCampaignOptional();
   const [filterState, setFilterState] = useState(defaultNpcFilterState());
   const [selectedNpc, setSelectedNpc] = useState(null);
   const [draft, setDraft] = useState(defaultNpcDraft());
@@ -225,6 +227,9 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
           if (idx >= 0) return prev.map((n, i) => (i === idx ? saved : n));
           return [...prev, saved];
         });
+        if (campaignCtx?.assignVoiceToNpc && (saved.name || profile.name) && (selectedVoiceId || saved.voiceId || saved.voice_id)) {
+          campaignCtx.assignVoiceToNpc(saved.name || profile.name, selectedVoiceId || saved.voiceId || saved.voice_id);
+        }
         if (typeof window !== "undefined") {
           if (window.toast) window.toast("NPC saved.");
           else console.log("NPC saved.");
@@ -239,6 +244,9 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
         };
         setNpcs((prev) => [...prev, localProfile]);
         setSelectedNpc(localProfile);
+        if (campaignCtx?.assignVoiceToNpc && localProfile.name && selectedVoiceId) {
+          campaignCtx.assignVoiceToNpc(localProfile.name, selectedVoiceId);
+        }
         if (typeof window !== "undefined") {
           if (window.toast) window.toast("Saved locally (no backend).");
           else console.log("Saved locally (no backend).");
@@ -247,17 +255,21 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
     } finally {
       setSaving(false);
     }
-  }, [selectedNpc, draft, npcName, personalityText, selectedVoiceId, authFetch, campaignData?.title]);
+  }, [selectedNpc, draft, npcName, personalityText, selectedVoiceId, authFetch, campaignData?.title, campaignCtx]);
 
   const handlePushToLiveBoard = useCallback(async () => {
     const profile = mergeProfile(selectedNpc, draft, npcName, personalityText);
+    const name = npcName || profile.name || selectedNpc?.name;
+    if (campaignCtx?.assignNpcToScene && name) {
+      campaignCtx.assignNpcToScene(name);
+    }
     const id = profile.id || "new";
     const ok = await pushToLiveBoard(id, authFetch);
     if (typeof window !== "undefined") {
       if (window.toast) window.toast(ok ? "Pushed to Live Board." : "Push to Live Board: coming soon.");
       else console.log(ok ? "Pushed to Live Board." : "Push to Live Board: coming soon.");
     }
-  }, [selectedNpc, draft, npcName, authFetch]);
+  }, [selectedNpc, draft, npcName, authFetch, campaignCtx]);
 
   const previewProfile = useMemo(
     () => mergeProfile(selectedNpc, draft, npcName, personalityText),
