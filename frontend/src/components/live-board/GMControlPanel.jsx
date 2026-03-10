@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import QuickToolGrid from "./QuickToolGrid";
 import { QUICK_TOOLS } from "./constants";
 import { ModalShell } from "../shared";
+import { getPartyPlaceholder } from "../../lib/placeholders";
 
 const DEFAULT_PARTY = [
   { name: "ATHELRED", hp: "—", ac: "—" },
@@ -71,9 +72,14 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
         </div>
         <div className="panel-body">
           <div className="grid grid-cols-2 gap-1">
-            {party.slice(0, 4).map((char) => (
-              <article key={char.name} className="party-card">
-                <div className="party-face" />
+            {party.slice(0, 4).map((char) => {
+              const portraitSrc = getPartyPlaceholder();
+              return (
+                <article key={char.name} className="party-card">
+                  <div
+                    className="party-face"
+                    style={{ backgroundImage: `url(${portraitSrc})`, backgroundSize: "cover", backgroundPosition: "center" }}
+                  />
                 <div className="party-meta">
                   <div className="name text-sm">{char.name}</div>
                   <div className="stats text-xs">
@@ -85,7 +91,8 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>

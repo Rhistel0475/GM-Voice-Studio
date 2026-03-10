@@ -3,13 +3,13 @@
  */
 import React from "react";
 import CodexResultCard from "./CodexResultCard";
-import { EmptyState } from "../shared";
+import { CodexEmptyState } from "../shared";
 
 export default function CodexResultList({ items = [], selectedItem, onSelectItem }) {
   if (!items.length) {
     return (
       <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-4">
-        <EmptyState message="No results. Try changing search or filters." />
+        <CodexEmptyState />
       </div>
     );
   }

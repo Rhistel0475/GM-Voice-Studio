@@ -1,135 +1,197 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
-import { useAppState } from "./AppStateContext";
+import React, { createContext, useCallback, useContext, useEffect, useMemo } from "react";
+import { useCampaignContextStore } from "../store/campaignContext";
+import {
+  getActiveCampaign,
+  getActiveSession,
+  getActiveScene,
+  getSceneNpcs,
+  getActionLogForActiveScene,
+  getNarrationClipsForActiveScene,
+} from "../store/selectors";
 import { getNpcsForScene } from "../types/campaign";
-
-const ACTION_LOG_MAX = 100;
 
 const CampaignContext = createContext(null);
 
-/**
- * Campaign context value shape.
- * @typedef {Object} CampaignContextValue
- * @property {import("../types/campaign").Campaign|null} campaign
- * @property {Function} setCampaign
- * @property {number} activeSceneIndex
- * @property {Function} setActiveSceneIndex
- * @property {{ sessionStartMs: number|null }} activeSession
- * @property {import("../types/campaign").ActionLogEntry[]} actionLog
- * @property {Function} appendActionLog
- * @property {import("../types/campaign").NarrationClip[]} narrationClips
- * @property {Function} addNarrationClip
- * @property {Array} npcs
- * @property {Array} voices
- * @property {Function} assignVoiceToNpc
- * @property {Function} addCodexEntryToScene
- * @property {Function} assignNpcToScene
- */
+/** Map store action log type to legacy role (player | assistant | stat_block | lore | error). */
+function eventTypeToRole(type) {
+  const t = type?.toLowerCase?.();
+  if (t === "player") return "player";
+  if (t === "npc" || t === "narration") return "assistant";
+  if (t === "system") return "stat_block";
+  return "assistant";
+}
+
+/** Map legacy role to store action log type. */
+function roleToEventType(role) {
+  const r = role?.toLowerCase?.();
+  if (r === "player") return "player";
+  if (r === "assistant") return "npc";
+  if (r === "stat_block" || r === "lore") return "system";
+  if (r === "error") return "system";
+  return "npc";
+}
+
+/** Build legacy campaign shape from store state for existing components. */
+function deriveLegacyCampaign(state) {
+  const campaign = getActiveCampaign(state);
+  if (!campaign) return null;
+  const campaignScenes = state.scenes.filter((s) => s.campaignId === campaign.id);
+  const campaignNpcs = state.npcs.filter((n) => n.campaignId === campaign.id);
+  return {
+    id: campaign.id,
+    title: campaign.name,
+    scenes: campaignScenes.map((s) => ({
+      id: s.id,
+      title: s.title,
+      summary: s.summary,
+      npcs: s.npcIds
+        .map((id) => campaignNpcs.find((n) => n.id === id)?.name)
+        .filter(Boolean),
+      codexRefs: s.codexEntryIds ?? [],
+      items: [],
+      reveals: [],
+    })),
+    npcs: campaignNpcs.map((n) => ({
+      id: n.id,
+      name: n.name,
+      role: n.role,
+      personality: n.summary,
+      voice_id: n.voiceId,
+      voiceId: n.voiceId,
+    })),
+    party: [],
+    items: [],
+    reveals: [],
+    locations: [],
+  };
+}
+
+/** Build legacy activeScene from store (object with title, npcs names, codexRefs). */
+function deriveLegacyActiveScene(state) {
+  const scene = getActiveScene(state);
+  if (!scene) return null;
+  const campaign = getActiveCampaign(state);
+  const campaignNpcs = campaign ? state.npcs.filter((n) => n.campaignId === campaign.id) : state.npcs;
+  return {
+    id: scene.id,
+    title: scene.title,
+    summary: scene.summary,
+    npcs: scene.npcIds.map((id) => campaignNpcs.find((n) => n.id === id)?.name).filter(Boolean),
+    codexRefs: scene.codexEntryIds ?? [],
+    items: [],
+    reveals: [],
+  };
+}
+
+/** Build legacy action log entries (id, role, text, meta). */
+function deriveLegacyActionLog(state) {
+  const events = getActionLogForActiveScene(state);
+  return events.map((e) => ({
+    id: e.id,
+    role: eventTypeToRole(e.type),
+    text: e.text,
+    meta: e.createdAt ?? "",
+  }));
+}
 
 export function CampaignProvider({ children }) {
-  const { campaignData, setCampaignData } = useAppState();
+  const state = useCampaignContextStore((s) => s);
+  const hydrateFromSeed = useCampaignContextStore((s) => s.hydrateFromSeed);
 
-  const [activeSceneIndex, setActiveSceneIndexState] = useState(() => {
-    try {
-      const s = sessionStorage.getItem("gm_active_scene_index");
-      return s != null ? Math.max(0, parseInt(s, 10)) : 0;
-    } catch {
-      return 0;
+  useEffect(() => {
+    if (!state.activeCampaignId && state.campaigns.length === 0) {
+      hydrateFromSeed();
     }
-  });
-  const [actionLog, setActionLog] = useState([]);
-  const [narrationClips, setNarrationClips] = useState([]);
-  const [voices, setVoices] = useState([]);
-  const sessionStartMsRef = useRef(typeof Date.now === "function" ? Date.now() : null);
+  }, [state.activeCampaignId, state.campaigns.length, hydrateFromSeed]);
 
-  const setActiveSceneIndex = useCallback((idx) => {
-    setActiveSceneIndexState(idx);
-    try {
-      sessionStorage.setItem("gm_active_scene_index", String(idx));
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const campaignScenes = useMemo(
+    () => (state.activeCampaignId ? state.scenes.filter((s) => s.campaignId === state.activeCampaignId) : []),
+    [state.activeCampaignId, state.scenes]
+  );
+  const activeSceneIndex = useMemo(
+    () => (state.activeSceneId ? campaignScenes.findIndex((s) => s.id === state.activeSceneId) : 0),
+    [state.activeSceneId, campaignScenes]
+  );
 
-  const appendActionLog = useCallback((role, text, meta = "") => {
-    if (!text) return;
-    const entry = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      role,
-      text,
-      meta: meta || undefined,
-    };
-    setActionLog((prev) => [...prev, entry].slice(-ACTION_LOG_MAX));
-    // TODO: Backend — POST /api/session/events or send via websocket for live sync.
-  }, []);
+  const setActiveSceneIndex = useCallback(
+    (idx) => {
+      const scene = campaignScenes[idx];
+      if (scene) state.setActiveScene(scene.id);
+    },
+    [campaignScenes, state.setActiveScene]
+  );
 
-  const addNarrationClip = useCallback((clip) => {
-    const id = clip?.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    setNarrationClips((prev) => [...prev, { ...clip, id, createdAt: clip?.createdAt || new Date().toISOString() }]);
-    // TODO: Backend — persist narration clips per session/campaign if needed.
-  }, []);
+  const appendActionLog = useCallback(
+    (role, text, meta = "") => {
+      if (!text) return;
+      state.addActionLogEvent({ type: roleToEventType(role), text });
+    },
+    [state.addActionLogEvent]
+  );
+
+  const addNarrationClip = useCallback(
+    (clip) => {
+      state.addNarrationClip({
+        title: clip?.title ?? "Untitled",
+        voiceId: clip?.voiceId,
+        audioUrl: clip?.audioUrl,
+        duration: clip?.duration,
+      });
+    },
+    [state.addNarrationClip]
+  );
 
   const assignVoiceToNpc = useCallback(
     (npcIdOrName, voiceId) => {
-      const campaign = campaignData;
-      if (!campaign?.npcs?.length) return;
       const nameOrId = String(npcIdOrName);
-      const updated = campaign.npcs.map((n) =>
-        (n.name === nameOrId || n.id === nameOrId) ? { ...n, voice_id: voiceId, voiceId } : n
-      );
-      setCampaignData({ ...campaign, npcs: updated });
-      // TODO: Backend — PATCH /api/campaigns/:id/npcs/:npcId or PATCH /api/npcs/:id to persist voice assignment.
+      const npc = state.npcs.find((n) => n.id === nameOrId || n.name === nameOrId);
+      if (npc) state.assignVoiceToNpc(npc.id, voiceId);
     },
-    [campaignData, setCampaignData]
+    [state.npcs, state.assignVoiceToNpc]
   );
 
   const addCodexEntryToScene = useCallback(
     (codexEntryIdOrRef, sceneIndex) => {
-      const campaign = campaignData;
-      if (!campaign?.scenes?.length) return;
       const idx = sceneIndex ?? activeSceneIndex;
-      const scene = campaign.scenes[idx];
-      if (!scene) return;
-      const codexRefs = Array.isArray(scene.codexRefs) ? [...scene.codexRefs] : [];
-      if (codexRefs.includes(codexEntryIdOrRef)) return;
-      codexRefs.push(String(codexEntryIdOrRef));
-      const updated = campaign.scenes.map((s, i) => (i === idx ? { ...s, codexRefs } : s));
-      setCampaignData({ ...campaign, scenes: updated });
-      // TODO: Backend — PATCH campaign scenes / codex refs.
+      const scene = campaignScenes[idx];
+      if (scene) state.addCodexEntryToScene(scene.id, String(codexEntryIdOrRef));
     },
-    [campaignData, setCampaignData, activeSceneIndex]
+    [campaignScenes, activeSceneIndex, state.addCodexEntryToScene]
   );
 
   const assignNpcToScene = useCallback(
     (npcNameOrId, sceneIndex) => {
-      const campaign = campaignData;
-      if (!campaign?.scenes?.length) return;
+      const nameOrId = String(npcNameOrId);
+      const npc = state.npcs.find((n) => n.id === nameOrId || n.name === nameOrId);
+      if (!npc) return;
       const idx = sceneIndex ?? activeSceneIndex;
-      const scene = campaign.scenes[idx];
-      if (!scene) return;
-      const npcNames = Array.isArray(scene.npcs) ? [...scene.npcs] : [];
-      const name = String(npcNameOrId);
-      if (npcNames.includes(name)) return;
-      npcNames.push(name);
-      const updated = campaign.scenes.map((s, i) => (i === idx ? { ...s, npcs: npcNames } : s));
-      setCampaignData({ ...campaign, scenes: updated });
-      // TODO: Backend — PATCH campaign scenes to persist NPC assignment.
+      const scene = campaignScenes[idx];
+      if (scene) state.assignNpcToScene(scene.id, npc.id);
     },
-    [campaignData, setCampaignData, activeSceneIndex]
+    [state.npcs, campaignScenes, activeSceneIndex, state.assignNpcToScene]
   );
+
+  const sessionStartMs = useMemo(() => {
+    const session = getActiveSession(state);
+    if (session?.startedAt) return new Date(session.startedAt).getTime();
+    return null;
+  }, [state]);
 
   const activeSession = useMemo(
-    () => ({ sessionStartMs: sessionStartMsRef.current, activeSceneIndex }),
-    [activeSceneIndex]
+    () => ({ sessionStartMs, activeSceneIndex }),
+    [sessionStartMs, activeSceneIndex]
   );
 
-  const npcs = campaignData?.npcs ?? [];
-  const activeScene = campaignData?.scenes?.[activeSceneIndex] ?? null;
+  const campaign = useMemo(() => deriveLegacyCampaign(state), [state]);
+  const activeScene = useMemo(() => deriveLegacyActiveScene(state), [state]);
+  const actionLog = useMemo(() => deriveLegacyActionLog(state), [state]);
+  const narrationClips = useMemo(() => getNarrationClipsForActiveScene(state), [state]);
 
   const value = useMemo(
     () => ({
-      campaign: campaignData,
-      setCampaign: setCampaignData,
-      activeSceneIndex,
+      campaign,
+      setCampaign: () => {}, // No-op for now; store is source of truth
+      activeSceneIndex: Math.max(0, activeSceneIndex),
       setActiveSceneIndex,
       activeSession,
       activeScene,
@@ -137,16 +199,15 @@ export function CampaignProvider({ children }) {
       appendActionLog,
       narrationClips,
       addNarrationClip,
-      npcs,
-      voices,
-      setVoices,
+      npcs: state.npcs,
+      voices: state.voices,
+      setVoices: state.setVoices,
       assignVoiceToNpc,
       addCodexEntryToScene,
       assignNpcToScene,
     }),
     [
-      campaignData,
-      setCampaignData,
+      campaign,
       activeSceneIndex,
       setActiveSceneIndex,
       activeSession,
@@ -155,8 +216,9 @@ export function CampaignProvider({ children }) {
       appendActionLog,
       narrationClips,
       addNarrationClip,
-      npcs,
-      voices,
+      state.npcs,
+      state.voices,
+      state.setVoices,
       assignVoiceToNpc,
       addCodexEntryToScene,
       assignNpcToScene,
@@ -196,10 +258,11 @@ export function useActionLog() {
 
 /**
  * Returns NPCs that appear in the given scene (or the active scene if scene is omitted).
- * @param {import("../types/campaign").Scene|null} [scene] - If omitted, uses active scene from context.
+ * Uses legacy campaign shape for compatibility; when store is used, resolves via getSceneNpcs.
  */
 export function useNpcsForScene(scene) {
-  const { campaign, activeScene } = useCampaign();
+  const ctx = useCampaign();
+  const { campaign, activeScene } = ctx;
   const targetScene = scene ?? activeScene;
   return useMemo(() => getNpcsForScene(campaign, targetScene), [campaign, targetScene]);
 }

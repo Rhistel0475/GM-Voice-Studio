@@ -4,6 +4,7 @@ import { defaultVoiceFilterState } from "../../types/voice";
 import { getVoices, getGeneratedAudio, submitClone, getCloneJobStatus } from "../../lib/api/voices";
 import { getNPCs } from "../../lib/api/npcs";
 import { useCampaignOptional } from "../../context/CampaignContext";
+import { useVoices as useVoicesFromStore, useNpcsForVoice } from "../../store/selectors";
 import { FantasyButton } from "../shared";
 import VoiceSearchInput from "./VoiceSearchInput";
 import VoiceLibraryFilters from "./VoiceLibraryFilters";
@@ -42,11 +43,13 @@ function filterVoices(voices, filterState) {
  */
 export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const campaignCtx = useCampaignOptional();
+  const voicesFromStore = useVoicesFromStore();
   const [voices, setVoices] = useState([]);
   const [generatedAudio, setGeneratedAudio] = useState([]);
   const [filterState, setFilterState] = useState(defaultVoiceFilterState());
   const [viewMode, setViewMode] = useState("grid");
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
+  const assignedNpcsForSelectedVoice = useNpcsForVoice(selectedVoiceId);
   const [isPlayingSample, setIsPlayingSample] = useState(false);
   const [playingClipId, setPlayingClipId] = useState("");
   const [npcOptions, setNpcOptions] = useState([]);
@@ -99,15 +102,27 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
     setNpcOptions(npcList);
   }, [npcList]);
 
+  const allVoices = useMemo(() => {
+    const api = voices;
+    const store = voicesFromStore ?? [];
+    if (!campaignCtx || !store.length) return api;
+    const byId = new Map(api.map((v) => [v.id || v.voice_id, { ...v, assignedNPCs: v.assignedNPCs ?? v.assignedNpcIds ?? [] }]));
+    store.forEach((v) => byId.set(v.id, { ...v, id: v.id, voice_id: v.id, name: v.name, assignedNPCs: v.assignedNpcIds ?? [] }));
+    return Array.from(byId.values());
+  }, [voices, campaignCtx, voicesFromStore]);
+
   const filteredVoices = useMemo(
-    () => filterVoices(voices, filterState),
-    [voices, filterState]
+    () => filterVoices(allVoices, filterState),
+    [allVoices, filterState]
   );
 
-  const selectedVoice = useMemo(
-    () => voices.find((v) => (v.voice_id || v.id) === selectedVoiceId) || null,
-    [voices, selectedVoiceId]
-  );
+  const selectedVoice = useMemo(() => {
+    const v = allVoices.find((x) => (x.voice_id || x.id) === selectedVoiceId) || null;
+    if (v && assignedNpcsForSelectedVoice?.length) {
+      return { ...v, assignedNPCs: assignedNpcsForSelectedVoice.map((n) => n.id) };
+    }
+    return v;
+  }, [allVoices, selectedVoiceId, assignedNpcsForSelectedVoice]);
 
   const playSample = useCallback(
     async (voiceId, text = "The quick brown fox jumps over the lazy dog.") => {

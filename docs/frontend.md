@@ -1,6 +1,6 @@
 # React frontend (primary preview UI)
 
-The React app in `frontend/` is the **primary preview UI** for GM Voice Studio. It is built into `static/frontend/` and served by FastAPI at `/preview` (and `/preview/` for SPA subpaths).
+The React app in `frontend/` is the **primary preview UI** for GM Voice Studio. The shared campaign data layer (types, Zustand store, selectors) lives in TypeScript (`src/types/*.ts`, `src/store/*.ts`); UI components can remain JS/JSX and consume the store via hooks. It is built into `static/frontend/` and served by FastAPI at `/preview` (and `/preview/` for SPA subpaths).
 
 ## UI framework and design system
 

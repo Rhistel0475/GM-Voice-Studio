@@ -1,7 +1,7 @@
 import React from "react";
 import VoiceCard from "./VoiceCard";
 import VoiceListItem from "./VoiceListItem";
-import { EmptyState } from "../shared";
+import { VoiceStudioEmptyState } from "../shared";
 
 /**
  * Voices as list or grid. viewMode "list" | "grid". Uses voice.id or voice.voice_id as key.
@@ -15,7 +15,7 @@ export default function VoiceLibraryGrid({
   viewMode = "grid",
 }) {
   if (!voices.length) {
-    return <EmptyState message="No voices. Clone one or load from the server." />;
+    return <VoiceStudioEmptyState />;
   }
   if (viewMode === "list") {
     return (

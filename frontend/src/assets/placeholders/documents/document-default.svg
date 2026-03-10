@@ -1,0 +1,21 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Default document icon</title>
+  <desc id="desc">A stylized parchment document for rules, notes, or lore.</desc>
+  <defs>
+    <linearGradient id="doc-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2c1a0e"/>
+      <stop offset="100%" stop-color="#130b06"/>
+    </linearGradient>
+    <linearGradient id="doc-paper" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f4e0b2"/>
+      <stop offset="100%" stop-color="#d0b27a"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" fill="url(#doc-bg)"/>
+  <rect x="52" y="32" width="152" height="192" rx="10" ry="10" fill="url(#doc-paper)" stroke="#7c5a2c" stroke-width="3"/>
+  <path d="M68 64h104M68 90h88M68 116h96M68 142h72M68 168h88" stroke="#98723c" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+  <text x="128" y="226" text-anchor="middle" font-family="Cinzel,serif" font-size="18" fill="#7c5224" letter-spacing="3">
+    DOC
+  </text>
+</svg>
+

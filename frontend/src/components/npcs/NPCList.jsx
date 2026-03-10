@@ -2,14 +2,14 @@
  * Scrollable list of NPCs; header matches CodexResultList. EmptyState when none.
  */
 import React from "react";
-import { EmptyState } from "../shared";
+import { NPCWorkshopEmptyState } from "../shared";
 import NPCListItem from "./NPCListItem";
 
 export default function NPCList({ filteredNpcs = [], selectedNpc, onSelectNpc }) {
   if (!filteredNpcs.length) {
     return (
       <div className="flex-1 min-h-0 flex items-center justify-center p-4">
-        <EmptyState message="No NPCs match the filters. Try a different search or campaign." />
+        <NPCWorkshopEmptyState />
       </div>
     );
   }

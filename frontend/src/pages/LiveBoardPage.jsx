@@ -3,6 +3,7 @@ import SectionHeader from "../components/layout/SectionHeader";
 import GMControlPanel from "../components/live-board/GMControlPanel";
 import SessionStream from "../components/live-board/SessionStream";
 import CodexSidePanel from "../components/live-board/CodexSidePanel";
+import { LiveBoardEmptyState } from "../components/shared";
 
 /**
  * Live Board: central command center for the GM during live gameplay.
@@ -16,6 +17,7 @@ export default function LiveBoardPage({
   onSelectNpc,
   onInsertIntoNarration,
   middleColumn,
+  showSessionEmpty = false,
 }) {
   return (
     <section className="live-board min-h-0 flex flex-col gap-5 xl:gap-6">
@@ -33,11 +35,15 @@ export default function LiveBoardPage({
           </div>
         </aside>
 
-        {/* CENTER: Session stream — SessionLog, NarrationComposer, AudioPlaybackCard (via middleColumn) */}
+        {/* CENTER: Session stream — or empty state when no campaign/session */}
         <main className="xl:col-span-5 min-h-0 flex flex-col gap-3">
           <SectionHeader title="Live Session" className="rounded-t-lg" />
-          <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
-            <SessionStream>{middleColumn}</SessionStream>
+          <div className="min-h-0 flex-1 min-w-0 overflow-hidden flex flex-col items-center justify-center p-4">
+            {showSessionEmpty ? (
+              <LiveBoardEmptyState />
+            ) : (
+              <SessionStream>{middleColumn}</SessionStream>
+            )}
           </div>
         </main>
 

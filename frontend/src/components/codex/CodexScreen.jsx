@@ -31,14 +31,18 @@ function filterItems(items, filterState) {
   return out;
 }
 
-export default function CodexScreen({ campaignData, authFetch, campaigns = [], onCampaignSelect, onAddToLiveBoard }) {
+export default function CodexScreen({ campaignData, authFetch, campaigns = [], onCampaignSelect, onAddToLiveBoard, codexEntriesFromStore }) {
   const [filterState, setFilterState] = useState(defaultCodexFilterState());
   const [selectedItem, setSelectedItem] = useState(null);
 
-  const items = useMemo(
-    () => getCodexItems(campaignData, authFetch),
-    [campaignData, authFetch]
-  );
+  const items = useMemo(() => {
+    const apiItems = getCodexItems(campaignData, authFetch);
+    const fromStore = codexEntriesFromStore ?? [];
+    if (fromStore.length === 0) return apiItems;
+    const byId = new Map(apiItems.map((i) => [i.id, i]));
+    fromStore.forEach((e) => byId.set(e.id, { id: e.id, title: e.title, summary: e.summary, category: e.type, tags: e.tags ?? [] }));
+    return Array.from(byId.values());
+  }, [campaignData, authFetch, codexEntriesFromStore]);
 
   const filteredItems = useMemo(
     () => filterItems(items, filterState),

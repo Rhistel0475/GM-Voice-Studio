@@ -3,6 +3,7 @@ import { defaultNpcFilterState, defaultNpcDraft } from "../../types/npc";
 import { getNPCs } from "../../lib/api/npcs";
 import { saveNPC, pushToLiveBoard } from "../../lib/api/npcs";
 import { useCampaignOptional } from "../../context/CampaignContext";
+import { useNpcsForActiveCampaign } from "../../store/selectors";
 import NPCRosterSidebar from "./NPCRosterSidebar";
 import NPCGeneratorForm from "./NPCGeneratorForm";
 import NPCPreviewCard from "./NPCPreviewCard";
@@ -79,6 +80,7 @@ function mergeProfile(selectedNpc, draft, npcName, personalityText) {
 
 export default function NPCWorkshopScreen({ campaignData, authFetch }) {
   const campaignCtx = useCampaignOptional();
+  const npcsFromStore = useNpcsForActiveCampaign();
   const [filterState, setFilterState] = useState(defaultNpcFilterState());
   const [selectedNpc, setSelectedNpc] = useState(null);
   const [draft, setDraft] = useState(defaultNpcDraft());
@@ -93,7 +95,13 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
   const [npcs, setNpcs] = useState([]);
 
-  const npcList = useMemo(() => getNPCs(campaignData, authFetch), [campaignData, authFetch]);
+  const npcList = useMemo(() => {
+    const apiList = getNPCs(campaignData, authFetch);
+    if (!campaignCtx || !npcsFromStore?.length) return apiList;
+    const byId = new Map(apiList.map((n) => [n.id, n]));
+    npcsFromStore.forEach((n) => byId.set(n.id, { ...n, voice_id: n.voiceId }));
+    return Array.from(byId.values());
+  }, [campaignData, authFetch, campaignCtx, npcsFromStore]);
   useEffect(() => {
     setNpcs(npcList);
   }, [npcList]);

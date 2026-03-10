@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState, Component } from "reac
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
 import { CampaignProvider, useCampaignOptional } from "./context/CampaignContext";
+import { useCampaignContextStore } from "./store/campaignContext";
+import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
 import LiveBoardPage from "./app/live-board";
 import CodexPage from "./app/codex";
@@ -23,7 +25,12 @@ class ErrorBoundary extends Component {
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#9b7440", marginTop: "0.5rem", fontSize: "11px" }}>{this.state.error?.stack}</pre>
           <button
             style={{ marginTop: "1.5rem", background: "#2a1a0a", border: "1px solid #c8a050", color: "#c8a050", padding: "0.5rem 1rem", cursor: "pointer", borderRadius: "4px" }}
-            onClick={() => { localStorage.removeItem("gm_parse_result"); localStorage.removeItem("gm_parse_images"); window.location.reload(); }}
+            onClick={() => {
+              localStorage.removeItem("gm_parse_result");
+              localStorage.removeItem("gm_parse_images");
+              localStorage.removeItem("gm_campaign_data");
+              window.location.reload();
+            }}
           >Clear saved data &amp; reload</button>
         </div>
       );
@@ -297,17 +304,33 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
 
       <Panel title="Party Roster">
         <div className="grid grid-cols-2 gap-1">
-          {party.slice(0, 4).map((char) => (
-            <article key={char.name} className="party-card">
-              <div className="party-face" />
-              <div className="party-meta">
-                <div className="name text-sm">{char.name}</div>
-                <div className="stats text-xs">
-                  {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span className="text-[#6b5030]">—</span>}
+          {party.slice(0, 4).map((char) => {
+            const portraitSrc = getPartyPlaceholder();
+            return (
+              <article key={char.name} className="party-card">
+                <div
+                  className="party-face"
+                  style={{
+                    backgroundImage: `url(${portraitSrc})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
+                />
+                <div className="party-meta">
+                  <div className="name text-sm">{char.name}</div>
+                  <div className="stats text-xs">
+                    {char.hp !== "—" ? (
+                      <>
+                        HP {char.hp} <span>/ AC {char.ac}</span>
+                      </>
+                    ) : (
+                      <span className="text-[#6b5030]">—</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </Panel>
       <ToolModal
@@ -624,17 +647,23 @@ const MiddleColumn = ({
 
         {sceneTab === "party" && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mt-2">
-            {party.map((char) => (
-              <article key={char.name} className="party-card">
-                <div className="party-face" />
-                <div className="party-meta">
-                  <div className="name">{char.name}</div>
-                  <div className="stats">
-                    {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span>{char.class_ || "—"}</span>}
+            {party.map((char) => {
+              const portraitSrc = getPartyPlaceholder();
+              return (
+                <article key={char.name} className="party-card">
+                  <div
+                    className="party-face"
+                    style={{ backgroundImage: `url(${portraitSrc})`, backgroundSize: "cover", backgroundPosition: "center" }}
+                  />
+                  <div className="party-meta">
+                    <div className="name">{char.name}</div>
+                    <div className="stats">
+                      {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span>{char.class_ || "—"}</span>}
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
 
@@ -1581,6 +1610,7 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
         selectedNpcName={selectedNpcName}
         onSelectNpc={setSelectedNpcName}
         onInsertIntoNarration={(text) => setCoDmQuery((prev) => (prev ? prev + "\n" + text : text))}
+        showSessionEmpty={!campaign}
         middleColumn={
           <MiddleColumn
             campaignData={campaign}
@@ -2292,6 +2322,34 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
     if (parseResult?.id === id) { setParseResult(null); setSaved(false); }
   };
 
+  const clearAllCampaignData = async () => {
+    if (!window.confirm("Clear all campaign data? This will remove your current parse, any loaded campaign, and delete all saved campaigns from the server. You can then upload new documents. This cannot be undone.")) return;
+    try {
+      const listRes = await authFetch("/api/campaigns");
+      const list = listRes.ok ? await listRes.json() : [];
+      if (Array.isArray(list)) {
+        for (const c of list) {
+          if (c?.id) await authFetch(`/api/campaigns/${c.id}`, { method: "DELETE" });
+        }
+      }
+    } catch (_) { /* ignore */ }
+    localStorage.removeItem("gm_parse_result");
+    localStorage.removeItem("gm_parse_images");
+    localStorage.removeItem("gm_campaign_data");
+    setParseResult(null);
+    setSaved(false);
+    setFiles([]);
+    setImages({ embedded: [], pages: [] });
+    setSavedCampaigns([]);
+    setParseError("");
+    setActivePanel("outline");
+    setDetailItem(null);
+    setLightbox(null);
+    setExpandedActs(new Set());
+    onSaveCampaign(null);
+    useCampaignContextStore.getState().resetCampaignContext();
+  };
+
   const npcs = parseResult?.npcs?.length ? parseResult.npcs : [];
   const party = parseResult?.party?.length ? parseResult.party : [];
   const scenes = parseResult?.scenes?.length ? parseResult.scenes : [];
@@ -2353,6 +2411,20 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                         <Trash2 size={14} />
                       </button>
                     )}
+                  </div>
+                  <div style={{ marginTop: "0.6rem" }}>
+                    <button
+                      type="button"
+                      onClick={clearAllCampaignData}
+                      title="Clear parse result, loaded campaign, and all saved campaigns so you can upload new documents"
+                      style={{ background: "none", border: "1px solid #5a3e1b", borderRadius: "4px",
+                        color: "#9c7a3a", padding: "0.35rem 0.6rem", cursor: "pointer", fontSize: "0.75rem",
+                        fontFamily: "Cinzel, serif" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "#2a1f10"; e.currentTarget.style.color = "#c8a050"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#9c7a3a"; }}
+                    >
+                      Clear all campaign data (new upload)
+                    </button>
                   </div>
                   {loadingCampaignId && (
                     <p style={{ color:"#9c7a3a", fontSize:"0.72rem", marginTop:"0.3rem" }}>Loading…</p>
@@ -2672,16 +2744,16 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                             {/* Scenes — only visible when chapter is open */}
                             {isOpen && (
                               <ul className="divide-y divide-[#2a1a0a]">
-                                {actScenes.map((scene, i) => (
+                            {actScenes.map((scene, i) => {
+                              const thumbSrc = scene.image_url || getScenePlaceholder(scene.type);
+                              return (
                                   <li key={i}
                                     className="flex gap-2 items-start cursor-pointer hover:bg-[#2a1a0a] px-3 py-2"
                                     title="Click to view scene details"
                                     onClick={() => setDetailItem({type:"scene", data:scene})}>
-                                    {scene.image_url && (
-                                      <img src={scene.image_url} alt={scene.title}
+                                      <img src={thumbSrc} alt={scene.title}
                                         className="w-12 h-10 object-cover rounded border border-[#4f341f] flex-shrink-0 mt-0.5"
-                                        onClick={e => { e.stopPropagation(); setLightbox(scene.image_url); }} />
-                                    )}
+                                        onClick={e => { e.stopPropagation(); if (scene.image_url) setLightbox(scene.image_url); }} />
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold text-[#c8a050] text-sm">{scene.title}</div>
                                       <div className="flex gap-1 flex-wrap mt-0.5">
@@ -2697,7 +2769,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                                     </div>
                                     <span className="text-[#4f341f] text-xs flex-shrink-0 mt-1">›</span>
                                   </li>
-                                ))}
+                                );})}
                               </ul>
                             )}
                           </div>
