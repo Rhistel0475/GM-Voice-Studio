@@ -1,0 +1,23 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Default NPC portrait</title>
+  <desc id="desc">A stylized silhouette for a non-player character in a fantasy campaign.</desc>
+  <defs>
+    <linearGradient id="npc-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b2416"/>
+      <stop offset="100%" stop-color="#1a1008"/>
+    </linearGradient>
+    <linearGradient id="npc-ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d4af37"/>
+      <stop offset="100%" stop-color="#8c5a24"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="256" fill="url(#npc-bg)"/>
+  <circle cx="128" cy="96" r="56" fill="#26130a" stroke="url(#npc-ring)" stroke-width="4"/>
+  <circle cx="128" cy="92" r="32" fill="#3a2414"/>
+  <path d="M72 176c10-32 30-48 56-48s46 16 56 48v32H72z" fill="#3a2414"/>
+  <path d="M64 192h128v20c0 6-4 10-10 10H74c-6 0-10-4-10-10z" fill="none" stroke="url(#npc-ring)" stroke-width="3"/>
+  <text x="128" y="228" text-anchor="middle" font-family="Cinzel,serif" font-size="20" fill="#e5c680" letter-spacing="4">
+    NPC
+  </text>
+</svg>
+

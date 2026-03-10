@@ -17,6 +17,12 @@ export default defineConfig({
               res.end();
               return;
             }
+            // SPA fallback: rewrite /preview/* (no static file) to / so Vite serves index.html
+            const url = req.url?.split("?")[0] || "";
+            if (url.startsWith("/preview") && !/\.(js|css|ico|png|svg|json|map)(\?|$)/i.test(url)) {
+              req.url = "/";
+              return next();
+            }
             next();
           });
         },

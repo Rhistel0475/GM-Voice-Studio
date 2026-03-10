@@ -156,20 +156,35 @@ def extract_text_from_file(path: str, suffix: str) -> str:
 
 def ai_full_parse(text: str) -> dict:
     """
-    Use Claude to extract a complete campaign data object from adventure text.
-    Returns structured data for all three app tabs: NPCs, party, scenes, locations, reveals.
-
-    Returns:
-        {
-          "title": str,
-          "summary": str,
-          "npcs": [{"name", "role", "personality", "faction", "description", "scene", "motivation", "secrets"}],
-          "party": [{"name", "class_", "race", "level", "hp", "ac", "player"}],
-          "scenes": [{"title", "act", "type", "read_aloud", "npcs", "location", "notes"}],
-          "locations": [{"name", "description", "scene"}],
-          "reveals": [{"name", "when", "type"}]
-        }
+    Use the staged parsing pipeline to extract a complete campaign data object from adventure text.
+    Falls back to single-shot Claude extraction if the pipeline fails.
+    Returns structured data for NPCs, party, scenes, locations, reveals, codex_entries, relationships.
     """
+    try:
+        from app.services.parsing.pipeline import run_parsing_pipeline
+        result = run_parsing_pipeline(text)
+        for key in ("title", "summary"):
+            result.setdefault(key, "")
+        for key in ("npcs", "party", "scenes", "locations", "reveals", "items"):
+            result.setdefault(key, [])
+        result.setdefault("codex_entries", [])
+        result.setdefault("relationships", [])
+        for npc in result.get("npcs", []):
+            npc.setdefault("hp", "")
+            npc.setdefault("ac", 0)
+            npc.setdefault("cr", "")
+        for scene in result.get("scenes", []):
+            scene.setdefault("difficulty", "")
+            scene.setdefault("rewards", "")
+            scene.setdefault("notes", "")
+        return result
+    except Exception as e:
+        logging.warning("Parsing pipeline failed, falling back to single-shot parse: %s", e)
+        return _ai_full_parse_fallback(text)
+
+
+def _ai_full_parse_fallback(text: str) -> dict:
+    """Legacy single-shot Claude extraction when pipeline is unavailable or fails."""
     from app.infrastructure.llm.anthropic_client import get_client
     client = get_client()
     # Cap at 60k chars to leave ample room for the large JSON response within 8192 tokens
@@ -217,10 +232,8 @@ def ai_full_parse(text: str) -> dict:
             raw = raw.strip()
 
         # If the JSON was truncated mid-stream, find the last complete top-level key
-        # by locating the outermost { ... } block
         brace_start = raw.find("{")
         if brace_start != -1 and not raw.endswith("}"):
-            # Attempt to close the JSON at the last complete array/object boundary
             raw = raw[:raw.rfind(",")].rstrip() + "\n}"
             logging.warning("ai_full_parse: JSON was truncated; attempted auto-close.")
 
@@ -229,12 +242,12 @@ def ai_full_parse(text: str) -> dict:
             result.setdefault(key, "")
         for key in ("npcs", "party", "scenes", "locations", "reveals", "items"):
             result.setdefault(key, [])
-        # Normalize new NPC fields
+        result.setdefault("codex_entries", [])
+        result.setdefault("relationships", [])
         for npc in result.get("npcs", []):
             npc.setdefault("hp", "")
             npc.setdefault("ac", 0)
             npc.setdefault("cr", "")
-        # Normalize new scene fields
         for scene in result.get("scenes", []):
             scene.setdefault("difficulty", "")
             scene.setdefault("rewards", "")

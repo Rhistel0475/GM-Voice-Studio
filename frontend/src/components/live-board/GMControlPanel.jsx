@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import QuickToolGrid from "./QuickToolGrid";
 import { QUICK_TOOLS } from "./constants";
 import { ModalShell } from "../shared";
+import { getPartyPlaceholder } from "../../lib/placeholders";
 
 const DEFAULT_PARTY = [
   { name: "ATHELRED", hp: "—", ac: "—" },
@@ -21,8 +22,8 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
   const sceneReveals = (scene?.reveals || []).map((revealName) => allReveals.find((r) => r.name === revealName)).filter(Boolean);
 
   return (
-    <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
-      <section className="panel-ornate min-h-0 flex flex-col">
+    <div className="h-full min-h-0 flex flex-col gap-3">
+      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">
         <div className="panel-head">
           <div className="plaque">Quick Tools</div>
         </div>
@@ -31,11 +32,11 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
         </div>
       </section>
 
-      <section className="panel-ornate min-h-0 flex flex-col">
+      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">
         <div className="panel-head">
           <div className="plaque">Active Scene</div>
         </div>
-        <div className="panel-body space-y-2 overflow-auto">
+        <div className="panel-body space-y-2 overflow-y-auto min-h-[120px] max-h-[220px]">
           {sceneNpcs.map((npc) => (
             <button
               key={npc.name}
@@ -65,15 +66,20 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
         </div>
       </section>
 
-      <section className="panel-ornate min-h-0 flex flex-col">
+      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden flex-shrink-0">
         <div className="panel-head">
           <div className="plaque">Party Roster</div>
         </div>
         <div className="panel-body">
           <div className="grid grid-cols-2 gap-1">
-            {party.slice(0, 4).map((char) => (
-              <article key={char.name} className="party-card">
-                <div className="party-face" />
+            {party.slice(0, 4).map((char) => {
+              const portraitSrc = getPartyPlaceholder();
+              return (
+                <article key={char.name} className="party-card">
+                  <div
+                    className="party-face"
+                    style={{ backgroundImage: `url(${portraitSrc})`, backgroundSize: "cover", backgroundPosition: "center" }}
+                  />
                 <div className="party-meta">
                   <div className="name text-sm">{char.name}</div>
                   <div className="stats text-xs">
@@ -85,7 +91,8 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>

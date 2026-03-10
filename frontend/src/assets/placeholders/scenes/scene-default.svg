@@ -1,0 +1,24 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Default scene background</title>
+  <desc id="desc">A stylized landscape for a fantasy scene.</desc>
+  <defs>
+    <linearGradient id="scene-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2e2740"/>
+      <stop offset="100%" stop-color="#1a1008"/>
+    </linearGradient>
+    <linearGradient id="scene-ground" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3c2a19"/>
+      <stop offset="100%" stop-color="#231409"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="256" height="160" fill="url(#scene-sky)"/>
+  <rect x="0" y="160" width="256" height="96" fill="url(#scene-ground)"/>
+  <circle cx="200" cy="56" r="22" fill="#e5c680"/>
+  <path d="M24 168l40-80 44 80z" fill="#25150b"/>
+  <path d="M88 168l44-96 52 96z" fill="#2b190d"/>
+  <path d="M0 192c40-10 80-16 128-16s88 6 128 16v40H0z" fill="#1b1009" opacity="0.9"/>
+  <text x="20" y="236" font-family="Cinzel,serif" font-size="18" fill="#e5c680" letter-spacing="3">
+    SCENE
+  </text>
+</svg>
+

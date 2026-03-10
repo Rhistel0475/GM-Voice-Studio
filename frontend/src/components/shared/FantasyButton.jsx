@@ -1,10 +1,13 @@
 import React from "react";
 
 const variants = {
-  primary: "nav-glyph-btn is-active border-[var(--gold)] text-[var(--candle-glow)]",
+  primary:
+    "nav-glyph-btn is-active border-[var(--gold)] text-[var(--candle-glow)] hover:border-[var(--gold)] hover:text-[var(--candle-glow)]",
   secondary: "nav-glyph-btn",
-  ghost: "nav-glyph-btn border-transparent bg-transparent hover:bg-[rgba(255,210,122,0.08)]",
-  danger: "nav-glyph-btn border-[#7a2020] text-[#c05050] hover:border-[#9a3030] hover:text-[#ff6b6b]",
+  ghost:
+    "nav-glyph-btn border-transparent bg-transparent hover:bg-[rgba(255,210,122,0.1)] hover:border-[#5c4228]",
+  danger:
+    "nav-glyph-btn border-[#7a2020] text-[#c05050] hover:border-[#9a3030] hover:text-[#e87878] hover:shadow-[0_0_8px_rgba(192,80,80,0.35)]",
 };
 
 /**

@@ -33,6 +33,9 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
+    for key in ("codex_entries", "relationships"):
+        if not isinstance(payload.get(key), list):
+            payload[key] = []
     return payload
 
 
@@ -85,6 +88,8 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
         "reveals": [],
         "items": [],
         "images": [],
+        "codex_entries": [],
+        "relationships": [],
     }
 
 
@@ -148,6 +153,8 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
                     "reveals": result.get("reveals", []),
                     "items": result.get("items", []),
                     "images": result.get("images", []),
+                    "codex_entries": result.get("codex_entries", []),
+                    "relationships": result.get("relationships", []),
                 },
                 ensure_ascii=False,
             ),

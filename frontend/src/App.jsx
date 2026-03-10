@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useRef, useState, Component } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
+import { CampaignProvider, useCampaignOptional } from "./context/CampaignContext";
+import { useCampaignContextStore } from "./store/campaignContext";
+import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
-import LiveBoardPage from "./pages/LiveBoardPage";
-import CodexPage from "./pages/CodexPage";
-import NPCWorkshopPage from "./pages/NPCWorkshopPage";
-import VoiceStudioPage from "./pages/VoiceStudioPage";
+import LiveBoardPage from "./app/live-board";
+import CodexPage from "./app/codex";
+import NPCWorkshopPage from "./app/npcs";
+import VoiceStudioPage from "./app/voices";
 import SettingsPage from "./pages/SettingsPage";
+import SessionLog from "./components/live-board/SessionLog";
+import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -20,7 +25,12 @@ class ErrorBoundary extends Component {
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", color: "#9b7440", marginTop: "0.5rem", fontSize: "11px" }}>{this.state.error?.stack}</pre>
           <button
             style={{ marginTop: "1.5rem", background: "#2a1a0a", border: "1px solid #c8a050", color: "#c8a050", padding: "0.5rem 1rem", cursor: "pointer", borderRadius: "4px" }}
-            onClick={() => { localStorage.removeItem("gm_parse_result"); localStorage.removeItem("gm_parse_images"); window.location.reload(); }}
+            onClick={() => {
+              localStorage.removeItem("gm_parse_result");
+              localStorage.removeItem("gm_parse_images");
+              localStorage.removeItem("gm_campaign_data");
+              window.location.reload();
+            }}
           >Clear saved data &amp; reload</button>
         </div>
       );
@@ -67,7 +77,8 @@ const resolveViewFromPath = (path) => {
 };
 
 const pathToView = (path) => {
-  const p = (path || "/").replace(/\/+$/, "") || "/";
+  let p = (path || "/").replace(/\/+$/, "").trim() || "/";
+  if (!p.startsWith("/")) p = `/${p}`;
   if (p === "/codex") return "codex";
   if (p === "/npcs") return "npc-workshop";
   if (p === "/voices") return "voice-studio";
@@ -293,17 +304,33 @@ const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
 
       <Panel title="Party Roster">
         <div className="grid grid-cols-2 gap-1">
-          {party.slice(0, 4).map((char) => (
-            <article key={char.name} className="party-card">
-              <div className="party-face" />
-              <div className="party-meta">
-                <div className="name text-sm">{char.name}</div>
-                <div className="stats text-xs">
-                  {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span className="text-[#6b5030]">—</span>}
+          {party.slice(0, 4).map((char) => {
+            const portraitSrc = getPartyPlaceholder();
+            return (
+              <article key={char.name} className="party-card">
+                <div
+                  className="party-face"
+                  style={{
+                    backgroundImage: `url(${portraitSrc})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                  }}
+                />
+                <div className="party-meta">
+                  <div className="name text-sm">{char.name}</div>
+                  <div className="stats text-xs">
+                    {char.hp !== "—" ? (
+                      <>
+                        HP {char.hp} <span>/ AC {char.ac}</span>
+                      </>
+                    ) : (
+                      <span className="text-[#6b5030]">—</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
       </Panel>
       <ToolModal
@@ -346,6 +373,7 @@ const MiddleColumn = ({
   autoQueryOnVoice,
   onToggleAutoQueryOnVoice,
   onAudioStatusChange,
+  audioStatus = "idle",
 }) => {
   const [sceneTab, setSceneTab] = useState("text");
   const [isNarrating, setIsNarrating] = useState(false);
@@ -358,20 +386,12 @@ const MiddleColumn = ({
   const [npcGenStreaming, setNpcGenStreaming] = useState(false);
   const [npcGenError, setNpcGenError] = useState("");
   const [npcGenSpeaking, setNpcGenSpeaking] = useState(false);
-  const actionLogRef = useRef(null);
   const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
   const scene = scenes[selectedSceneIdx] || scenes[0];
   const sceneNpcs = npcs.filter(n => scene.npcs?.includes(n.name));
   const displayNpcs = sceneNpcs.length ? sceneNpcs : npcs.slice(0, 6);
-
-  useEffect(() => {
-    if (sceneTab !== "log") return;
-    const logElement = actionLogRef.current;
-    if (!logElement) return;
-    logElement.scrollTop = logElement.scrollHeight;
-  }, [actionLog, liveTranscript, sceneTab]);
 
   const resolveNarrationVoiceId = async () => {
     const response = await authFetch("/voices/list");
@@ -512,9 +532,6 @@ const MiddleColumn = ({
           <button type="button" className={sceneTab === "party" ? "tab-active" : ""} onClick={() => setSceneTab("party")}>
             Party
           </button>
-          <button type="button" className={sceneTab === "log" ? "tab-active" : ""} onClick={() => setSceneTab("log")}>
-            Action Log
-          </button>
           <button type="button" className={sceneTab === "npcgen" ? "tab-active" : ""} onClick={() => setSceneTab("npcgen")}>
             NPC Gen
           </button>
@@ -522,40 +539,89 @@ const MiddleColumn = ({
 
         {sceneTab === "text" && (
           <>
-            {scene.type && (
-              <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
-            )}
-            <div className="parchment mt-1 text-lg">
-              {scene.read_aloud || scene.title
-                ? (scene.read_aloud || `Scene: ${scene.title}`)
-                : "Upload adventure docs via Library to load scene read-aloud text here."}
-            </div>
-
-            {scene.read_aloud && (
-              <div className="mt-3 text-center">
-                <button
-                  type="button"
-                  className="cta-secondary"
-                  onClick={handleNarrate}
-                  disabled={isNarrating}
-                >
-                  {isNarrating ? (
-                    'Generating...'
-                  ) : (
-                    <>
-                      <Play size={13} className="inline-block mr-1" /> Narrate Scene
-                    </>
-                  )}
-                </button>
-                {narrateError && (
-                  <div className="text-xs text-red-400 mt-2">{narrateError}</div>
+            {/* Narration area: scene title, text, button, audio */}
+            <div className="mb-3">
+              <h2 className="font-heading text-[var(--gold)] text-base mb-1.5">{scene?.title || "Current scene"}</h2>
+              {scene.type && (
+                <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
+              )}
+              <div className="parchment rounded p-3 text-[15px] leading-relaxed min-h-[80px]">
+                {scene.read_aloud || scene.title
+                  ? (scene.read_aloud || `Scene: ${scene.title}`)
+                  : "Upload adventure docs via Library to load scene read-aloud text here."}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {scene.read_aloud && (
+                  <button
+                    type="button"
+                    className="cta-secondary transition-all hover:brightness-110"
+                    onClick={handleNarrate}
+                    disabled={isNarrating}
+                  >
+                    {isNarrating ? "Generating…" : <><Play size={13} className="inline-block mr-1" /> Narrate Scene</>}
+                  </button>
+                )}
+                {narrateError && <span className="text-xs text-red-400">{narrateError}</span>}
+              </div>
+              {/* Audio playback: card when active, placeholder when idle */}
+              <div className="mt-2">
+                {audioStatus !== "idle" ? (
+                  <AudioPlaybackCard
+                    audioStatus={audioStatus}
+                    voiceName="Narration"
+                    onPlayPause={() => {}}
+                  />
+                ) : (
+                  <div className="rounded-lg border border-[#5c3e23] bg-[#1a1008]/60 border-dashed p-3 text-center text-xs text-[var(--text-2)]">
+                    Audio will appear here when you narrate a scene.
+                  </div>
                 )}
               </div>
-            )}
+              {scene.notes && (
+                <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
+              )}
+            </div>
 
-            {scene.notes && (
-              <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
-            )}
+            {/* Session Log section */}
+            <div className="flex flex-col gap-2 min-h-0 flex-1">
+              <div className="subhead rounded-t px-3 py-1.5 text-sm font-heading">Session Log</div>
+              <div className="flex-1 min-h-[200px] flex flex-col rounded-b border border-[#4f341f] border-t-0 overflow-hidden">
+                <div className="text-xs text-[#9b7440] flex items-center justify-between flex-wrap gap-1 px-2 py-1 bg-[#120a04]/80">
+                  <span>Player actions · NPC dialogue · Narration · System</span>
+                  <div className="flex items-center gap-1">
+                    <span className="uppercase tracking-wide text-[10px]">
+                      {coDmStatus === "open" ? "Connected" : coDmStatus === "connecting" ? "Connecting…" : "Offline"}
+                    </span>
+                    <button type="button" className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110" onClick={isMicActive ? onStopMic : onStartMic} disabled={coDmStatus !== "open" && !isMicActive}>
+                      {isMicActive ? "Stop Mic" : "Start Mic"}
+                    </button>
+                    <button type="button" className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110" onClick={onToggleWakeArmed}>
+                      {isWakeArmed ? "Wake On" : "Wake Off"}
+                    </button>
+                    <button type="button" className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110" onClick={onToggleAutoQueryOnVoice}>
+                      {autoQueryOnVoice ? "AutoQuery On" : "AutoQuery Off"}
+                    </button>
+                  </div>
+                </div>
+                <SessionLog actionLog={actionLog} liveTranscript={liveTranscript} />
+                {micError && <div className="text-xs text-red-400 px-2 pb-1">{micError}</div>}
+                {wakeError && <div className="text-xs text-red-400 px-2 pb-1">{wakeError}</div>}
+                <div className="text-[10px] text-[#8f6a39] px-2 pb-1">Wake phrase: "{wakePhrase}"</div>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Ask Co-DM…"
+                  className="chat-input flex-1"
+                  value={coDmQuery}
+                  onChange={(e) => onChangeCoDmQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && onSubmitCoDmQuery()}
+                />
+                <button type="button" className="send-btn transition-all hover:brightness-110" onClick={onSubmitCoDmQuery} disabled={isSubmittingQuery || !coDmQuery.trim()}>
+                  {isSubmittingQuery ? "…" : "Send"}
+                </button>
+              </div>
+            </div>
           </>
         )}
 
@@ -581,114 +647,23 @@ const MiddleColumn = ({
 
         {sceneTab === "party" && (
           <div className="grid grid-cols-2 xl:grid-cols-4 gap-2 mt-2">
-            {party.map((char) => (
-              <article key={char.name} className="party-card">
-                <div className="party-face" />
-                <div className="party-meta">
-                  <div className="name">{char.name}</div>
-                  <div className="stats">
-                    {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span>{char.class_ || "—"}</span>}
+            {party.map((char) => {
+              const portraitSrc = getPartyPlaceholder();
+              return (
+                <article key={char.name} className="party-card">
+                  <div
+                    className="party-face"
+                    style={{ backgroundImage: `url(${portraitSrc})`, backgroundSize: "cover", backgroundPosition: "center" }}
+                  />
+                  <div className="party-meta">
+                    <div className="name">{char.name}</div>
+                    <div className="stats">
+                      {char.hp !== "—" ? <>HP {char.hp} <span>/ AC {char.ac}</span></> : <span>{char.class_ || "—"}</span>}
+                    </div>
                   </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-
-        {sceneTab === "log" && (
-          <div className="mt-2 min-h-0 flex-1 flex flex-col gap-2">
-            <div className="text-xs text-[#9b7440] flex items-center justify-between">
-              <span>Live transcription and Co-DM responses</span>
-              <div className="flex items-center gap-2">
-                <span className="uppercase tracking-wide text-[10px]">
-                  {coDmStatus === "open" ? "Connected" : coDmStatus === "connecting" ? "Connecting..." : "Offline (fallback mode)"}
-                </span>
-                <button
-                  type="button"
-                  className="send-btn text-[10px] px-2 py-1"
-                  onClick={isMicActive ? onStopMic : onStartMic}
-                  disabled={coDmStatus !== "open" && !isMicActive}
-                >
-                  {isMicActive ? "Stop Mic" : "Start Mic"}
-                </button>
-                <button
-                  type="button"
-                  className="send-btn text-[10px] px-2 py-1"
-                  onClick={onToggleWakeArmed}
-                >
-                  {isWakeArmed ? "Wake On" : "Wake Off"}
-                </button>
-                <button
-                  type="button"
-                  className="send-btn text-[10px] px-2 py-1"
-                  onClick={onToggleAutoQueryOnVoice}
-                >
-                  {autoQueryOnVoice ? "AutoQuery On" : "AutoQuery Off"}
-                </button>
-              </div>
-            </div>
-            <div className="text-[10px] text-[#8f6a39]">
-              Wake phrase: "{wakePhrase}"
-            </div>
-            {micError && <div className="text-xs text-red-400">{micError}</div>}
-            {wakeError && <div className="text-xs text-red-400">{wakeError}</div>}
-
-            <div ref={actionLogRef} className="flex-1 min-h-[170px] overflow-y-auto border border-[#4f341f] bg-[#120a04] p-2 space-y-2">
-              {actionLog.length ? actionLog.map((entry) => (
-                <div
-                  key={entry.id}
-                  className={`rounded border px-2 py-1 text-xs ${{
-                    player:     "border-[#5d472a] bg-[#1c120a] text-[#e6c785]",
-                    error:      "border-red-900/70 bg-red-950/20 text-red-300",
-                    stat_block: "border-[#c79f5b] bg-[#0e1a0e] text-[#ffe08a]",
-                    lore:       "border-[#7a5a30] bg-[#eddcb8]/10 text-[#c8a97a]",
-                  }[entry.role] ?? "border-[#37553e] bg-[#102016] text-[#d4f0cf]"}`}
-                >
-                  <div className="mb-0.5 flex items-center justify-between">
-                    <span className="font-heading text-[10px] tracking-wide uppercase">
-                      {entry.role === "player" ? "Table" : entry.role === "error" ? "System" : entry.role === "stat_block" ? "Stat Block" : entry.role === "lore" ? "Lore" : "Co-DM"}
-                    </span>
-                    {entry.meta && <span className="text-[10px] opacity-80">{entry.meta}</span>}
-                  </div>
-                  {entry.role === "stat_block"
-                    ? <pre className="whitespace-pre-wrap font-mono text-xs">{entry.text}</pre>
-                    : <div className="whitespace-pre-wrap">{entry.text}</div>
-                  }
-                </div>
-              )) : (
-                <div className="intake-empty text-xs">
-                  No live entries yet. Ask a rules/lore question below.
-                </div>
-              )}
-              {liveTranscript && (
-                <div className="rounded border border-[#5d472a] bg-[#1a1209] px-2 py-1 text-xs text-[#d7b77d]">
-                  <div className="mb-0.5 flex items-center justify-between">
-                    <span className="font-heading text-[10px] tracking-wide uppercase">Listening...</span>
-                    <span className="text-[10px] opacity-80">STT partial</span>
-                  </div>
-                  <div className="whitespace-pre-wrap">{liveTranscript}</div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Ask Co-DM..."
-                className="chat-input flex-1"
-                value={coDmQuery}
-                onChange={(e) => onChangeCoDmQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && onSubmitCoDmQuery()}
-              />
-              <button
-                type="button"
-                className="send-btn"
-                onClick={onSubmitCoDmQuery}
-                disabled={isSubmittingQuery || !coDmQuery.trim()}
-              >
-                {isSubmittingQuery ? "..." : "Send"}
-              </button>
-            </div>
+                </article>
+              );
+            })}
           </div>
         )}
 
@@ -1125,9 +1100,12 @@ const RightColumn = ({ campaignData, selectedNpcName, authFetch, onInsertIntoNar
 };
 
 const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, defaultAutoQueryOnVoice = true }) => {
-  const [selectedSceneIdx, setSelectedSceneIdx] = useState(0);
+  const campaignCtx = useCampaignOptional();
+  const useSharedCampaign = Boolean(campaignCtx);
+
+  const [selectedSceneIdxLocal, setSelectedSceneIdxLocal] = useState(0);
   const [selectedNpcName, setSelectedNpcName] = useState(null);
-  const [actionLog, setActionLog] = useState([]);
+  const [actionLogLocal, setActionLogLocal] = useState([]);
   const [coDmQuery, setCoDmQuery] = useState("");
   const [isSubmittingQuery, setIsSubmittingQuery] = useState(false);
   const [coDmStatus, setCoDmStatus] = useState("connecting");
@@ -1155,8 +1133,24 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
   const isMicActiveRef = useRef(false);
   const isWakeArmedRef = useRef(false);
   const stopMicCaptureRef = useRef(() => {});
-  const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
-  const scene = scenes[selectedSceneIdx] || scenes[0];
+
+  const campaign = campaignCtx?.campaign ?? campaignData;
+  const scenes = campaign?.scenes?.length ? campaign.scenes : DEFAULT_SCENES;
+  const selectedSceneIdx = useSharedCampaign ? campaignCtx.activeSceneIndex : selectedSceneIdxLocal;
+  const setSelectedSceneIdx = useSharedCampaign ? campaignCtx.setActiveSceneIndex : setSelectedSceneIdxLocal;
+  const scene = useSharedCampaign ? campaignCtx.activeScene : (scenes[selectedSceneIdxLocal] || scenes[0]);
+  const actionLog = useSharedCampaign ? campaignCtx.actionLog : actionLogLocal;
+  const appendActionLogLocal = useCallback((role, text, meta = "") => {
+    if (!text) return;
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      role,
+      text,
+      meta,
+    };
+    setActionLogLocal((prev) => [...prev, entry].slice(-100));
+  }, []);
+  const appendActionLog = useSharedCampaign ? campaignCtx.appendActionLog : appendActionLogLocal;
 
   useEffect(() => {
     if (sessionStartRef.current == null) sessionStartRef.current = Date.now();
@@ -1176,17 +1170,6 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
       }));
     }
   }, [sessionTimer, scene?.title, audioStatus, setBannerState]);
-
-  const appendActionLog = useCallback((role, text, meta = "") => {
-    if (!text) return;
-    const entry = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      role,
-      text,
-      meta,
-    };
-    setActionLog((prev) => [...prev, entry].slice(-100));
-  }, []);
 
   useEffect(() => {
     isMicActiveRef.current = isMicActive;
@@ -1622,14 +1605,15 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
 
   return (
     <LiveBoardPage
-        campaignData={campaignData}
+        campaignData={campaign}
         scene={scene}
         selectedNpcName={selectedNpcName}
         onSelectNpc={setSelectedNpcName}
         onInsertIntoNarration={(text) => setCoDmQuery((prev) => (prev ? prev + "\n" + text : text))}
+        showSessionEmpty={!campaign}
         middleColumn={
           <MiddleColumn
-            campaignData={campaignData}
+            campaignData={campaign}
             selectedSceneIdx={selectedSceneIdx}
             onSelectScene={setSelectedSceneIdx}
             onSelectNpc={setSelectedNpcName}
@@ -1652,6 +1636,7 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
             autoQueryOnVoice={autoQueryOnVoice}
             onToggleAutoQueryOnVoice={toggleAutoQueryOnVoice}
             onAudioStatusChange={setAudioStatus}
+            audioStatus={audioStatus}
           />
         }
       />
@@ -2337,6 +2322,34 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
     if (parseResult?.id === id) { setParseResult(null); setSaved(false); }
   };
 
+  const clearAllCampaignData = async () => {
+    if (!window.confirm("Clear all campaign data? This will remove your current parse, any loaded campaign, and delete all saved campaigns from the server. You can then upload new documents. This cannot be undone.")) return;
+    try {
+      const listRes = await authFetch("/api/campaigns");
+      const list = listRes.ok ? await listRes.json() : [];
+      if (Array.isArray(list)) {
+        for (const c of list) {
+          if (c?.id) await authFetch(`/api/campaigns/${c.id}`, { method: "DELETE" });
+        }
+      }
+    } catch (_) { /* ignore */ }
+    localStorage.removeItem("gm_parse_result");
+    localStorage.removeItem("gm_parse_images");
+    localStorage.removeItem("gm_campaign_data");
+    setParseResult(null);
+    setSaved(false);
+    setFiles([]);
+    setImages({ embedded: [], pages: [] });
+    setSavedCampaigns([]);
+    setParseError("");
+    setActivePanel("outline");
+    setDetailItem(null);
+    setLightbox(null);
+    setExpandedActs(new Set());
+    onSaveCampaign(null);
+    useCampaignContextStore.getState().resetCampaignContext();
+  };
+
   const npcs = parseResult?.npcs?.length ? parseResult.npcs : [];
   const party = parseResult?.party?.length ? parseResult.party : [];
   const scenes = parseResult?.scenes?.length ? parseResult.scenes : [];
@@ -2398,6 +2411,20 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                         <Trash2 size={14} />
                       </button>
                     )}
+                  </div>
+                  <div style={{ marginTop: "0.6rem" }}>
+                    <button
+                      type="button"
+                      onClick={clearAllCampaignData}
+                      title="Clear parse result, loaded campaign, and all saved campaigns so you can upload new documents"
+                      style={{ background: "none", border: "1px solid #5a3e1b", borderRadius: "4px",
+                        color: "#9c7a3a", padding: "0.35rem 0.6rem", cursor: "pointer", fontSize: "0.75rem",
+                        fontFamily: "Cinzel, serif" }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "#2a1f10"; e.currentTarget.style.color = "#c8a050"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "none"; e.currentTarget.style.color = "#9c7a3a"; }}
+                    >
+                      Clear all campaign data (new upload)
+                    </button>
                   </div>
                   {loadingCampaignId && (
                     <p style={{ color:"#9c7a3a", fontSize:"0.72rem", marginTop:"0.3rem" }}>Loading…</p>
@@ -2717,16 +2744,16 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                             {/* Scenes — only visible when chapter is open */}
                             {isOpen && (
                               <ul className="divide-y divide-[#2a1a0a]">
-                                {actScenes.map((scene, i) => (
+                            {actScenes.map((scene, i) => {
+                              const thumbSrc = scene.image_url || getScenePlaceholder(scene.type);
+                              return (
                                   <li key={i}
                                     className="flex gap-2 items-start cursor-pointer hover:bg-[#2a1a0a] px-3 py-2"
                                     title="Click to view scene details"
                                     onClick={() => setDetailItem({type:"scene", data:scene})}>
-                                    {scene.image_url && (
-                                      <img src={scene.image_url} alt={scene.title}
+                                      <img src={thumbSrc} alt={scene.title}
                                         className="w-12 h-10 object-cover rounded border border-[#4f341f] flex-shrink-0 mt-0.5"
-                                        onClick={e => { e.stopPropagation(); setLightbox(scene.image_url); }} />
-                                    )}
+                                        onClick={e => { e.stopPropagation(); if (scene.image_url) setLightbox(scene.image_url); }} />
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold text-[#c8a050] text-sm">{scene.title}</div>
                                       <div className="flex gap-1 flex-wrap mt-0.5">
@@ -2742,7 +2769,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                                     </div>
                                     <span className="text-[#4f341f] text-xs flex-shrink-0 mt-1">›</span>
                                   </li>
-                                ))}
+                                );})}
                               </ul>
                             )}
                           </div>
@@ -2995,13 +3022,15 @@ function CurrentView() {
 export default function App() {
   return (
     <AppStateProvider>
-      <BrowserRouter basename="/preview">
-        <Routes>
-          <Route element={<AppShell />}>
-            <Route path="*" element={<CurrentView />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <CampaignProvider>
+        <BrowserRouter basename="/preview">
+          <Routes>
+            <Route element={<AppShell />}>
+              <Route path="*" element={<CurrentView />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </CampaignProvider>
     </AppStateProvider>
   );
 }

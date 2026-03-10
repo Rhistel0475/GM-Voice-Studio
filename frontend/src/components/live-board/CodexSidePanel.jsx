@@ -1,8 +1,11 @@
 import React, { useState, useMemo } from "react";
-import SectionHeader from "../layout/SectionHeader";
 import CodexTabs from "./CodexTabs";
 import CodexQuickView from "./CodexQuickView";
 
+/**
+ * Right panel: tabs (Documents, NPCs, Locations, Rules) and quick preview cards.
+ * Section header "Codex" is rendered by LiveBoardPage.
+ */
 export default function CodexSidePanel({ campaignData, onInsertIntoNarration }) {
   const [codexTab, setCodexTab] = useState("documents");
   const [codexSelection, setCodexSelection] = useState(null);
@@ -22,13 +25,12 @@ export default function CodexSidePanel({ campaignData, onInsertIntoNarration }) 
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col">
-      <SectionHeader title="Codex" />
-      <section className="panel-ornate flex-1 min-h-0 flex flex-col mt-2">
+    <div className="h-full min-h-0 flex flex-col rounded-b-lg overflow-hidden">
+      <section className="panel-ornate flex-1 min-h-0 flex flex-col">
         <div className="panel-head">
-          <div className="plaque">Codex</div>
+          <div className="plaque">Quick reference</div>
         </div>
-        <div className="panel-body min-h-0 flex flex-col">
+        <div className="panel-body min-h-0 flex flex-col gap-2">
           <CodexTabs selectedKey={codexTab} onChange={handleTabChange} />
           <CodexQuickView
             codexTab={codexTab}
@@ -42,9 +44,9 @@ export default function CodexSidePanel({ campaignData, onInsertIntoNarration }) 
         </div>
       </section>
       {codexTab === "documents" && scenes.length > 0 && (
-        <div className="text-xs text-[var(--text-2)] mt-1">
+        <p className="text-xs text-[var(--text-2)] mt-2 px-1">
           Scenes: {scenes.map((s) => s.title).filter(Boolean).join(", ") || "—"}
-        </div>
+        </p>
       )}
     </div>
   );

@@ -7,6 +7,8 @@ const statusStyles = {
   playing: "border-[#5f7d63] text-[#7ec24f] bg-[rgba(94,124,99,0.2)]",
   offline: "border-[#6b5230] text-[#9c7a3a] bg-[rgba(107,82,48,0.2)]",
   saved: "border-[#5f7d63] text-[#7ec24f] bg-[rgba(94,124,99,0.15)]",
+  training: "border-[var(--gold)] text-[var(--candle-glow)] bg-[rgba(202,167,75,0.15)]",
+  failed: "border-[#c05050] text-[#ff6b6b] bg-[rgba(192,80,80,0.2)]",
 };
 
 /**

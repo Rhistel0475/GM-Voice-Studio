@@ -14,18 +14,19 @@ const navItems = [
 
 export default function SidebarNav() {
   return (
-    <nav className="flex flex-col gap-1 p-2">
+    <nav className="sidebar-nav">
       {navItems.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
           to={to}
           end={to === "/"}
+          title={label}
           className={({ isActive }) =>
-            `nav-glyph-btn flex items-center gap-2 w-full justify-start ${isActive ? "is-active" : ""}`
+            `nav-glyph-btn flex items-center gap-2 w-full justify-start md:justify-center xl:justify-start md:px-2 ${isActive ? "is-active" : ""}`
           }
         >
-          <Icon size={16} />
-          {label}
+          <Icon size={18} className="shrink-0 text-[var(--gold)]/90" aria-hidden />
+          <span className="md:sr-only xl:not-sr-only">{label}</span>
         </NavLink>
       ))}
     </nav>
