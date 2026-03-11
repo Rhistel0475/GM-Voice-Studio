@@ -59,7 +59,10 @@
       "Bash(timeout 10 .venv/bin/python server.py)",
       "Bash(echo \"EXIT: $?\")",
       "Bash(npx vite build)",
-      "Bash(node -e \"import\\(''./vite.config.js''\\).then\\(\\(\\) => console.log\\(''ok''\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")"
+      "Bash(node -e \"import\\(''./vite.config.js''\\).then\\(\\(\\) => console.log\\(''ok''\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")",
+      "Bash(grep -r \"ExtractionReviewItem\\\\|enqueueBatch\\\\|extractionReview\" /home/brian/GM-Voice-Studio/frontend/src/components --include=*.jsx --include=*.tsx)",
+      "Bash(npx vite:*)",
+      "Bash(node -e \":*)"
     ]
   }
 }

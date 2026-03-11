@@ -3,6 +3,11 @@ import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-ro
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
 import { CampaignProvider, useCampaignOptional } from "./context/CampaignContext";
 import { useCampaignContextStore } from "./store/campaignContext";
+import { useExtractionReviewQueueStore } from "./store/extractionReview";
+import { parseResultToExtractionBatch } from "./lib/parseResultToExtractionBatch";
+import { importParseResultToStore } from "./lib/campaignImport";
+import { setBackendCampaignId, persistSessionEvent } from "./lib/campaignPersistence";
+import ExtractionReviewQueue from "./components/intake/ExtractionReviewQueue";
 import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
 import LiveBoardPage from "./app/live-board";
@@ -12,6 +17,9 @@ import VoiceStudioPage from "./app/voices";
 import SettingsPage from "./pages/SettingsPage";
 import SessionLog from "./components/live-board/SessionLog";
 import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
+import AiNarrateButton from "./components/live-board/AiNarrateButton";
+import SceneDirectorPanel from "./components/live-board/SceneDirectorPanel";
+import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -160,6 +168,7 @@ const MiddleColumn = ({
   onSelectNpc,
   authFetch,
   actionLog,
+  onLogEntry,
   coDmQuery,
   onChangeCoDmQuery,
   onSubmitCoDmQuery,
@@ -380,6 +389,25 @@ const MiddleColumn = ({
                     Audio will appear here when you narrate a scene.
                   </div>
                 )}
+              </div>
+              {/* AI Narrate: Claude-generated narration text → TTS */}
+              <div className="mt-3">
+                <AiNarrateButton
+                  authFetch={authFetch}
+                  scene={scene}
+                  sceneNpcs={sceneNpcs}
+                  onLogEntry={onLogEntry}
+                  onAudioChange={onAudioStatusChange}
+                />
+              </div>
+              {/* Scene Director: dramatic hints for this scene */}
+              <div className="mt-2">
+                <SceneDirectorPanel
+                  authFetch={authFetch}
+                  scene={scene}
+                  sceneNpcs={sceneNpcs}
+                  onLogEntry={onLogEntry}
+                />
               </div>
               {scene.notes && (
                 <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
@@ -896,11 +924,15 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     if (payload.type === "stat_block") {
       const meta = [payload.intent, payload.sources?.length ? `${payload.sources.length} sources` : ""].filter(Boolean).join(" • ");
       appendActionLog("stat_block", payload.content || "", meta);
+      addSessionLogEntry({ type: "assistant", text: payload.content || "" });
+      persistSessionEvent(authFetch, { type: "assistant", text: payload.content || "" });
       return;
     }
     if (payload.type === "lore") {
       const meta = [payload.intent, payload.sources?.length ? `${payload.sources.length} sources` : ""].filter(Boolean).join(" • ");
       appendActionLog("lore", payload.content || "", meta);
+      addSessionLogEntry({ type: "assistant", text: payload.content || "" });
+      persistSessionEvent(authFetch, { type: "assistant", text: payload.content || "" });
       return;
     }
     const content = typeof payload.content === "string" ? payload.content : JSON.stringify(payload.content || payload);
@@ -908,7 +940,9 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     if (payload.intent) parts.push(payload.intent);
     if (Array.isArray(payload.sources) && payload.sources.length) parts.push(`${payload.sources.length} sources`);
     appendActionLog("assistant", content, parts.join(" • "));
-  }, [appendActionLog, autoQueryOnVoice]);
+    addSessionLogEntry({ type: "assistant", text: content });
+    persistSessionEvent(authFetch, { type: "assistant", text: content });
+  }, [appendActionLog, authFetch, autoQueryOnVoice]);
 
   useEffect(() => {
     if (!isWakeArmed || isMicActive) {
@@ -988,6 +1022,8 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     if (!text || isSubmittingQuery) return;
 
     appendActionLog("player", text);
+    addSessionLogEntry({ type: "player", text });
+    persistSessionEvent(authFetch, { type: "player", text });
     setCoDmQuery("");
 
     const ws = socketRef.current;
@@ -1045,6 +1081,7 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
             onSelectNpc={setSelectedNpcName}
             authFetch={authFetch}
             actionLog={actionLog}
+            onLogEntry={appendActionLog}
             coDmQuery={coDmQuery}
             onChangeCoDmQuery={setCoDmQuery}
             onSubmitCoDmQuery={submitCoDmQuery}
@@ -1536,7 +1573,25 @@ const DetailDrawer = ({ item, onClose, onLightbox }) => {
   );
 };
 
+// Review tab button — shows a live count badge from the review queue store.
+const ReviewTabButton = ({ activePanel, setActivePanel }) => {
+  const items = useExtractionReviewQueueStore((s) => s.items);
+  const pendingCount = items.filter(
+    (i) => i.reviewStatus === "pending" || i.reviewStatus === "needs_review"
+  ).length;
+  return (
+    <button
+      type="button"
+      className={activePanel === "review" ? "tab-active" : ""}
+      onClick={() => setActivePanel("review")}
+    >
+      Review{items.length > 0 ? ` (${items.length}${pendingCount > 0 ? ` · ${pendingCount} pending` : ""})` : ""}
+    </button>
+  );
+};
+
 const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authFetch }) => {
+  const { enqueueBatch } = useExtractionReviewQueueStore();
   const [files, setFiles] = useState([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isExtractingImages, setIsExtractingImages] = useState(false);
@@ -1670,6 +1725,19 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       if (!res.ok) throw new Error((payload?.detail) || raw || `Parse failed (${res.status})`);
       if (!payload) throw new Error("Parse returned no data.");
       setParseResult(payload);
+      // Persist backend campaign ID for sync operations
+      if (payload.campaign_id) setBackendCampaignId(payload.campaign_id);
+      // Enqueue extracted entities into review queue
+      try {
+        const batch = parseResultToExtractionBatch(
+          payload,
+          files.length === 1 ? files[0].name : (payload.title || undefined)
+        );
+        if (batch.entities.length > 0) {
+          enqueueBatch(batch);
+          setActivePanel("review");
+        }
+      } catch { /* non-fatal — review queue is optional */ }
       // Refresh saved campaigns list (new campaign was just persisted to DB)
       authFetch("/api/campaigns")
         .then(r => r.ok ? r.json() : [])
@@ -1715,7 +1783,8 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
 
   const saveToSession = () => {
     if (!parseResult) return;
-    onSaveCampaign(parseResult);
+    onSaveCampaign(parseResult);           // legacy AppState + localStorage (unchanged)
+    try { importParseResultToStore(parseResult); } catch { /* non-fatal */ }
     setSaved(true);
   };
 
@@ -1725,13 +1794,17 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       const res = await authFetch(`/api/campaigns/${id}`);
       if (!res.ok) return;
       const data = await res.json();
-      setParseResult({
+      const normalized = {
         ...data,
         party: data.party ?? [],
         reveals: data.reveals ?? [],
         items: data.items ?? [],
         images: data.images ?? [],
-      });
+      };
+      setParseResult(normalized);
+      onSaveCampaign(normalized);          // sync to AppState so legacy views update
+      try { importParseResultToStore(normalized); } catch { /* non-fatal */ }
+      setBackendCampaignId(id);            // persist backend ID for sync operations
       setSaved(true);
       setActivePanel("outline");
       const firstAct = data?.scenes?.[0]?.act;
@@ -1961,6 +2034,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
               <button type="button" className={activePanel === "images" ? "tab-active" : ""} onClick={() => setActivePanel("images")}>
                 Images {(images.embedded.length + images.pages.length) > 0 ? `(${images.embedded.length + images.pages.length})` : ""}
               </button>
+              <ReviewTabButton activePanel={activePanel} setActivePanel={setActivePanel} />
             </div>
 
             {parseResult?.summary && activePanel !== "images" && (
@@ -2292,6 +2366,12 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                 )}
               </div>
             )}
+
+            {activePanel === "review" && (
+              <ExtractionReviewQueue
+                documentName={parseResult?.title || (files.length === 1 ? files[0].name : undefined)}
+              />
+            )}
           </PrepPanel>
         </div>
 
@@ -2422,13 +2502,25 @@ function CurrentView() {
     );
   }
   if (view === "codex") {
-    return <CodexPage campaignData={campaignData} authFetch={authFetch} />;
+    return (
+      <ErrorBoundary>
+        <CodexPage campaignData={campaignData} authFetch={authFetch} />
+      </ErrorBoundary>
+    );
   }
   if (view === "npc-workshop") {
-    return <NPCWorkshopPage campaignData={campaignData} authFetch={authFetch} />;
+    return (
+      <ErrorBoundary>
+        <NPCWorkshopPage campaignData={campaignData} authFetch={authFetch} />
+      </ErrorBoundary>
+    );
   }
   if (view === "voice-studio") {
-    return <VoiceStudioPage authFetch={authFetch} />;
+    return (
+      <ErrorBoundary>
+        <VoiceStudioPage authFetch={authFetch} />
+      </ErrorBoundary>
+    );
   }
   if (view === "settings") {
     return <SettingsPage />;

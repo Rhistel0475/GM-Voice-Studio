@@ -24,6 +24,8 @@ export default function NPCPreviewCard({
   onPushToLiveBoard,
   generating = false,
   saving = false,
+  suggestion,
+  onApplySuggestion,
 }) {
   const hasProfile = profile && (profile.name || profile.summary);
 
@@ -49,6 +51,8 @@ export default function NPCPreviewCard({
               onVoiceChange={onVoiceChange}
               onPlaySample={onPlaySample}
               playing={playing}
+              suggestion={suggestion}
+              onApplySuggestion={onApplySuggestion}
             />
           </div>
           <div className="shrink-0 pt-2 border-t border-[#5c3e23]">

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { FantasyButton } from "../shared";
 
@@ -13,7 +14,7 @@ export default function VoiceAssignmentPanel({
 }) {
   const voiceId = voice?.voice_id || voice?.id;
   const assignedNPCs = voice?.assignedNPCs || [];
-  const [selectedNpcId, setSelectedNpcId] = React.useState("");
+  const [selectedNpcId, setSelectedNpcId] = useState("");
 
   const handleAssign = () => {
     if (!selectedNpcId || !onAssign) return;

@@ -945,6 +945,75 @@ async def delete_campaign(campaign_id: int, request: Request, _auth: None = Depe
     return {"deleted": campaign_id}
 
 
+class AssignVoiceBody(BaseModel):
+    voice_id: str
+
+
+@router.patch("/api/campaigns/{campaign_id}/npcs/{npc_name}/voice")
+@limiter.limit("120/minute")
+async def assign_npc_voice(
+    campaign_id: int,
+    npc_name: str,
+    body: AssignVoiceBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Persist voice assignment for an NPC within a campaign. Updates relational row + data_json."""
+    updated = campaign_repository.assign_npc_voice(campaign_id, npc_name, body.voice_id)
+    if not updated:
+        # Campaign may not be in DB yet; return 200 so frontend doesn't treat as hard error
+        return {"ok": False, "reason": "campaign or npc not found in db"}
+    return {"ok": True, "campaign_id": campaign_id, "npc_name": npc_name, "voice_id": body.voice_id}
+
+
+class SessionEventBody(BaseModel):
+    type: str = "assistant"
+    text: str
+    scene_id: Optional[str] = None
+    session_id: Optional[str] = None
+    id: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+@router.post("/api/campaigns/{campaign_id}/events")
+@limiter.limit("300/minute")
+async def append_campaign_event(
+    campaign_id: int,
+    body: SessionEventBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Append a session event (action log entry) to a campaign. Returns event id."""
+    try:
+        event_id = campaign_repository.append_session_event(
+            campaign_id=campaign_id,
+            event_type=body.type,
+            text=body.text,
+            scene_id=body.scene_id,
+            session_id=body.session_id,
+            event_id=body.id,
+            created_at=body.created_at,
+        )
+        return {"ok": True, "event_id": event_id, "campaign_id": campaign_id}
+    except Exception as exc:
+        logging.warning("Failed to append session event for campaign %s: %s", campaign_id, exc)
+        raise HTTPException(500, "Failed to store session event")
+
+
+@router.get("/api/campaigns/{campaign_id}/events")
+@limiter.limit("60/minute")
+async def get_campaign_events(
+    campaign_id: int,
+    request: Request,
+    scene_id: Optional[str] = None,
+    limit: int = 100,
+    _auth: None = Depends(verify_api_key),
+):
+    """Return session events for a campaign, optionally filtered by scene_id."""
+    events = campaign_repository.get_session_events(campaign_id, scene_id=scene_id, limit=min(limit, 500))
+    return {"campaign_id": campaign_id, "events": events}
+
+
 def _extract_images_from_pdf(
     raw: bytes,
     embedded_dir: Path,

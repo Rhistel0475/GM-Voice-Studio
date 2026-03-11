@@ -24,6 +24,7 @@ export type {
   ExtractionEntity,
   ExtractionEntityType,
   ExtractionBatchResult,
+  ExtractionReviewItem,
   ExtractionSummary,
 } from "./extraction";
 export {

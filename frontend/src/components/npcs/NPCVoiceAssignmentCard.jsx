@@ -9,6 +9,8 @@ export default function NPCVoiceAssignmentCard({
   onVoiceChange,
   onPlaySample,
   playing,
+  suggestion,
+  onApplySuggestion,
 }) {
   return (
     <div className="border-b border-[#5c3e23] pb-3 last:border-0">
@@ -21,6 +23,8 @@ export default function NPCVoiceAssignmentCard({
         onVoiceChange={onVoiceChange}
         onPlaySample={onPlaySample}
         playing={playing}
+        suggestion={suggestion}
+        onApplySuggestion={onApplySuggestion}
       />
     </div>
   );

@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import VoiceSampleUpload from "./VoiceSampleUpload";
 import VoiceTrainingStatus from "./VoiceTrainingStatus";
 import VoicePreviewStep from "./VoicePreviewStep";
@@ -43,7 +44,7 @@ export default function VoiceCloneWizard({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2 flex-wrap" aria-label="Wizard steps">
         {STEPS.map((s, i) => (
-          <React.Fragment key={s.key}>
+          <Fragment key={s.key}>
             <div className="flex items-center gap-1.5">
               <span
                 className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-heading transition-colors ${
@@ -67,7 +68,7 @@ export default function VoiceCloneWizard({
             {i < STEPS.length - 1 && (
               <div className="h-px w-4 sm:w-6 bg-[#5c3e23] shrink-0 opacity-50" aria-hidden />
             )}
-          </React.Fragment>
+          </Fragment>
         ))}
       </div>
 

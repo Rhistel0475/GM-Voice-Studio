@@ -8,6 +8,7 @@ import {
   getNarrationClipsForActiveScene,
 } from "../store/selectors";
 import { getNpcsForScene } from "../types/campaign";
+import { importParseResultToStore } from "../lib/campaignImport";
 
 const CampaignContext = createContext(null);
 
@@ -98,9 +99,21 @@ export function CampaignProvider({ children }) {
   const hydrateFromSeed = useCampaignContextStore((s) => s.hydrateFromSeed);
 
   useEffect(() => {
-    if (!state.activeCampaignId && state.campaigns.length === 0) {
-      hydrateFromSeed();
+    if (state.activeCampaignId || state.campaigns.length > 0) return;
+    // Prefer importing a previously-saved parse result over seed demo data.
+    try {
+      const saved = localStorage.getItem("gm_campaign_data");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.title) {
+          importParseResultToStore(parsed);
+          return;
+        }
+      }
+    } catch {
+      // localStorage unreadable or data corrupt — fall through to seed.
     }
+    hydrateFromSeed();
   }, [state.activeCampaignId, state.campaigns.length, hydrateFromSeed]);
 
   const campaignScenes = useMemo(
