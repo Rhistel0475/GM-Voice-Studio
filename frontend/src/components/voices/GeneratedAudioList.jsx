@@ -1,4 +1,3 @@
-import React from "react";
 import { EmptyState } from "../shared";
 import GeneratedAudioListItem from "./GeneratedAudioListItem";
 

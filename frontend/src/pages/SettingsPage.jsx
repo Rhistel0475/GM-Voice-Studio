@@ -1,4 +1,3 @@
-import React from "react";
 import { useAppState } from "../context/AppStateContext";
 import SectionHeader from "../components/layout/SectionHeader";
 import { ParchmentCard } from "../components/shared";

@@ -1,7 +1,6 @@
 /**
  * Scrollable list of codex results. Uses CodexResultCard per item.
  */
-import React from "react";
 import CodexResultCard from "./CodexResultCard";
 import { CodexEmptyState } from "../shared";
 

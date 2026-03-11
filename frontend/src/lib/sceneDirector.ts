@@ -10,6 +10,11 @@ export interface SceneDirectorOptions {
   apiKey?: string;
 }
 
+type SceneDirectorSuggestionWire = {
+  category?: SceneDirectorSuggestion["category"] | string;
+  text?: string;
+};
+
 export async function getSceneDirectorSuggestions(
   options: SceneDirectorOptions = {}
 ): Promise<SceneDirectorSuggestion[]> {
@@ -34,11 +39,20 @@ export async function getSceneDirectorSuggestions(
   }
 
   const data = await res.json();
-  const raw = Array.isArray(data.suggestions) ? data.suggestions : [];
+  const raw: unknown[] = Array.isArray(data?.suggestions) ? data.suggestions : [];
 
-  return raw.map((s: any, index: number): SceneDirectorSuggestion => ({
-    category: s.category || "environment",
-    text: s.text || String(s) || `Suggestion ${index + 1}`,
-  }));
+  return raw.map((s, index): SceneDirectorSuggestion => {
+    const obj = (s && typeof s === "object" ? (s as SceneDirectorSuggestionWire) : null);
+    const category =
+      obj?.category === "tension" ||
+      obj?.category === "environment" ||
+      obj?.category === "npc_reaction" ||
+      obj?.category === "twist" ||
+      obj?.category === "pacing"
+        ? obj.category
+        : "environment";
+    const text = obj?.text ? obj.text : typeof s === "string" ? s : `Suggestion ${index + 1}`;
+    return { category, text };
+  });
 }
 

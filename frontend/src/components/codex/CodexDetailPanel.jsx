@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ParchmentCard, EmptyState } from "../shared";
+import { useState } from "react";
+import { EmptyState } from "../shared";
 import CodexActionBar from "./CodexActionBar";
 import KnowledgeCard from "./KnowledgeCard";
 

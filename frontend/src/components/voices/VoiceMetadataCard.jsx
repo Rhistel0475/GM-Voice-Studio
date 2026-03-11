@@ -1,4 +1,3 @@
-import React from "react";
 import { StatusPill } from "../shared";
 
 const SOURCE_LABELS = { system: "System", cloned: "Cloned", custom: "Custom" };

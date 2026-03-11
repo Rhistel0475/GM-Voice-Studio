@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { FantasyButton } from "../shared";
 import { Play, Plus, X } from "lucide-react";
 import NPCTraitEditor from "./NPCTraitEditor";

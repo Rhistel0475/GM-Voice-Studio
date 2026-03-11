@@ -1,4 +1,3 @@
-import React from "react";
 import { EmptyState } from "../shared";
 import VoiceSamplePlayer from "./VoiceSamplePlayer";
 import VoiceMetadataCard from "./VoiceMetadataCard";
@@ -10,7 +9,7 @@ import VoiceAssignmentPanel from "./VoiceAssignmentPanel";
  */
 export default function VoiceDetailPanel({
   voice,
-  authFetch,
+  authFetch: _authFetch,
   npcOptions = [],
   onPlaySample,
   isPlayingSample,

@@ -1,4 +1,3 @@
-import React from "react";
 import NPCPortraitCard from "./NPCPortraitCard";
 import NPCSummaryCard from "./NPCSummaryCard";
 import NPCDetailCard from "./NPCDetailCard";

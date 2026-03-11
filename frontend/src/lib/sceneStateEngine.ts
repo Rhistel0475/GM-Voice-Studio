@@ -1,52 +1,142 @@
 /**
- * One-click encounter launch from LiveBoard — activate encounter, set environment to combat,
- * populate enemies, add session log event, suggest narration update.
+ * Scene state engine — runtime gameplay control: active scene, transitions, encounter launch,
+ * NPC state, environment state, narration refresh triggers.
  */
 
-import { useEncounterManagerStore } from "./encounterManager";
-import { registerEncounter } from "./sceneStateEngine";
-import { addSessionLogEntry } from "./sessionLogger";
-import { useSceneStateStore } from "./sceneStateEngine";
+import { create } from "zustand";
+import { useCampaignContextStore } from "../store/campaignContext";
+import { startEncounter as startEncounterManager, endEncounter as endEncounterManager } from "./encounterManager";
+import type { Scene } from "../types";
 import type { ExtractedEncounter } from "../types";
 
-/**
- * Register an encounter so it can be launched by id. Call when loading parsed/imported encounters.
- */
-export function registerEncounterForLaunch(id: string, encounter: ExtractedEncounter): void {
-  registerEncounter(id, encounter);
+export type EnvironmentState = "normal" | "combat" | "social" | "exploration" | "tension";
+
+export type NpcRuntimeState = "idle" | "speaking" | "hostile" | "friendly" | "hidden";
+
+export interface SceneEvent {
+  type: "transition" | "encounter_start" | "encounter_end" | "npc_state" | "environment" | "narration_trigger";
+  sceneId?: string;
+  payload?: unknown;
+  at: string;
 }
 
-/**
- * Preload encounter context (encounter + default actors) without starting. Returns data for UI.
- */
-export function preloadEncounterContext(encounterId: string): {
-  encounter: ExtractedEncounter | null;
-  enemyNames: string[];
-} {
-  const encounter = useEncounterManagerStore.getState().encounter;
-  if (encounter?.id === encounterId) {
-    const actors = useEncounterManagerStore.getState().actors;
-    return {
-      encounter,
-      enemyNames: actors.map((a) => a.name),
-    };
-  }
-  const registered = useSceneStateStore.getState();
-  const map = (useSceneStateStore as unknown as { getState: () => { _encounterRegistry?: Map<string, ExtractedEncounter> } }).getState();
-  const registry = (sceneStateEngine as { registerEncounter: (id: string, e: ExtractedEncounter) => void; getEncounter?: (id: string) => ExtractedEncounter | undefined }).getEncounter
-    ? undefined
-    : undefined;
-  const sceneStateEngine = require("./sceneStateEngine");
-  const enc = (sceneStateEngine as { getEncounter?: (id: string) => ExtractedEncounter | undefined }).getEncounter?.(encounterId);
-  if (!enc) {
-    return { encounter: null, enemyNames: [] };
-  }
-  const enemyNames = (enc.enemyNpcRefs ?? []).map((r) => r.refName);
-  return { encounter: enc, enemyNames };
+export interface SceneStateSnapshot {
+  scene: Scene | null;
+  sceneId: string | null;
+  npcStates: Record<string, NpcRuntimeState>;
+  environmentState: EnvironmentState;
+  lastNarrationTriggerAt: string | null;
+  recentEvents: SceneEvent[];
 }
 
-I need to fix preloadEncounterContext - we don't have getEncounter in sceneStateEngine, we have registerEncounter and a private encounterRegistry Map. So preloadEncounterContext needs to get the encounter from somewhere. The registry is inside sceneStateEngine and not exported. So I'll export a getEncounter(id) from sceneStateEngine that returns registry.get(id), then use it in preloadEncounterContext.
-</think>
-Exporting `getEncounter` from the scene state engine and fixing the one-click encounter module.
-<｜tool▁calls▁begin｜><｜tool▁call▁begin｜>
-StrReplace
+const MAX_RECENT_EVENTS = 50;
+
+const defaultSnapshot: SceneStateSnapshot = {
+  scene: null,
+  sceneId: null,
+  npcStates: {},
+  environmentState: "normal",
+  lastNarrationTriggerAt: null,
+  recentEvents: [],
+};
+
+/** Encounter id -> ExtractedEncounter; app can register encounters from parsed data. */
+const encounterRegistry = new Map<string, ExtractedEncounter>();
+
+export function registerEncounter(id: string, encounter: ExtractedEncounter): void {
+  encounterRegistry.set(id, encounter);
+}
+
+export function getEncounter(encounterId: string): ExtractedEncounter | undefined {
+  return encounterRegistry.get(encounterId);
+}
+
+export const useSceneStateStore = create<SceneStateSnapshot & {
+  createSceneState: (scene: Scene) => void;
+  setActiveScene: (sceneId: string | null) => void;
+  setNpcState: (npcId: string, state: NpcRuntimeState) => void;
+  launchEncounter: (encounterId: string) => void;
+  setEnvironmentState: (state: EnvironmentState) => void;
+  suggestNarrationFromState: () => void;
+  recordSceneEvent: (event: Omit<SceneEvent, "at">) => void;
+}>((set, get) => ({
+  ...defaultSnapshot,
+
+  createSceneState(scene) {
+    const state = useCampaignContextStore.getState();
+    state.setActiveScene(scene.id);
+    set({
+      scene,
+      sceneId: scene.id,
+      npcStates: {},
+      environmentState: "normal",
+      lastNarrationTriggerAt: null,
+      recentEvents: [...get().recentEvents, { type: "transition", sceneId: scene.id, at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    });
+  },
+
+  setActiveScene(sceneId) {
+    if (!sceneId) {
+      set({
+        scene: null,
+        sceneId: null,
+        npcStates: {},
+        recentEvents: [...get().recentEvents, { type: "transition", at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+      });
+      useCampaignContextStore.getState().setActiveScene(null);
+      return;
+    }
+    const state = useCampaignContextStore.getState();
+    const scene = state.scenes.find((s) => s.id === sceneId) ?? null;
+    useCampaignContextStore.getState().setActiveScene(sceneId);
+    set({
+      scene,
+      sceneId,
+      npcStates: {},
+      recentEvents: [...get().recentEvents, { type: "transition", sceneId, at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    });
+  },
+
+  setNpcState(npcId, state) {
+    set((s) => ({
+      npcStates: { ...s.npcStates, [npcId]: state },
+      recentEvents: [...s.recentEvents, { type: "npc_state", payload: { npcId, state }, at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    }));
+  },
+
+  launchEncounter(encounterId) {
+    const encounter = encounterRegistry.get(encounterId);
+    if (!encounter) return;
+    startEncounterManager(encounter);
+    set((s) => ({
+      environmentState: "combat",
+      recentEvents: [...s.recentEvents, { type: "encounter_start", payload: { encounterId }, at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    }));
+  },
+
+  setEnvironmentState(state) {
+    set((s) => ({
+      environmentState: state,
+      recentEvents: [...s.recentEvents, { type: "environment", payload: { state }, at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    }));
+  },
+
+  suggestNarrationFromState() {
+    set((s) => ({
+      lastNarrationTriggerAt: new Date().toISOString(),
+      recentEvents: [...s.recentEvents, { type: "narration_trigger", at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    }));
+  },
+
+  recordSceneEvent(event) {
+    set((s) => ({
+      recentEvents: [...s.recentEvents, { ...event, at: new Date().toISOString() }].slice(-MAX_RECENT_EVENTS),
+    }));
+  },
+}));
+
+/** End active encounter and reset environment to normal. */
+export function endEncounterFromSceneState(): void {
+  endEncounterManager();
+  useSceneStateStore.setState({ environmentState: "normal" });
+}

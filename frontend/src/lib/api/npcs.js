@@ -45,7 +45,7 @@ function campaignNpcToProfile(n, i, campaign) {
  * @param {Function} [authFetch] - Optional; for future GET /api/npcs
  * @returns {import("../../types/npc").NPCProfile[]}
  */
-export function getNPCs(campaignData, authFetch) {
+export function getNPCs(campaignData, _authFetch) {
   const npcs = campaignData?.npcs;
   if (npcs && Array.isArray(npcs) && npcs.length > 0) {
     const campaign = campaignData.title || "Campaign";

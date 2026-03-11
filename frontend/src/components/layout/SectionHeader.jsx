@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function SectionHeader({ title, subtitle, icon: Icon, action, className = "" }) {
   return (
     <div

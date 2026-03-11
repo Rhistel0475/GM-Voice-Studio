@@ -1,4 +1,3 @@
-import React from "react";
 import { FantasyButton } from "../shared";
 import { FileText, MessageCircle, MapPin, Users, LayoutGrid } from "lucide-react";
 

@@ -1,4 +1,3 @@
-import React from "react";
 import { ScrollText } from "lucide-react";
 
 /**

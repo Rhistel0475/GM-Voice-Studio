@@ -1,4 +1,3 @@
-import React from "react";
 import { FantasyButton } from "../shared";
 import { Sparkles, Save, Mic, Send } from "lucide-react";
 

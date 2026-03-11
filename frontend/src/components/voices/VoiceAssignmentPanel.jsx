@@ -1,4 +1,3 @@
-import React from "react";
 import { UserPlus } from "lucide-react";
 import { FantasyButton } from "../shared";
 

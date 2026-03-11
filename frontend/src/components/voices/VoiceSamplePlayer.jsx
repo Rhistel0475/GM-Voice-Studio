@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Play, Pause } from "lucide-react";
 
 const DEFAULT_SAMPLE_TEXT = "The quick brown fox jumps over the lazy dog.";

@@ -1,4 +1,3 @@
-import React from "react";
 import VoiceCard from "./VoiceCard";
 import VoiceListItem from "./VoiceListItem";
 import { VoiceStudioEmptyState } from "../shared";

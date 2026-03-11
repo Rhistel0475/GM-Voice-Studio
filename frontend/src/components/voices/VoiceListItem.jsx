@@ -1,4 +1,3 @@
-import React from "react";
 import { Play } from "lucide-react";
 
 const SOURCE_LABELS = { system: "System", cloned: "Cloned", custom: "Custom" };

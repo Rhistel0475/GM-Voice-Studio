@@ -1,4 +1,3 @@
-import React from "react";
 import NPCSearchInput from "./NPCSearchInput";
 import NPCFilterPanel from "./NPCFilterPanel";
 import NPCList from "./NPCList";

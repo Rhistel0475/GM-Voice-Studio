@@ -1,4 +1,3 @@
-import React from "react";
 import { VOICE_SOURCES, VOICE_STATUSES, VOICE_TONES } from "../../types/voice";
 
 const SOURCE_LABELS = { system: "System", cloned: "Cloned", custom: "Custom", all: "All sources" };

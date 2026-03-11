@@ -1,4 +1,3 @@
-import React from "react";
 import { Play, FileAudio } from "lucide-react";
 
 const TYPE_LABELS = {

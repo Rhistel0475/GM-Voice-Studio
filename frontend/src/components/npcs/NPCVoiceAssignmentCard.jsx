@@ -1,7 +1,6 @@
 /**
  * Voice section in dossier: dropdown + play. Inline section, no card wrapper.
  */
-import React from "react";
 import NPCVoiceAssignment from "./NPCVoiceAssignment";
 
 export default function NPCVoiceAssignmentCard({

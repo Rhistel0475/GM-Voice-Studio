@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { defaultNpcFilterState, defaultNpcDraft } from "../../types/npc";
 import { getNPCs } from "../../lib/api/npcs";
 import { saveNPC, pushToLiveBoard } from "../../lib/api/npcs";

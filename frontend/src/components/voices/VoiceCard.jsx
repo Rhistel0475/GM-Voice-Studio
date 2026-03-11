@@ -1,4 +1,3 @@
-import React from "react";
 import { FantasyButton } from "../shared";
 import { Play, UserPlus } from "lucide-react";
 import { getVoicePlaceholder } from "../../lib/placeholders";

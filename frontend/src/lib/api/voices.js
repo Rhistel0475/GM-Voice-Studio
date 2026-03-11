@@ -55,7 +55,7 @@ export async function getVoices(authFetch) {
  * @param {Function} [authFetch]
  * @returns {Promise<import("../../types/voice").GeneratedAudio[]>}
  */
-export async function getGeneratedAudio(authFetch) {
+export async function getGeneratedAudio(_authFetch) {
   // Future: GET /voices/generated or /api/generated-audio
   return Promise.resolve(MOCK_GENERATED_AUDIO);
 }

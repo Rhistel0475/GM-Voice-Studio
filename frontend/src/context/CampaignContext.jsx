@@ -1,10 +1,9 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo } from "react";
 import { useCampaignContextStore } from "../store/campaignContext";
 import {
   getActiveCampaign,
   getActiveSession,
   getActiveScene,
-  getSceneNpcs,
   getActionLogForActiveScene,
   getNarrationClipsForActiveScene,
 } from "../store/selectors";
@@ -122,7 +121,7 @@ export function CampaignProvider({ children }) {
   );
 
   const appendActionLog = useCallback(
-    (role, text, meta = "") => {
+    (role, text, _meta = "") => {
       if (!text) return;
       state.addActionLogEvent({ type: roleToEventType(role), text });
     },

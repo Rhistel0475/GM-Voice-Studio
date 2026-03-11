@@ -1,4 +1,3 @@
-import React from "react";
 import { getDocumentPlaceholder, getLocationPlaceholder, getNpcPlaceholder } from "../../lib/placeholders";
 
 const CATEGORY_LABELS = {

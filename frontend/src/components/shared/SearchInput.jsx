@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Shared search input for Codex, NPC list, Voice library. Uses chat-input styling.
  */

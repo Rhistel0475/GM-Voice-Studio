@@ -1,4 +1,3 @@
-import React from "react";
 import VoiceSampleUpload from "./VoiceSampleUpload";
 import VoiceTrainingStatus from "./VoiceTrainingStatus";
 import VoicePreviewStep from "./VoicePreviewStep";

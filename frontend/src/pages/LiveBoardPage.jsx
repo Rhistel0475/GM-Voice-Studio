@@ -1,4 +1,3 @@
-import React from "react";
 import SectionHeader from "../components/layout/SectionHeader";
 import WorkspaceContainer from "../components/layout/WorkspaceContainer";
 import PanelShell from "../components/layout/PanelShell";

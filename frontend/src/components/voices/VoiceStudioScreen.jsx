@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LayoutGrid, List } from "lucide-react";
 import { defaultVoiceFilterState } from "../../types/voice";
 import { getVoices, getGeneratedAudio, submitClone, getCloneJobStatus } from "../../lib/api/voices";
@@ -194,7 +194,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
     [campaignCtx]
   );
 
-  const handleUnassignNpc = useCallback((voiceId, npcId) => {
+  const handleUnassignNpc = useCallback((_voiceId, _npcId) => {
     if (typeof window !== "undefined" && window.toast) window.toast("Unassign: coming soon.");
     else window.alert("Unassign: coming soon.");
   }, []);
