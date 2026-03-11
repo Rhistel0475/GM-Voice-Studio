@@ -1,30 +1,27 @@
 /**
  * AiNarrateButton — generates scene narration via Claude then speaks it via TTS.
  *
- * Two-step flow:
- *   1. POST /brain/query with a scene context prompt → get narration text from Claude
- *   2. POST /tts/narrate with the generated text → play audio
- *
- * Falls back to speaking scene.read_aloud directly when no voice is available.
+ * Uses generateSceneNarration() (buildAiContext → /brain/query → /tts/narrate)
+ * and writes the result to the session log via addSessionLogEntry().
  *
  * Props:
  *   authFetch       — authenticated fetch from AppStateContext
  *   scene           — current legacy scene object { title, read_aloud, type, location, npcs }
- *   sceneNpcs       — resolved NPC objects for context
+ *   sceneNpcs       — resolved NPC objects for context (used as fallback)
  *   onLogEntry      — callback(type, text, meta?) to append to session log
  *   onAudioChange   — callback("loading"|"playing"|"idle")
  */
 import { useState } from "react";
 import { Sparkles } from "lucide-react";
+import { useAppState } from "../../context/AppStateContext";
 import { useCampaignContextStore } from "../../store/campaignContext";
-import { getAiContext } from "../../lib/aiContext";
+import { generateSceneNarration, addSessionLogEntry } from "../../lib/liveboardCampaignContext";
 import { persistSessionEvent } from "../../lib/campaignPersistence";
 import AudioPlaybackCard from "./AudioPlaybackCard";
 
 export default function AiNarrateButton({
   authFetch,
   scene,
-  sceneNpcs = [],
   onLogEntry,
   onAudioChange,
 }) {
@@ -33,35 +30,7 @@ export default function AiNarrateButton({
   const [error, setError] = useState("");
   const [audioStatus, setAudioStatus] = useState("idle");
 
-  const storeState = useCampaignContextStore();
-
-  const buildQuery = () => {
-    // Try campaign context store first for richer context
-    const aiCtx = getAiContext();
-    const hasStoreScene = Boolean(aiCtx.scene);
-
-    const title = hasStoreScene ? aiCtx.scene.title : (scene?.title || "Untitled Scene");
-    const location = hasStoreScene
-      ? aiCtx.location?.name
-      : (scene?.location || null);
-    const summary = hasStoreScene ? aiCtx.scene.summary : (scene?.read_aloud?.slice(0, 200) || null);
-    const npcNames = hasStoreScene
-      ? aiCtx.npcs.map((n) => n.name).join(", ")
-      : sceneNpcs.map((n) => n.name).join(", ");
-    const recent = hasStoreScene
-      ? aiCtx.recentEvents.slice(-3).map((e) => e.text).join(" · ")
-      : null;
-
-    return [
-      "Write a short, vivid 2–4 sentence scene narration for the GM to read aloud.",
-      `Scene: "${title}".`,
-      location ? `Location: ${location}.` : null,
-      summary ? `Context: ${summary}.` : null,
-      npcNames ? `NPCs present: ${npcNames}.` : null,
-      recent ? `Recent events: ${recent}.` : null,
-      "Return only the narration text with no preamble.",
-    ].filter(Boolean).join(" ");
-  };
+  const { apiKey } = useAppState();
 
   const resolveVoiceId = async () => {
     try {
@@ -82,24 +51,25 @@ export default function AiNarrateButton({
     onAudioChange?.("loading");
 
     try {
-      // Step 1: Generate narration text
-      const query = buildQuery();
-      const genRes = await authFetch("/brain/query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query }),
+      const voiceId = await resolveVoiceId();
+
+      // Generate narration text and TTS audio via lib (uses buildAiContext internally)
+      const { text, clip } = await generateSceneNarration({
+        apiKey,
+        voiceId: voiceId ?? undefined,
       });
-      if (!genRes.ok) throw new Error(await genRes.text() || "Generation failed.");
-      const genData = await genRes.json();
-      const text = (genData.content || genData.text || "").trim();
-      if (!text) throw new Error("AI returned empty narration.");
 
       setGeneratedText(text);
       onLogEntry?.("narration", text, "AI Narrate");
 
-      // Sync to campaign context store and backend
+      // Write to session log store and backend
       const store = useCampaignContextStore.getState();
-      store.addActionLogEvent({ type: "narration", text });
+      addSessionLogEntry({
+        type: "narration",
+        text,
+        sceneId: store.activeSceneId ?? undefined,
+        sessionId: store.activeSessionId ?? undefined,
+      });
       persistSessionEvent(authFetch, {
         type: "narration",
         text,
@@ -107,28 +77,23 @@ export default function AiNarrateButton({
         session_id: store.activeSessionId,
       });
 
-      // Step 2: Speak via TTS
+      // Store the narration clip
+      if (clip) {
+        store.addNarrationClip({
+          title: clip.title || scene?.title || "AI Narration",
+          audioUrl: clip.audioUrl,
+          voiceId: clip.voiceId,
+        });
+      }
+
+      // Play the returned audio
       setStatus("speaking");
-      const voiceId = await resolveVoiceId();
-      const ttsBody = { text };
-      if (voiceId) ttsBody.voice_id = voiceId;
+      const audioUrl = clip?.audioUrl;
+      if (!audioUrl) throw new Error("No audio returned from TTS.");
 
-      const ttsRes = await authFetch("/tts/narrate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(ttsBody),
-      });
-      if (!ttsRes.ok) throw new Error(await ttsRes.text() || "TTS failed.");
-
-      const blob = await ttsRes.blob();
-      const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
-
       setAudioStatus("playing");
       onAudioChange?.("playing");
-
-      // Add narration clip to the campaign context store
-      storeState.addNarrationClip({ title: scene?.title || "AI Narration", audioUrl });
 
       audio.onended = () => {
         setAudioStatus("idle");
@@ -157,7 +122,7 @@ export default function AiNarrateButton({
         className="cta-secondary ai-narrate-btn transition-all hover:brightness-110"
         onClick={handleAiNarrate}
         disabled={isDisabled}
-        title="Generate new scene narration via Claude, then speak it"
+        title="Generate scene narration via Claude, then speak it via TTS"
       >
         <Sparkles size={13} className="inline-block mr-1" />
         {status === "generating" ? "Generating…" : status === "speaking" ? "Speaking…" : "AI Narrate"}

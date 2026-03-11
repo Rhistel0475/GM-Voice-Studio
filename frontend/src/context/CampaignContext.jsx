@@ -100,21 +100,19 @@ export function CampaignProvider({ children }) {
 
   useEffect(() => {
     if (state.activeCampaignId || state.campaigns.length > 0) return;
-    // Prefer importing a previously-saved parse result over seed demo data.
+    // Import previously-saved parse result if present; otherwise stay empty.
     try {
       const saved = localStorage.getItem("gm_campaign_data");
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.title) {
           importParseResultToStore(parsed);
-          return;
         }
       }
     } catch {
-      // localStorage unreadable or data corrupt — fall through to seed.
+      // localStorage unreadable or corrupt — stay empty.
     }
-    hydrateFromSeed();
-  }, [state.activeCampaignId, state.campaigns.length, hydrateFromSeed]);
+  }, [state.activeCampaignId, state.campaigns.length]);
 
   const campaignScenes = useMemo(
     () => (state.activeCampaignId ? state.scenes.filter((s) => s.campaignId === state.activeCampaignId) : []),
