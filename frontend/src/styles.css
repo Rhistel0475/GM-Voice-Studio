@@ -361,6 +361,9 @@ button.tracker-row:hover:not(.is-active) {
 }
 
 .parchment {
+  /* Override dark-panel variables so text on parchment (light bg) stays readable */
+  --text-2: #5a3a1a;
+  --ink-1: #1e0f06;
   border: 2px solid #a17a42;
   background:
     radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.22), transparent 38%),
@@ -383,6 +386,22 @@ button.tracker-row:hover:not(.is-active) {
 
 .parchment .panel-body {
   padding: var(--space-panel-body);
+}
+
+/* Field labels and select inputs inside parchment need dark text for readability */
+.parchment .field-wrap span {
+  color: #4a2e10;
+}
+.parchment .field-wrap select {
+  background: rgba(0, 0, 0, 0.07);
+  border-color: #8c6435;
+  color: #2d1a0a;
+}
+
+/* StatusPill on parchment: use deeper tones so the pill reads clearly on the light bg */
+.parchment [role="status"] {
+  font-weight: 600;
+  filter: saturate(1.2) brightness(0.78);
 }
 
 .subhead {

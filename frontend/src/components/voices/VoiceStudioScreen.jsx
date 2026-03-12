@@ -83,6 +83,9 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const [cloneSaveError, setCloneSaveError] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Assignment feedback
+  const [assignStatus, setAssignStatus] = useState("");
+
   // Narration panel (right column, below detail)
   const [narrationText, setNarrationText] = useState("");
 
@@ -197,20 +200,20 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
     (voiceId, npcId) => {
       if (campaignCtx?.assignVoiceToNpc && voiceId && npcId) {
         campaignCtx.assignVoiceToNpc(npcId, voiceId);
-        if (typeof window !== "undefined" && window.toast) window.toast("Voice assigned to NPC (campaign state updated).");
-        else if (typeof window !== "undefined") window.alert("Voice assigned to NPC.");
+        setAssignStatus("Voice assigned.");
+      } else if (voiceId && npcId) {
+        setAssignStatus("No campaign loaded — load a campaign first.");
       } else {
-        if (typeof window !== "undefined" && window.toast) window.toast("Assign to NPC: coming soon.");
-        else if (typeof window !== "undefined") window.alert("Assign to NPC: coming soon.");
+        setAssignStatus("Select an NPC to assign.");
       }
-      // TODO: Backend — persist voice assignment via PATCH /api/npcs/:id or PATCH /api/campaigns/:id/npcs.
+      setTimeout(() => setAssignStatus(""), 3000);
     },
     [campaignCtx]
   );
 
   const handleUnassignNpc = useCallback((_voiceId, _npcId) => {
-    if (typeof window !== "undefined" && window.toast) window.toast("Unassign: coming soon.");
-    else window.alert("Unassign: coming soon.");
+    setAssignStatus("Unassign: coming soon.");
+    setTimeout(() => setAssignStatus(""), 3000);
   }, []);
 
   const handleReuseForNarration = useCallback((voice) => {
@@ -230,7 +233,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
       formData.append("consent_scope", "tts");
       if (cloneName.trim()) formData.append("name", cloneName.trim());
       const result = await submitClone(formData, authFetch);
-      if (!result.ok) throw new Error("Clone request failed.");
+      if (!result.ok) throw new Error(result.error || "Clone request failed.");
       setCloneProgress(30);
       if (result.voice_id) {
         setCloneVoiceId(result.voice_id);
@@ -423,6 +426,9 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
               onUnassignNpc={handleUnassignNpc}
               onReuseForNarration={handleReuseForNarration}
             />
+            {assignStatus && (
+              <p className="text-xs text-[var(--gold)] mt-2 px-1">{assignStatus}</p>
+            )}
           </div>
         </div>
 

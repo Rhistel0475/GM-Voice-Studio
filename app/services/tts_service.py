@@ -37,7 +37,10 @@ def _get_tts():
     if _model is None:
         from kani_tts import KaniTTS
         logging.info("Loading KaniTTS-2...")
-        _model = KaniTTS("nineninesix/kani-tts-2-en")
+        _model = KaniTTS(
+            "nineninesix/kani-tts-2-en",
+            max_new_tokens=6000,
+        )
     return _model
 
 

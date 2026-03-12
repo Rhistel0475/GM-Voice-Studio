@@ -17,6 +17,23 @@ def _get_duration_sec(audio_path: str) -> float:
         raise ValueError(f"Could not load audio: {e!s}") from e
 
 
+def _apply_speaker_embedder_compat():
+    """Ensure kani_tts EmbeddingsModel is compatible with current transformers (all_tied_weights_keys)."""
+    from kani_tts import speaker_embedder
+    EmbeddingsModel = speaker_embedder.EmbeddingsModel
+    if getattr(EmbeddingsModel, "_all_tied_weights_keys_patched", False):
+        return
+    _orig_init = EmbeddingsModel.__init__
+
+    def _patched_init(self, config):
+        _orig_init(self, config)
+        if not hasattr(self, "all_tied_weights_keys"):
+            self.all_tied_weights_keys = {}
+
+    EmbeddingsModel.__init__ = _patched_init
+    EmbeddingsModel._all_tied_weights_keys_patched = True
+
+
 def clone_voice(
     audio_path: str,
     consent_scope: str = "tts",
@@ -35,6 +52,7 @@ def clone_voice(
 
     voice_id = create_voice_id()
     try:
+        _apply_speaker_embedder_compat()
         from kani_tts import SpeakerEmbedder
         embedder = SpeakerEmbedder(
             model_name="nineninesix/speaker-emb-tbr",

@@ -62,7 +62,16 @@
       "Bash(node -e \"import\\(''./vite.config.js''\\).then\\(\\(\\) => console.log\\(''ok''\\)\\).catch\\(e => console.error\\(e.message\\)\\)\")",
       "Bash(grep -r \"ExtractionReviewItem\\\\|enqueueBatch\\\\|extractionReview\" /home/brian/GM-Voice-Studio/frontend/src/components --include=*.jsx --include=*.tsx)",
       "Bash(npx vite:*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(.venv/bin/pip show:*)",
+      "Bash(.venv/bin/pip list:*)",
+      "Bash(.venv/bin/pip index:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(grep -i transformers .venv/lib/python3.12/site-packages/nemo_toolkit-*.dist-info/METADATA)",
+      "Bash(.venv/bin/python -c \"from transformers.utils import TransformersKwargs; print\\(''OK''\\)\")",
+      "Bash(.venv/bin/python -c \"from kani_tts import SpeakerEmbedder; print\\(''OK''\\)\")",
+      "Bash(grep -r \"nemo\\\\|NeMo\" /home/brian/GM-Voice-Studio/*.py)",
+      "Bash(.venv/bin/python -c \"import server; print\\(''''server OK''''\\)\")"
     ]
   }
 }

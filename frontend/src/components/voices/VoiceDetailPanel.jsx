@@ -36,9 +36,16 @@ export default function VoiceDetailPanel({
         <div className="h-px bg-gradient-to-r from-[var(--gold)]/60 to-transparent mt-1" aria-hidden />
       </div>
       <div className="parchment rounded border border-[#a17a42] flex-1 min-h-0 overflow-auto p-3 space-y-4">
-        <div className="shrink-0">
-          <p className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider mb-1">Selected</p>
-          <p className="font-heading text-[var(--ink-1)] text-base">{voice.name}</p>
+        <div className="shrink-0 pb-1 border-b border-[#c4a46b]/40">
+          <p
+            className="text-[10px] font-heading uppercase tracking-widest mb-0.5"
+            style={{ color: "#7a4e18" }}
+          >
+            Selected Voice
+          </p>
+          <p className="font-heading text-lg leading-tight" style={{ color: "#1e0f06" }}>
+            {voice.name}
+          </p>
         </div>
 
         <div className="border-t border-[#5c3e23] pt-3">
@@ -66,10 +73,11 @@ export default function VoiceDetailPanel({
 
         {onReuseForNarration && (
           <div className="border-t border-[#5c3e23] pt-3">
-            <p className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider mb-1">Actions</p>
+            <p className="text-xs font-heading uppercase tracking-wider mb-1" style={{ color: "#6b3e10" }}>Actions</p>
             <button
               type="button"
-              className="text-sm text-[var(--gold)] hover:underline font-heading"
+              className="text-sm font-heading hover:underline"
+              style={{ color: "#7a4010" }}
               onClick={() => onReuseForNarration(voice)}
             >
               Reuse for narration →

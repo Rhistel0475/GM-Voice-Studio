@@ -3,8 +3,6 @@
  * When a dedicated backend /api/npcs exists, switch getNPCs to call it.
  */
 
-import { MOCK_NPC_PROFILES } from "../utils/mockData";
-
 /**
  * Map a minimal campaign NPC object to NPCProfile shape.
  * @param {Object} n - Raw npc from campaignData.npcs
@@ -51,7 +49,7 @@ export function getNPCs(campaignData, _authFetch) {
     const campaign = campaignData.title || "Campaign";
     return npcs.map((n, i) => campaignNpcToProfile(n, i, campaign));
   }
-  return MOCK_NPC_PROFILES;
+  return [];
 }
 
 /**
