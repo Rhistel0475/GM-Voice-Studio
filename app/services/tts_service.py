@@ -278,8 +278,16 @@ def _get_tts():
             _model = KaniTTS(
                 "nineninesix/kani-tts-2-en",
                 max_new_tokens=6000,
+                show_info=False,
+                # The published config enables learnable RoPE, but the current
+                # inference path is more stable with standard RoPE.
+                use_learnable_rope=False,
             )
             causal_lm = getattr(getattr(_model, "model", None), "model", None)
+            if getattr(causal_lm, "use_learnable_rope", None):
+                logging.warning("KaniTTS-2 inference still has learnable RoPE enabled after override.")
+            else:
+                logging.info("Disabled learnable RoPE for KaniTTS-2 inference.")
             if causal_lm is not None and hasattr(causal_lm, "set_attn_implementation"):
                 causal_lm.set_attn_implementation("eager")
                 logging.info("Forced KaniTTS-2 attention backend to eager for transformers 5.x compatibility.")

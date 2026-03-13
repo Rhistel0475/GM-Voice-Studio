@@ -42,8 +42,24 @@ See [.env.example](../.env.example) and the Config table in [README](../README.m
 Build and run:
 
 ```bash
+# Optional: rebuild the React preview before docker build
+cd frontend
+npm install
+npm run build
+cd ..
+
 docker build -t kani-tts .
-docker run -p 7862:7862 -v kani-voice_storage:/app/voice_storage kani-tts
+docker run -p 7862:7862 -v kani-voice_storage:/app/voice_storage --env-file .env kani-tts
 ```
 
-With Docker Compose you can add Redis and a Celery worker; set `CELERY_BROKER_URL=redis://redis:6379/0` and run the worker as in the README.
+With Docker Compose:
+
+```bash
+docker compose up -d app
+# Optional: uncomment env_file: .env in docker-compose.yml so the container receives your repo-root env vars.
+# Optional Redis + Celery worker:
+# docker compose --profile celery up -d redis
+# docker compose run --rm -e CELERY_BROKER_URL=redis://redis:6379/0 app celery -A app.infrastructure.tasks.celery_app worker --loglevel=info
+```
+
+Use `--env-file .env` for direct `docker run` so the container receives API keys and runtime settings from the repo-root `.env`.

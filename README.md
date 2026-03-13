@@ -6,11 +6,77 @@ AI voice engine: use built-in voices or clone a voice from a short recording, th
 
 FastAPI backend with React preview UI at `/preview`. Domains: voice (TTS, clone), campaign (adventure/campaigns), live (WebSocket Co-DM), ai (RAG, LLM). See [docs/architecture.md](docs/architecture.md) for overview and [docs/current-architecture.md](docs/current-architecture.md) for detailed layout. API summary: [docs/api.md](docs/api.md). Deployment: [docs/deployment.md](docs/deployment.md).
 
+## How to start all the servers
+
+**Option A - Docker (one service, recommended)**
+Backend serves the main UI and the built React app at `/preview`. No separate frontend process.
+
+```bash
+# Optional: rebuild the React preview before building the image
+cd frontend
+npm install
+npm run build
+cd ..
+
+docker build -t kani-tts .
+docker run -p 7862:7862 -v kani-voice_storage:/app/voice_storage --env-file .env kani-tts
+```
+
+Use `--env-file .env` so the container gets `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY`, `HF_TOKEN`, and any other runtime config from the repo-root `.env`.
+
+- Main UI: **http://localhost:7862**
+- React preview: **http://localhost:7862/preview**
+
+**Option B - Docker Compose (API + optional Redis)**
+Same API container, with optional Redis/Celery for async clone and narrate.
+
+```bash
+docker compose up -d app
+# Optional: uncomment env_file: .env in docker-compose.yml so the container receives your repo-root env vars.
+# Optional: start Redis + worker after setting CELERY_BROKER_URL=redis://redis:6379/0:
+# docker compose --profile celery up -d redis
+# docker compose run --rm -e CELERY_BROKER_URL=redis://redis:6379/0 app celery -A app.infrastructure.tasks.celery_app worker --loglevel=info
+```
+
+**Option C - Local backend only (single process)**
+One Python process serves everything, including `/preview` when the React build exists in `static/frontend`.
+
+```bash
+# From project root, with venv activated
+pip install -r requirements-core.txt && pip install -r requirements-server.txt
+# Co-DM / PDF / RAG features:
+pip install -r requirements-rag.txt
+python server.py
+```
+
+**Option D - Local backend + React dev server (two processes)**
+Use this when actively iterating on the frontend.
+
+1. Terminal 1 - backend
+   ```bash
+   pip install -r requirements-core.txt && pip install -r requirements-server.txt
+   pip install -r requirements-rag.txt
+   python server.py
+   ```
+2. Terminal 2 - React
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+- Main UI: **http://localhost:7862**
+- React preview (dev): **http://localhost:5173**
+
+If the frontend is on a different origin, set `CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173` in `.env`.
+
 ## Run the server
 
 ```bash
 # From project root, with venv activated
 pip install -r requirements-core.txt && pip install -r requirements-server.txt
+# Co-DM / PDF / RAG features:
+# pip install -r requirements-rag.txt
 python server.py
 ```
 
@@ -114,18 +180,31 @@ See [docs/deployment.md](docs/deployment.md) for production checklist, migration
 
 ```bash
 docker build -t kani-tts .
-docker run -p 7862:7862 -v kani-voice_storage:/app/voice_storage kani-tts
+docker run -p 7862:7862 -v kani-voice_storage:/app/voice_storage --env-file .env kani-tts
 ```
 
 **Docker Compose:** API + Redis (for optional async clone/narrate):
 
 ```bash
 docker compose up -d app
+# Optional: uncomment env_file: .env in docker-compose.yml so the container receives your repo-root env vars.
 # With Redis and Celery worker (set CELERY_BROKER_URL=redis://redis:6379/0 in app env):
-# docker compose --profile celery up -d redis && docker compose run -e CELERY_BROKER_URL=redis://redis:6379/0 app celery -A celery_app worker --loglevel=info
+# docker compose --profile celery up -d redis
+# docker compose run --rm -e CELERY_BROKER_URL=redis://redis:6379/0 app celery -A app.infrastructure.tasks.celery_app worker --loglevel=info
 ```
 
 **Env:** Set `PORT`, `VOICE_STORAGE_PATH` (or use a volume), and optionally `API_KEYS`, `REQUIRE_API_KEY`, `DATABASE_URL`, `CELERY_BROKER_URL`, `CORS_ORIGINS` (see Config table). For production, back up `voice_storage` and your database (SQLite file or PostgreSQL). See [docs/deployment.md](docs/deployment.md).
+
+## Troubleshooting
+
+**PDF parsing or image extraction fails**
+Install the RAG/PDF dependencies locally with `pip install -r requirements-rag.txt`. In Docker, rebuild the image after dependency changes: `docker build -t kani-tts .`.
+
+**Container starts but LLM or live mic features fail**
+Pass your repo-root `.env` into the container with `--env-file .env` and confirm the relevant keys are set (`ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY`, `HF_TOKEN`).
+
+**`Bind for 0.0.0.0:7862 failed: port is already allocated`**
+Stop the process already using port `7862`, or run the container on another host port such as `docker run -p 7863:7862 -v kani-voice_storage:/app/voice_storage --env-file .env kani-tts`.
 
 ## Use from a TTRPG app (GM Voice Studio API)
 
