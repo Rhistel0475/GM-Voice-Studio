@@ -1425,10 +1425,18 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     except FileNotFoundError as e:
         increment("errors_total")
         raise HTTPException(404, str(e))
+    except ImportError as e:
+        increment("errors_total")
+        logging.exception("TTS model or dependency failed to load")
+        raise HTTPException(503, f"TTS model unavailable: {e!s}")
     except RuntimeError as e:
         increment("errors_total")
         logging.exception("Narrate TTS failed")
         raise HTTPException(500, str(e))
+    except Exception as e:
+        increment("errors_total")
+        logging.exception("Narrate failed with unexpected error")
+        raise HTTPException(503, f"TTS error: {type(e).__name__}: {e!s}")
 
     concatenated = np.concatenate(audio_list)
     increment("tts_requests_total")

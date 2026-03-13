@@ -1,5 +1,6 @@
 # Step 1: TTS stack. Then: pip install -r requirements-server.txt
-# Pocket TTS (Kyutai). Python 3.10–3.14, PyTorch 2.5+.
-torch>=2.5.0
+# Kani TTS: needs torch>=2.8.0, transformers>=5.3.0 (LFM2). See requirements-tts.txt for pins.
+torch>=2.8.0
 soundfile>=0.13.0
-kani-tts-2
+kani-tts-2>=0.0.5
+transformers>=5.3.0

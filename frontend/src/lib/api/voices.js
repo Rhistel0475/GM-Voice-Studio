@@ -45,6 +45,26 @@ export async function getVoices(authFetch) {
 }
 
 /**
+ * Delete a stored voice via DELETE /voices/:id.
+ * @param {string} voiceId
+ * @param {Function} authFetch
+ * @returns {Promise<{ok: boolean, deleted?: string, error?: string}>}
+ */
+export async function deleteVoice(voiceId, authFetch) {
+  if (!authFetch || !voiceId) return { ok: false, error: "Voice not found" };
+  try {
+    const res = await authFetch(`/voices/${encodeURIComponent(voiceId)}`, { method: "DELETE" });
+    const payload = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return { ok: true, deleted: payload.deleted || voiceId };
+    }
+    return { ok: false, error: payload.detail || payload.error || res.statusText || "Delete failed" };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Delete failed" };
+  }
+}
+
+/**
  * Get generated audio clips from GET /voices/generated.
  * @param {Function} [authFetch]
  * @returns {Promise<import("../../types/voice").GeneratedAudio[]>}
@@ -106,4 +126,3 @@ export async function getCloneJobStatus(jobId, authFetch) {
     return null;
   }
 }
-

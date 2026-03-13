@@ -13,9 +13,12 @@ export default function VoiceDetailPanel({
   npcOptions = [],
   onPlaySample,
   isPlayingSample,
+  playError,
   onAssignToNpc,
   onUnassignNpc,
   onReuseForNarration,
+  onDeleteVoice,
+  isDeletingVoice,
 }) {
   const voiceId = voice?.voice_id || voice?.id;
 
@@ -55,6 +58,11 @@ export default function VoiceDetailPanel({
             isPlaying={isPlayingSample}
             disabled={!voiceId}
           />
+          {playError && (
+            <p className="text-xs mt-2" style={{ color: "#b91c1c" }} role="alert">
+              {playError}
+            </p>
+          )}
         </div>
 
         <div className="border-t border-[#5c3e23] pt-3">
@@ -71,17 +79,32 @@ export default function VoiceDetailPanel({
           />
         </div>
 
-        {onReuseForNarration && (
+        {(onReuseForNarration || onDeleteVoice) && (
           <div className="border-t border-[#5c3e23] pt-3">
             <p className="text-xs font-heading uppercase tracking-wider mb-1" style={{ color: "#6b3e10" }}>Actions</p>
-            <button
-              type="button"
-              className="text-sm font-heading hover:underline"
-              style={{ color: "#7a4010" }}
-              onClick={() => onReuseForNarration(voice)}
-            >
-              Reuse for narration →
-            </button>
+            <div className="flex flex-wrap items-center gap-3">
+              {onReuseForNarration && (
+                <button
+                  type="button"
+                  className="text-sm font-heading hover:underline"
+                  style={{ color: "#7a4010" }}
+                  onClick={() => onReuseForNarration(voice)}
+                >
+                  Reuse for narration →
+                </button>
+              )}
+              {onDeleteVoice && (
+                <button
+                  type="button"
+                  className="text-sm font-heading hover:underline disabled:opacity-60 disabled:no-underline"
+                  style={{ color: "#8b1e1e" }}
+                  onClick={() => onDeleteVoice(voice)}
+                  disabled={Boolean(isDeletingVoice)}
+                >
+                  {isDeletingVoice ? "Deleting..." : "Delete voice"}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>

@@ -29,6 +29,70 @@ try:
 except ImportError:
     pass
 
+# Patch transformers before any kani_tts import (kani_tts.model needs TransformersKwargs/Unpack)
+def _patch_transformers_utils():
+    try:
+        from typing import TypedDict, Unpack
+        import transformers.utils as tf_utils
+        import transformers.processing_utils as tf_proc
+        if not hasattr(tf_utils, "TransformersKwargs"):
+            tf_utils.TransformersKwargs = TypedDict("TransformersKwargs", {}, total=False)
+        if not hasattr(tf_proc, "Unpack"):
+            tf_proc.Unpack = Unpack
+    except Exception as e:
+        logging.warning("Transformers compat patch skipped: %s", e)
+
+
+_patch_transformers_utils()
+
+# Ensure LFM2 is available and patch Lfm2Config for kani_tts (expects config.rope_theta; transformers 5 uses rope_parameters)
+def _check_lfm2_available_and_patch_config():
+    try:
+        from transformers.models.lfm2.configuration_lfm2 import Lfm2Config
+        # kani_tts accesses config.rope_theta; transformers 5.x Lfm2Config has rope_parameters dict instead
+        if not hasattr(Lfm2Config, "rope_theta"):
+            @property
+            def _rope_theta_prop(self):
+                rp = getattr(self, "rope_parameters", None)
+                if rp is not None and isinstance(rp, dict):
+                    return rp.get("rope_theta", 10000.0)
+                if rp is not None and hasattr(rp, "rope_theta"):
+                    return rp.rope_theta
+                return 10000.0
+
+            Lfm2Config.rope_theta = _rope_theta_prop
+    except ImportError:
+        logging.warning(
+            "transformers.models.lfm2 not found. TTS/play will fail. "
+            "Upgrade: pip install -U 'transformers>=5.1.0'"
+        )
+
+
+_check_lfm2_available_and_patch_config()
+
+# kani_tts uses _tied_weights_keys = ["lm_head.weight"] (list); transformers 5.x get_expanded_tied_weights_keys expects a dict
+def _patch_tied_weights_keys_list():
+    try:
+        from transformers.modeling_utils import PreTrainedModel
+        _orig = PreTrainedModel.get_expanded_tied_weights_keys
+
+        def _patched(self, all_submodels=False):
+            keys = getattr(self, "_tied_weights_keys", None)
+            if isinstance(keys, list):
+                self._tied_weights_keys = {k: "model.embed_tokens.weight" for k in keys}
+            try:
+                return _orig(self, all_submodels)
+            finally:
+                if isinstance(keys, list):
+                    self._tied_weights_keys = keys
+
+        PreTrainedModel.get_expanded_tied_weights_keys = _patched
+    except Exception as e:
+        logging.warning("Tied weights list patch skipped: %s", e)
+
+
+_patch_tied_weights_keys_list()
+
 # Import FastAPI and slowapi after env is loaded
 from fastapi import FastAPI, HTTPException
 from slowapi import _rate_limit_exceeded_handler
