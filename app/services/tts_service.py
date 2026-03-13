@@ -4,8 +4,10 @@ Callers get (audio_array, sample_rate). English-only; supports cloned voices (.p
 No preset named voices — pass speaker_emb_path=None for a random voice.
 """
 import functools
+import importlib.util
 import logging
 import os
+import sys
 import tempfile
 from pathlib import Path
 from typing import Optional, TypedDict
@@ -73,6 +75,9 @@ def _patch_transformers_for_kani_tts():
 _patch_transformers_for_kani_tts()
 
 KANI_SAMPLE_RATE = 22050
+DEFAULT_TTS_TEMPERATURE = 0.65
+DEFAULT_TTS_TOP_P = 0.80
+DEFAULT_TTS_REPETITION_PENALTY = 1.15
 
 # KaniTTS-2 English variants exposed by the model.
 DEFAULT_LANGUAGE_TAG = "en_us"
@@ -89,10 +94,45 @@ _model = None
 _audio_cache: list[str] = []
 
 
+def _install_local_kani_tts_model():
+    """
+    Force kani_tts.core to import the repo's fixed model module.
+
+    The packaged kani_tts runtime pulls in kani_tts.model from site-packages,
+    but this repo carries a newer frame-position-aware implementation that is
+    required for stable KaniTTS-2 inference.
+    """
+    local_model_path = Path(__file__).resolve().parents[2] / "kani_tts_model_fixed.py"
+    if not local_model_path.is_file():
+        logging.warning(
+            "Local KaniTTS model override not found at %s; using package model.",
+            local_model_path,
+        )
+        return
+
+    existing = sys.modules.get("kani_tts.model")
+    existing_path = Path(getattr(existing, "__file__", "")) if existing is not None else None
+    if existing_path and existing_path.resolve() == local_model_path.resolve():
+        return
+
+    for module_name in ("kani_tts.api", "kani_tts.core", "kani_tts.model", "kani_tts"):
+        sys.modules.pop(module_name, None)
+
+    spec = importlib.util.spec_from_file_location("kani_tts.model", str(local_model_path))
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Could not load local KaniTTS model override from {local_model_path}")
+
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["kani_tts.model"] = module
+    spec.loader.exec_module(module)
+    logging.info("Installed local KaniTTS model override from %s", local_model_path)
+
+
 def _get_tts():
     global _model
     if _model is None:
         try:
+            _install_local_kani_tts_model()
             # transformers 5.x Lfm2Model uses rotary_emb; kani_tts forward expects pos_emb
             from kani_tts.model import Lfm2ForKaniModel
             if not hasattr(Lfm2ForKaniModel, "_pos_emb_patched"):
@@ -341,9 +381,9 @@ def generate(
     text: str,
     language_tag: Optional[str] = DEFAULT_LANGUAGE_TAG,
     speaker_emb_path: Optional[str] = None,
-    temperature: float = 1.0,
-    top_p: float = 0.95,
-    repetition_penalty: float = 1.1,
+    temperature: float = DEFAULT_TTS_TEMPERATURE,
+    top_p: float = DEFAULT_TTS_TOP_P,
+    repetition_penalty: float = DEFAULT_TTS_REPETITION_PENALTY,
 ) -> tuple[np.ndarray, int]:
     """Generate speech.
     speaker_emb_path: path to a .pt speaker embedding file produced by clone_voice().

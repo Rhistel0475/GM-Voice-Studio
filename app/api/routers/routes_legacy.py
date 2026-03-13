@@ -57,6 +57,9 @@ from app.core.config import (
 from app.core.metrics import increment
 from app.core.text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
 from app.services.tts_service import (
+    DEFAULT_TTS_REPETITION_PENALTY,
+    DEFAULT_TTS_TEMPERATURE,
+    DEFAULT_TTS_TOP_P,
     generate as tts_generate,
     get_preset_voices,
     get_supported_language_tags,
@@ -1241,9 +1244,9 @@ async def tts_endpoint(
     _auth: None = Depends(verify_api_key),
     language_tag: str = Form("en"),
     voice_id: Optional[str] = Form(None),
-    temperature: float = Form(0.65),       # Lowered from 0.75 for stability
-    top_p: float = Form(0.80),             # Lowered from 0.85
-    repetition_penalty: float = Form(1.15), # Lowered from 2.0 to stop slurring
+    temperature: float = Form(DEFAULT_TTS_TEMPERATURE),
+    top_p: float = Form(DEFAULT_TTS_TOP_P),
+    repetition_penalty: float = Form(DEFAULT_TTS_REPETITION_PENALTY),
     reference_audio: Optional[UploadFile] = File(None),
 ):
     """
@@ -1408,9 +1411,9 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.65,
-                top_p=0.80,
-                repetition_penalty=1.15,
+                temperature=DEFAULT_TTS_TEMPERATURE,
+                top_p=DEFAULT_TTS_TOP_P,
+                repetition_penalty=DEFAULT_TTS_REPETITION_PENALTY,
             )
             if sr_out is None:
                 sr_out = sr

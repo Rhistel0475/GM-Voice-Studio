@@ -66,7 +66,13 @@ def narrate_task(
     voice_id can be a preset name or a cloned voice_id. Returns {"job_type": "narrate"} on success.
     """
     from app.core.text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
-    from app.services.tts_service import _is_preset_voice, generate as tts_generate
+    from app.services.tts_service import (
+        DEFAULT_TTS_REPETITION_PENALTY,
+        DEFAULT_TTS_TEMPERATURE,
+        DEFAULT_TTS_TOP_P,
+        _is_preset_voice,
+        generate as tts_generate,
+    )
     from app.services.voice_store_service import load_embedding_path
 
     if not voice_id:
@@ -101,9 +107,9 @@ def narrate_task(
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.65,
-                top_p=0.80,
-                repetition_penalty=1.15,
+                temperature=DEFAULT_TTS_TEMPERATURE,
+                top_p=DEFAULT_TTS_TOP_P,
+                repetition_penalty=DEFAULT_TTS_REPETITION_PENALTY,
             )
             if sr_out is None:
                 sr_out = sr
