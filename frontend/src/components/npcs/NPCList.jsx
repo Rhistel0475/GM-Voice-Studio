@@ -1,7 +1,6 @@
 /**
  * Scrollable list of NPCs; header matches CodexResultList. EmptyState when none.
  */
-import React from "react";
 import { NPCWorkshopEmptyState } from "../shared";
 import NPCListItem from "./NPCListItem";
 

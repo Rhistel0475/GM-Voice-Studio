@@ -18,9 +18,13 @@ export type {
   ExtractedSceneSeed,
   ExtractedCodexEntryType,
   ExtractedCodexEntry,
+  ExtractedEncounter,
+  ExtractedItem,
+  ExtractedFaction,
   ExtractionEntity,
   ExtractionEntityType,
   ExtractionBatchResult,
+  ExtractionReviewItem,
   ExtractionSummary,
 } from "./extraction";
 export {
@@ -28,5 +32,8 @@ export {
   isExtractedLocation,
   isExtractedSceneSeed,
   isExtractedCodexEntry,
+  isExtractedEncounter,
+  isExtractedItem,
+  isExtractedFaction,
   buildExtractionSummary,
 } from "./extraction";

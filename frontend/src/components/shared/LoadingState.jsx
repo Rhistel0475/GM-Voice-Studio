@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Loading placeholder (spinner or message). Fantasy panel styling.
  */

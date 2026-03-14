@@ -21,6 +21,7 @@ class Campaign(Base):
     npcs = relationship("NPC", back_populates="campaign", cascade="all, delete-orphan")
     scenes = relationship("Scene", back_populates="campaign", cascade="all, delete-orphan")
     locations = relationship("Location", back_populates="campaign", cascade="all, delete-orphan")
+    session_events = relationship("SessionEvent", back_populates="campaign", cascade="all, delete-orphan")
 
 
 class NPC(Base):
@@ -40,6 +41,7 @@ class NPC(Base):
     ac = Column(Integer, nullable=True)                       # armor class
     cr = Column(String, nullable=False, default="")           # e.g. "CR 3"
     image_url = Column(String, nullable=True)
+    voice_id = Column(String, nullable=True)                  # assigned TTS voice
 
     campaign = relationship("Campaign", back_populates="npcs")
 
@@ -73,3 +75,17 @@ class Location(Base):
     image_url = Column(String, nullable=True)
 
     campaign = relationship("Campaign", back_populates="locations")
+
+
+class SessionEvent(Base):
+    __tablename__ = "session_events"
+
+    id = Column(String, primary_key=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="CASCADE"), nullable=False)
+    scene_id = Column(String, nullable=True)
+    session_id = Column(String, nullable=True)
+    type = Column(String, nullable=False, default="assistant")
+    text = Column(Text, nullable=False, default="")
+    created_at = Column(String, nullable=False, default="")
+
+    campaign = relationship("Campaign", back_populates="session_events")

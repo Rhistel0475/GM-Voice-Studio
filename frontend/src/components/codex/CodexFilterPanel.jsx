@@ -1,4 +1,3 @@
-import React from "react";
 import { CODEX_CATEGORIES } from "../../types/codex";
 import { FantasyButton } from "../shared";
 

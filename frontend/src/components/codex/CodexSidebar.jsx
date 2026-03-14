@@ -1,4 +1,3 @@
-import React from "react";
 import CodexSearchBar from "./CodexSearchBar";
 import CodexFilterPanel from "./CodexFilterPanel";
 

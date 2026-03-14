@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { Play, Pause } from "lucide-react";
 
 const DEFAULT_SAMPLE_TEXT = "The quick brown fox jumps over the lazy dog.";
@@ -31,11 +31,11 @@ export default function VoiceSamplePlayer({
           : "border-[#734f2c] bg-[rgba(0,0,0,0.06)]"
       }`}
     >
-      <p className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider">Preview</p>
+      <p className="text-xs font-heading uppercase tracking-wider" style={{ color: "#6b3e10" }}>Preview</p>
       <div className="flex flex-col sm:flex-row gap-3 items-start">
         <button
           type="button"
-          className="flex items-center justify-center w-12 h-12 rounded-full border-2 border-[var(--gold)] bg-[rgba(202,167,75,0.12)] text-[var(--gold)] hover:bg-[rgba(202,167,75,0.2)] hover:shadow-[0_0_14px_rgba(202,167,75,0.35)] disabled:opacity-50 disabled:pointer-events-none shrink-0 transition-all"
+          className="flex items-center justify-center w-12 h-12 rounded-full border-2 border-[var(--gold)] bg-[rgba(202,167,75,0.12)] text-[var(--gold)] cursor-pointer hover:bg-[rgba(202,167,75,0.28)] hover:border-[#e8c96a] hover:shadow-[0_0_20px_rgba(202,167,75,0.55)] hover:scale-105 active:scale-95 disabled:opacity-50 disabled:pointer-events-none shrink-0 transition-all duration-150"
           onClick={handlePlay}
           disabled={!voiceId || disabled}
           title={isPlaying ? "Playing…" : "Play sample"}
@@ -52,7 +52,7 @@ export default function VoiceSamplePlayer({
           />
         </div>
       </div>
-      <p className="text-xs text-[var(--text-2)]">
+      <p className="text-xs" style={{ color: "#6b3e10" }}>
         {isPlaying ? "Playing…" : "Enter text and press play to hear this voice."}
       </p>
     </div>

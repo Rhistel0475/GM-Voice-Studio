@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LayoutGrid, List } from "lucide-react";
 import { defaultVoiceFilterState } from "../../types/voice";
-import { getVoices, getGeneratedAudio, submitClone, getCloneJobStatus } from "../../lib/api/voices";
+import { VOICE_PRESETS } from "../../lib/voicePresets";
+import { deleteVoice, getVoices, getGeneratedAudio, submitClone, getCloneJobStatus } from "../../lib/api/voices";
 import { getNPCs } from "../../lib/api/npcs";
 import { useCampaignOptional } from "../../context/CampaignContext";
 import { useVoices as useVoicesFromStore, useNpcsForVoice } from "../../store/selectors";
@@ -13,7 +14,7 @@ import GeneratedAudioList from "./GeneratedAudioList";
 import VoiceDetailPanel from "./VoiceDetailPanel";
 import VoiceCloneWizard from "./VoiceCloneWizard";
 
-function filterVoices(voices, filterState) {
+function filterVoices(voices, filterState, selectedPreset) {
   let out = voices;
   const q = (filterState.query || "").trim().toLowerCase();
   if (q) {
@@ -33,6 +34,18 @@ function filterVoices(voices, filterState) {
   if (filterState.tone && filterState.tone !== "all") {
     out = out.filter((v) => v.tone === filterState.tone);
   }
+  if (selectedPreset) {
+    const preset = VOICE_PRESETS[selectedPreset];
+    if (preset) {
+      const keywords = preset.tone.split(/[,\s]+/).filter(Boolean).map((w) => w.toLowerCase());
+      out = out.filter((v) => {
+        const tone = (v.tone || "").toLowerCase();
+        const name = (v.name || "").toLowerCase();
+        const tags = (v.tags || []).map((t) => t.toLowerCase());
+        return keywords.some((kw) => tone.includes(kw) || name.includes(kw) || tags.some((t) => t.includes(kw)));
+      });
+    }
+  }
   return out;
 }
 
@@ -48,6 +61,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const [generatedAudio, setGeneratedAudio] = useState([]);
   const [filterState, setFilterState] = useState(defaultVoiceFilterState());
   const [viewMode, setViewMode] = useState("grid");
+  const [selectedPreset, setSelectedPreset] = useState("");
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
   const assignedNpcsForSelectedVoice = useNpcsForVoice(selectedVoiceId);
   const [isPlayingSample, setIsPlayingSample] = useState(false);
@@ -68,6 +82,31 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const [cloneSaved, setCloneSaved] = useState(false);
   const [cloneSaveError, setCloneSaveError] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Assignment feedback
+  const [assignStatus, setAssignStatus] = useState("");
+  // Play sample/preview error (e.g. "Voice not found")
+  const [playError, setPlayError] = useState("");
+  const [isDeletingVoice, setIsDeletingVoice] = useState(false);
+  const sampleAudioRef = useRef(null);
+  const sampleAudioUrlRef = useRef("");
+
+  const stopSampleAudio = useCallback(() => {
+    const audio = sampleAudioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.onerror = null;
+      audio.pause();
+      audio.currentTime = 0;
+      sampleAudioRef.current = null;
+    }
+    if (sampleAudioUrlRef.current) {
+      URL.revokeObjectURL(sampleAudioUrlRef.current);
+      sampleAudioUrlRef.current = "";
+    }
+  }, []);
+
+  useEffect(() => stopSampleAudio, [stopSampleAudio]);
 
   // Narration panel (right column, below detail)
   const [narrationText, setNarrationText] = useState("");
@@ -112,8 +151,8 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   }, [voices, campaignCtx, voicesFromStore]);
 
   const filteredVoices = useMemo(
-    () => filterVoices(allVoices, filterState),
-    [allVoices, filterState]
+    () => filterVoices(allVoices, filterState, selectedPreset),
+    [allVoices, filterState, selectedPreset]
   );
 
   const selectedVoice = useMemo(() => {
@@ -127,6 +166,8 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const playSample = useCallback(
     async (voiceId, text = "The quick brown fox jumps over the lazy dog.") => {
       if (!voiceId || !authFetch) return;
+      stopSampleAudio();
+      setPlayError("");
       setIsPlayingSample(true);
       try {
         const res = await authFetch("/tts/narrate", {
@@ -134,25 +175,45 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text: text.trim() || "The quick brown fox jumps over the lazy dog.", voice_id: voiceId }),
         });
-        if (!res.ok) return;
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          const msg = errBody.detail || errBody.error || res.statusText || "Play failed";
+          setPlayError(typeof msg === "string" ? msg : JSON.stringify(msg));
+          setIsPlayingSample(false);
+          if (typeof window !== "undefined" && window.toast) window.toast(typeof msg === "string" ? msg : "Play failed");
+          return;
+        }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
+        sampleAudioRef.current = audio;
+        sampleAudioUrlRef.current = url;
         audio.onended = () => {
-          URL.revokeObjectURL(url);
+          stopSampleAudio();
           setIsPlayingSample(false);
         };
-        audio.play();
-      } catch {
+        audio.onerror = () => {
+          stopSampleAudio();
+          setPlayError("Audio failed to play.");
+          setIsPlayingSample(false);
+          if (typeof window !== "undefined" && window.toast) window.toast("Audio failed to play.");
+        };
+        await audio.play();
+      } catch (e) {
+        stopSampleAudio();
+        setPlayError(e?.message || "Play failed");
         setIsPlayingSample(false);
+        if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "Play failed");
       }
     },
-    [authFetch]
+    [authFetch, stopSampleAudio]
   );
 
   const handlePlayClip = useCallback(
     async (clip) => {
       if (!clip || !authFetch) return;
+      stopSampleAudio();
+      setPlayError("");
       setPlayingClipId(clip.id);
       try {
         const res = await authFetch("/tts/narrate", {
@@ -163,46 +224,101 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
             voice_id: clip.voiceId,
           }),
         });
-        if (!res.ok) throw new Error("Play failed");
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          const msg = errBody.detail || errBody.error || res.statusText || "Play failed";
+          setPlayError(typeof msg === "string" ? msg : JSON.stringify(msg));
+          setPlayingClipId("");
+          if (typeof window !== "undefined" && window.toast) window.toast(typeof msg === "string" ? msg : "Play failed");
+          return;
+        }
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
+        sampleAudioRef.current = audio;
+        sampleAudioUrlRef.current = url;
         audio.onended = () => {
-          URL.revokeObjectURL(url);
+          stopSampleAudio();
           setPlayingClipId("");
         };
-        audio.play();
-      } catch {
+        audio.onerror = () => {
+          stopSampleAudio();
+          setPlayError("Audio failed to play.");
+          setPlayingClipId("");
+          if (typeof window !== "undefined" && window.toast) window.toast("Audio failed to play.");
+        };
+        await audio.play();
+      } catch (e) {
+        stopSampleAudio();
+        setPlayError(e?.message || "Play failed");
         setPlayingClipId("");
+        if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "Play failed");
       }
     },
-    [authFetch]
+    [authFetch, stopSampleAudio]
   );
 
   const handleAssignToNpc = useCallback(
     (voiceId, npcId) => {
       if (campaignCtx?.assignVoiceToNpc && voiceId && npcId) {
         campaignCtx.assignVoiceToNpc(npcId, voiceId);
-        if (typeof window !== "undefined" && window.toast) window.toast("Voice assigned to NPC (campaign state updated).");
-        else if (typeof window !== "undefined") window.alert("Voice assigned to NPC.");
+        setAssignStatus("Voice assigned.");
+      } else if (voiceId && npcId) {
+        setAssignStatus("No campaign loaded — load a campaign first.");
       } else {
-        if (typeof window !== "undefined" && window.toast) window.toast("Assign to NPC: coming soon.");
-        else if (typeof window !== "undefined") window.alert("Assign to NPC: coming soon.");
+        setAssignStatus("Select an NPC to assign.");
       }
-      // TODO: Backend — persist voice assignment via PATCH /api/npcs/:id or PATCH /api/campaigns/:id/npcs.
+      setTimeout(() => setAssignStatus(""), 3000);
     },
     [campaignCtx]
   );
 
-  const handleUnassignNpc = useCallback((voiceId, npcId) => {
-    if (typeof window !== "undefined" && window.toast) window.toast("Unassign: coming soon.");
-    else window.alert("Unassign: coming soon.");
+  const handleUnassignNpc = useCallback((_voiceId, _npcId) => {
+    setAssignStatus("Unassign: coming soon.");
+    setTimeout(() => setAssignStatus(""), 3000);
   }, []);
 
   const handleReuseForNarration = useCallback((voice) => {
     setSelectedVoiceId(voice?.voice_id || voice?.id);
     if (typeof window !== "undefined" && window.toast) window.toast("Voice selected for narration.");
   }, []);
+
+  const handleDeleteVoice = useCallback(
+    async (voice) => {
+      const voiceId = voice?.voice_id || voice?.id;
+      if (!voiceId || !authFetch || isDeletingVoice) return;
+      const voiceName = voice?.name || voiceId;
+
+      if (typeof window !== "undefined") {
+        const confirmed = window.confirm(`Delete voice "${voiceName}"? This cannot be undone.`);
+        if (!confirmed) return;
+      }
+
+      setIsDeletingVoice(true);
+      setPlayError("");
+      setAssignStatus("");
+      try {
+        const result = await deleteVoice(voiceId, authFetch);
+        if (!result.ok) {
+          const msg = result.error || "Delete failed";
+          setPlayError(msg);
+          if (typeof window !== "undefined" && window.toast) window.toast(msg);
+          return;
+        }
+
+        const nextVoices = await getVoices(authFetch);
+        setVoices(nextVoices);
+        const fallbackVoice = nextVoices.find((item) => (item.voice_id || item.id) !== voiceId);
+        setSelectedVoiceId(fallbackVoice ? (fallbackVoice.voice_id || fallbackVoice.id || "") : "");
+        setAssignStatus(`Deleted ${voiceName}.`);
+        setTimeout(() => setAssignStatus(""), 3000);
+        if (typeof window !== "undefined" && window.toast) window.toast(`Deleted ${voiceName}.`);
+      } finally {
+        setIsDeletingVoice(false);
+      }
+    },
+    [authFetch, isDeletingVoice]
+  );
 
   const handleClone = useCallback(async () => {
     if (!cloneFile || isCloning || !authFetch) return;
@@ -216,7 +332,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
       formData.append("consent_scope", "tts");
       if (cloneName.trim()) formData.append("name", cloneName.trim());
       const result = await submitClone(formData, authFetch);
-      if (!result.ok) throw new Error("Clone request failed.");
+      if (!result.ok) throw new Error(result.error || "Clone request failed.");
       setCloneProgress(30);
       if (result.voice_id) {
         setCloneVoiceId(result.voice_id);
@@ -320,6 +436,31 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
             onChange={(q) => setFilterState((prev) => ({ ...prev, query: q }))}
           />
         </div>
+        <div className="shrink-0 pt-2">
+          <div className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider mb-1">
+            Presets
+          </div>
+          <div className="vs-preset-strip">
+            <button
+              type="button"
+              className={`vs-preset-pill${!selectedPreset ? " vs-preset-pill--active" : ""}`}
+              onClick={() => setSelectedPreset("")}
+            >
+              All
+            </button>
+            {Object.values(VOICE_PRESETS).map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`vs-preset-pill${selectedPreset === preset.id ? " vs-preset-pill--active" : ""}`}
+                onClick={() => setSelectedPreset(selectedPreset === preset.id ? "" : preset.id)}
+                title={preset.style}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="shrink-0 py-2">
           <VoiceLibraryFilters filterState={filterState} onFilterChange={setFilterState} />
         </div>
@@ -380,10 +521,16 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
               npcOptions={npcOptions}
               onPlaySample={playSample}
               isPlayingSample={isPlayingSample}
+              playError={playError}
               onAssignToNpc={handleAssignToNpc}
               onUnassignNpc={handleUnassignNpc}
               onReuseForNarration={handleReuseForNarration}
+              onDeleteVoice={selectedVoice?.source === "system" ? undefined : handleDeleteVoice}
+              isDeletingVoice={isDeletingVoice}
             />
+            {assignStatus && (
+              <p className="text-xs text-[var(--gold)] mt-2 px-1">{assignStatus}</p>
+            )}
           </div>
         </div>
 

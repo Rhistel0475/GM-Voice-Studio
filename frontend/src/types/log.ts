@@ -1,7 +1,7 @@
 /**
- * Action log event type (player, npc, narration, system).
+ * Action log event type (player, npc, narration, system, gm_note).
  */
-export type ActionLogEventType = "player" | "npc" | "narration" | "system";
+export type ActionLogEventType = "player" | "npc" | "narration" | "system" | "gm_note";
 
 /**
  * One entry in the session action log.

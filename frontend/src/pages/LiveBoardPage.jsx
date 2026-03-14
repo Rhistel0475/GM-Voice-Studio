@@ -1,5 +1,6 @@
-import React from "react";
 import SectionHeader from "../components/layout/SectionHeader";
+import WorkspaceContainer from "../components/layout/WorkspaceContainer";
+import PanelShell from "../components/layout/PanelShell";
 import GMControlPanel from "../components/live-board/GMControlPanel";
 import SessionStream from "../components/live-board/SessionStream";
 import CodexSidePanel from "../components/live-board/CodexSidePanel";
@@ -19,11 +20,17 @@ export default function LiveBoardPage({
   middleColumn,
   showSessionEmpty = false,
 }) {
+  const npcs = campaignData?.npcs || [];
+  const sceneNpcNames = scene?.npcs || [];
+  const presentNpcs = sceneNpcNames
+    .map((name) => npcs.find((n) => n.name === name))
+    .filter(Boolean);
+
   return (
-    <section className="live-board min-h-0 flex flex-col gap-5 xl:gap-6">
+    <WorkspaceContainer className="live-board gap-5 xl:gap-6">
       <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-5 xl:gap-6">
-        {/* LEFT: GM Control Panel — quick tools, active scene, party roster */}
-        <aside className="xl:col-span-3 min-h-0 flex flex-col gap-3">
+        {/* LEFT: GM Tools — quick tools, active scene, party roster */}
+        <aside className="xl:col-span-2 min-h-0 flex flex-col gap-3">
           <SectionHeader title="GM Control" className="rounded-t-lg" />
           <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
             <GMControlPanel
@@ -47,8 +54,33 @@ export default function LiveBoardPage({
           </div>
         </main>
 
+        {/* NPC Presence — spotlight on who is in the current scene */}
+        <aside className="xl:col-span-2 min-h-0 flex flex-col gap-3">
+          <PanelShell title="NPC Presence" className="h-full min-h-0 flex flex-col rounded-lg overflow-hidden">
+            <div className="panel-body min-h-0 flex-1 overflow-y-auto space-y-2">
+              {presentNpcs.length > 0 ? (
+                presentNpcs.map((npc) => (
+                  <button
+                    key={npc.name}
+                    type="button"
+                    className={`tracker-row w-full text-left cursor-pointer ${
+                      selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""
+                    }`}
+                    onClick={() => onSelectNpc(npc.name)}
+                  >
+                    <span className="encounter-name">{npc.name}</span>
+                    {npc.role && <span className="text-[#9b7440] text-xs">{npc.role}</span>}
+                  </button>
+                ))
+              ) : (
+                <div className="intake-empty text-xs">No NPCs are currently present in this scene.</div>
+              )}
+            </div>
+          </PanelShell>
+        </aside>
+
         {/* RIGHT: Codex — Documents, NPCs, Locations, Rules tabs + quick preview cards */}
-        <aside className="xl:col-span-4 min-h-0 flex flex-col gap-3">
+        <aside className="xl:col-span-3 min-h-0 flex flex-col gap-3">
           <SectionHeader title="Codex" className="rounded-t-lg" />
           <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
             <CodexSidePanel
@@ -58,6 +90,6 @@ export default function LiveBoardPage({
           </div>
         </aside>
       </div>
-    </section>
+    </WorkspaceContainer>
   );
 }

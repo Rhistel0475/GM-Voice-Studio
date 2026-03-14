@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { EmptyState } from "../shared";
 import { ChevronDown, ChevronRight } from "lucide-react";
 

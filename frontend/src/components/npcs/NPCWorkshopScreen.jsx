@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { defaultNpcFilterState, defaultNpcDraft } from "../../types/npc";
 import { getNPCs } from "../../lib/api/npcs";
 import { saveNPC, pushToLiveBoard } from "../../lib/api/npcs";
 import { useCampaignOptional } from "../../context/CampaignContext";
 import { useNpcsForActiveCampaign } from "../../store/selectors";
+import { suggestVoiceForNpc } from "../../lib/voiceSuggestions";
+import { persistNpcVoice } from "../../lib/campaignPersistence";
 import NPCRosterSidebar from "./NPCRosterSidebar";
 import NPCGeneratorForm from "./NPCGeneratorForm";
 import NPCPreviewCard from "./NPCPreviewCard";
@@ -235,8 +237,13 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
           if (idx >= 0) return prev.map((n, i) => (i === idx ? saved : n));
           return [...prev, saved];
         });
-        if (campaignCtx?.assignVoiceToNpc && (saved.name || profile.name) && (selectedVoiceId || saved.voiceId || saved.voice_id)) {
-          campaignCtx.assignVoiceToNpc(saved.name || profile.name, selectedVoiceId || saved.voiceId || saved.voice_id);
+        const resolvedName = saved.name || profile.name;
+        const resolvedVoiceId = selectedVoiceId || saved.voiceId || saved.voice_id;
+        if (campaignCtx?.assignVoiceToNpc && resolvedName && resolvedVoiceId) {
+          campaignCtx.assignVoiceToNpc(resolvedName, resolvedVoiceId);
+        }
+        if (resolvedName && resolvedVoiceId) {
+          persistNpcVoice(authFetch, resolvedName, resolvedVoiceId);
         }
         if (typeof window !== "undefined") {
           if (window.toast) window.toast("NPC saved.");
@@ -254,6 +261,9 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
         setSelectedNpc(localProfile);
         if (campaignCtx?.assignVoiceToNpc && localProfile.name && selectedVoiceId) {
           campaignCtx.assignVoiceToNpc(localProfile.name, selectedVoiceId);
+        }
+        if (localProfile.name && selectedVoiceId) {
+          persistNpcVoice(authFetch, localProfile.name, selectedVoiceId);
         }
         if (typeof window !== "undefined") {
           if (window.toast) window.toast("Saved locally (no backend).");
@@ -282,6 +292,11 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
   const previewProfile = useMemo(
     () => mergeProfile(selectedNpc, draft, npcName, personalityText),
     [selectedNpc, draft, npcName, personalityText]
+  );
+
+  const voiceSuggestion = useMemo(
+    () => (previewProfile?.name || previewProfile?.role ? suggestVoiceForNpc(previewProfile, voices) : null),
+    [previewProfile, voices]
   );
 
   return (
@@ -342,6 +357,8 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
           onPushToLiveBoard={handlePushToLiveBoard}
           generating={npcGenStreaming}
           saving={saving}
+          suggestion={voiceSuggestion}
+          onApplySuggestion={setSelectedVoiceId}
         />
       </div>
     </section>

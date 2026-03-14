@@ -1,4 +1,3 @@
-import React from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useAppState } from "../context/AppStateContext";
 import TopBanner from "../components/layout/TopBanner";
@@ -23,9 +22,26 @@ export default function AppShell() {
   const path = (location.pathname || "").replace(/^\/preview\/?/, "") || "/";
   const view = pathToView(path);
   const isPrepMode = view !== "live";
+  const isLiveView = view === "live";
+
+  const shellClassNames = [
+    "dm-shell dm-fit mx-auto flex flex-col",
+    isLiveView ? "min-h-screen overflow-hidden" : "min-h-0",
+    isPrepMode ? "prep-mode" : "",
+  ]
+    .join(" ")
+    .trim();
+
+  const mainClassNames = [
+    "app-stage flex-1 min-w-0 min-h-0",
+    "p-3 md:p-4",
+    isLiveView ? "overflow-hidden" : "overflow-x-hidden overflow-y-auto",
+  ]
+    .join(" ")
+    .trim();
 
   return (
-    <div className={`dm-shell dm-fit mx-auto flex flex-col min-h-0 ${isPrepMode ? "prep-mode" : ""}`}>
+    <div className={shellClassNames}>
       {requireApiKey && (
         <div className="mx-auto mb-2 w-full max-w-sm rounded border border-[#6f4a27] bg-[#1a0f06] p-2 text-xs text-[#d2ab68]">
           <label className="block mb-1 font-heading text-[#e7c27a]">API Key Required</label>
@@ -49,7 +65,7 @@ export default function AppShell() {
         <aside className="flex-shrink-0 w-40 md:w-14 xl:w-48 panel-ornate rounded overflow-auto">
           <SidebarNav />
         </aside>
-        <main className="app-stage flex-1 min-w-0 min-h-0 overflow-x-hidden overflow-y-auto p-3 md:p-4">
+        <main className={mainClassNames}>
           <Outlet />
         </main>
       </div>

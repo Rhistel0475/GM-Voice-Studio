@@ -57,10 +57,17 @@ from app.core.config import (
 from app.core.metrics import increment
 from app.core.text_utils import MAX_CHUNKS, MAX_TOTAL_CHARS, split_for_tts
 from app.services.tts_service import (
+    DEFAULT_TTS_REPETITION_PENALTY,
+    DEFAULT_TTS_TEMPERATURE,
+    DEFAULT_TTS_TOP_P,
+    delete_hume_voice,
     generate as tts_generate,
+    get_hume_voice,
     get_preset_voices,
     get_supported_language_tags,
     _is_preset_voice,
+    is_hume_provider,
+    list_hume_voices,
 )
 from app.services.voice_clone_service import clone_voice
 from app.services.voice_store_service import (
@@ -377,6 +384,11 @@ async def create_voice(
     _auth: None = Depends(verify_api_key),
 ):
     """Upload a short audio sample; validate and store speaker embedding. Returns voice_id or job_id when queue is enabled."""
+    if is_hume_provider():
+        raise HTTPException(
+            501,
+            "Voice cloning is not managed by this server when TTS_PROVIDER=hume. Hume custom voices must be created in Hume first, then used here by voice ID.",
+        )
     check_abuse_clone(get_remote_address(request))
     if not audio.filename:
         raise HTTPException(400, "No file")
@@ -485,6 +497,8 @@ def job_result(job_id: str):
 # --- List all voices (for UI dropdown and My voices panel) ---
 @router.get("/voices/list")
 def voices_list(request: Request, owner_id: Optional[str] = Depends(get_owner_id)):
+    if is_hume_provider():
+        return list_hume_voices()
     voices = list_voices(owner_id=owner_id)
     usable = []
     for voice in voices:
@@ -498,6 +512,11 @@ def voices_list(request: Request, owner_id: Optional[str] = Depends(get_owner_id
 # --- GDPR: get voice metadata / delete voice ---
 @router.get("/voices/{voice_id}")
 def get_voice(voice_id: str, request: Request, owner_id: Optional[str] = Depends(get_owner_id)):
+    if is_hume_provider():
+        meta = get_hume_voice(voice_id)
+        if not meta:
+            raise HTTPException(404, "Voice not found")
+        return meta
     meta = get_metadata(voice_id, owner_id=owner_id)
     if not meta:
         raise HTTPException(404, "Voice not found")
@@ -506,6 +525,13 @@ def get_voice(voice_id: str, request: Request, owner_id: Optional[str] = Depends
 @router.delete("/voices/{voice_id}")
 def remove_voice(voice_id: str, request: Request, _auth: None = Depends(verify_api_key), owner_id: Optional[str] = Depends(get_owner_id)):
     """Delete voice embedding and metadata (GDPR right to erasure)."""
+    if is_hume_provider():
+        try:
+            if delete_hume_voice(voice_id):
+                return {"deleted": voice_id}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        raise HTTPException(404, "Voice not found")
     if delete_voice(voice_id, owner_id=owner_id):
         return {"deleted": voice_id}
     raise HTTPException(404, "Voice not found")
@@ -529,6 +555,8 @@ class PatchVoiceBody(BaseModel):
 @router.patch("/voices/{voice_id}")
 def patch_voice(voice_id: str, body: PatchVoiceBody, request: Request, _auth: None = Depends(verify_api_key), owner_id: Optional[str] = Depends(get_owner_id)):
     """Update voice metadata (e.g. name). Body: {"name": "optional new name"}."""
+    if is_hume_provider():
+        raise HTTPException(501, "Voice metadata edits are not supported by this server when TTS_PROVIDER=hume.")
     if not update_metadata(voice_id, name=body.name, owner_id=owner_id):
         raise HTTPException(404, "Voice not found")
     meta = get_metadata(voice_id, owner_id=owner_id)
@@ -945,6 +973,75 @@ async def delete_campaign(campaign_id: int, request: Request, _auth: None = Depe
     return {"deleted": campaign_id}
 
 
+class AssignVoiceBody(BaseModel):
+    voice_id: str
+
+
+@router.patch("/api/campaigns/{campaign_id}/npcs/{npc_name}/voice")
+@limiter.limit("120/minute")
+async def assign_npc_voice(
+    campaign_id: int,
+    npc_name: str,
+    body: AssignVoiceBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Persist voice assignment for an NPC within a campaign. Updates relational row + data_json."""
+    updated = campaign_repository.assign_npc_voice(campaign_id, npc_name, body.voice_id)
+    if not updated:
+        # Campaign may not be in DB yet; return 200 so frontend doesn't treat as hard error
+        return {"ok": False, "reason": "campaign or npc not found in db"}
+    return {"ok": True, "campaign_id": campaign_id, "npc_name": npc_name, "voice_id": body.voice_id}
+
+
+class SessionEventBody(BaseModel):
+    type: str = "assistant"
+    text: str
+    scene_id: Optional[str] = None
+    session_id: Optional[str] = None
+    id: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+@router.post("/api/campaigns/{campaign_id}/events")
+@limiter.limit("300/minute")
+async def append_campaign_event(
+    campaign_id: int,
+    body: SessionEventBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Append a session event (action log entry) to a campaign. Returns event id."""
+    try:
+        event_id = campaign_repository.append_session_event(
+            campaign_id=campaign_id,
+            event_type=body.type,
+            text=body.text,
+            scene_id=body.scene_id,
+            session_id=body.session_id,
+            event_id=body.id,
+            created_at=body.created_at,
+        )
+        return {"ok": True, "event_id": event_id, "campaign_id": campaign_id}
+    except Exception as exc:
+        logging.warning("Failed to append session event for campaign %s: %s", campaign_id, exc)
+        raise HTTPException(500, "Failed to store session event")
+
+
+@router.get("/api/campaigns/{campaign_id}/events")
+@limiter.limit("60/minute")
+async def get_campaign_events(
+    campaign_id: int,
+    request: Request,
+    scene_id: Optional[str] = None,
+    limit: int = 100,
+    _auth: None = Depends(verify_api_key),
+):
+    """Return session events for a campaign, optionally filtered by scene_id."""
+    events = campaign_repository.get_session_events(campaign_id, scene_id=scene_id, limit=min(limit, 500))
+    return {"campaign_id": campaign_id, "events": events}
+
+
 def _extract_images_from_pdf(
     raw: bytes,
     embedded_dir: Path,
@@ -1172,9 +1269,9 @@ async def tts_endpoint(
     _auth: None = Depends(verify_api_key),
     language_tag: str = Form("en"),
     voice_id: Optional[str] = Form(None),
-    temperature: float = Form(0.65),       # Lowered from 0.75 for stability
-    top_p: float = Form(0.80),             # Lowered from 0.85
-    repetition_penalty: float = Form(1.15), # Lowered from 2.0 to stop slurring
+    temperature: float = Form(DEFAULT_TTS_TEMPERATURE),
+    top_p: float = Form(DEFAULT_TTS_TOP_P),
+    repetition_penalty: float = Form(DEFAULT_TTS_REPETITION_PENALTY),
     reference_audio: Optional[UploadFile] = File(None),
 ):
     """
@@ -1202,12 +1299,16 @@ async def tts_endpoint(
         if _is_preset_voice(voice_id):
             speaker_emb_path = voice_id.strip()
         else:
+            if is_hume_provider():
+                raise HTTPException(404, "Voice not found")
             speaker_emb_path = load_embedding_path(voice_id)
         if not speaker_emb_path:
             raise HTTPException(404, "Voice not found")
 
     # Option B: One-off reference audio (Pocket loads voice from WAV path)
     elif reference_audio and reference_audio.filename:
+        if is_hume_provider():
+            raise HTTPException(501, "Reference-audio cloning is not supported when TTS_PROVIDER=hume.")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(await reference_audio.read())
             tmp_path = tmp.name
@@ -1321,6 +1422,8 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     if _is_preset_voice(body.voice_id):
         speaker_emb_path = body.voice_id.strip()
     else:
+        if is_hume_provider():
+            raise HTTPException(404, "Voice not found")
         speaker_emb_path = load_embedding_path(body.voice_id)
     if not speaker_emb_path:
         raise HTTPException(404, "Voice not found")
@@ -1339,9 +1442,9 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
                 chunk,
                 language_tag=language_tag,
                 speaker_emb_path=speaker_emb_path,
-                temperature=0.65,
-                top_p=0.80,
-                repetition_penalty=1.15,
+                temperature=DEFAULT_TTS_TEMPERATURE,
+                top_p=DEFAULT_TTS_TOP_P,
+                repetition_penalty=DEFAULT_TTS_REPETITION_PENALTY,
             )
             if sr_out is None:
                 sr_out = sr
@@ -1356,10 +1459,18 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     except FileNotFoundError as e:
         increment("errors_total")
         raise HTTPException(404, str(e))
+    except ImportError as e:
+        increment("errors_total")
+        logging.exception("TTS model or dependency failed to load")
+        raise HTTPException(503, f"TTS model unavailable: {e!s}")
     except RuntimeError as e:
         increment("errors_total")
         logging.exception("Narrate TTS failed")
         raise HTTPException(500, str(e))
+    except Exception as e:
+        increment("errors_total")
+        logging.exception("Narrate failed with unexpected error")
+        raise HTTPException(503, f"TTS error: {type(e).__name__}: {e!s}")
 
     concatenated = np.concatenate(audio_list)
     increment("tts_requests_total")

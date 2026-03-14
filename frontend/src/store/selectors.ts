@@ -103,66 +103,60 @@ export function getNpcsForVoice(state: CampaignContextState, voiceId: string): N
 
 /** Hook wrappers — subscribe to store and return selector results. */
 import { useCampaignContextStore } from "./campaignContext";
-
-function useStoreSelector<T>(selector: (state: CampaignContextState) => T): T {
-  return useCampaignContextStore(selector);
-}
+import { useShallow } from "zustand/react/shallow";
 
 export function useActiveCampaign(): Campaign | null {
-  return useStoreSelector(getActiveCampaign);
+  return useCampaignContextStore(getActiveCampaign);
 }
 
 export function useActiveSession(): Session | null {
-  return useStoreSelector(getActiveSession);
+  return useCampaignContextStore(getActiveSession);
 }
 
 export function useActiveScene(): Scene | null {
-  return useStoreSelector(getActiveScene);
+  return useCampaignContextStore(getActiveScene);
 }
 
 export function useSceneNpcs(sceneId: string | null | undefined): Npc[] {
-  const state = useStoreSelector((s) => s);
-  const sid = sceneId ?? state.activeSceneId;
-  return sid ? getSceneNpcs(state, sid) : [];
+  const activeSceneId = useCampaignContextStore((s) => s.activeSceneId);
+  const sid = sceneId ?? activeSceneId;
+  return useCampaignContextStore(useShallow((s) => (sid ? getSceneNpcs(s, sid) : [])));
 }
 
 export function useSceneCodexEntries(sceneId: string | null | undefined): CodexEntry[] {
-  const state = useStoreSelector((s) => s);
-  const sid = sceneId ?? state.activeSceneId;
-  return sid ? getSceneCodexEntries(state, sid) : [];
+  const activeSceneId = useCampaignContextStore((s) => s.activeSceneId);
+  const sid = sceneId ?? activeSceneId;
+  return useCampaignContextStore(useShallow((s) => (sid ? getSceneCodexEntries(s, sid) : [])));
 }
 
 export function useVoices(): Voice[] {
-  return useStoreSelector((s) => s.voices);
+  return useCampaignContextStore(useShallow((s) => s.voices));
 }
 
 export function useNpcVoice(npcId: string | null | undefined): Voice | null {
-  const state = useStoreSelector((s) => s);
-  return npcId ? getNpcVoice(state, npcId) : null;
+  return useCampaignContextStore((s) => (npcId ? getNpcVoice(s, npcId) : null));
 }
 
 export function useVoicesForNpc(npcId: string | null | undefined): Voice[] {
-  const state = useStoreSelector((s) => s);
-  return npcId ? getVoicesForNpc(state, npcId) : [];
+  return useCampaignContextStore(useShallow((s) => (npcId ? getVoicesForNpc(s, npcId) : [])));
 }
 
 export function useActionLogForActiveScene(): ActionLogEvent[] {
-  return useStoreSelector(getActionLogForActiveScene);
+  return useCampaignContextStore(useShallow(getActionLogForActiveScene));
 }
 
 export function useNarrationClipsForActiveScene(): NarrationClip[] {
-  return useStoreSelector(getNarrationClipsForActiveScene);
+  return useCampaignContextStore(useShallow(getNarrationClipsForActiveScene));
 }
 
 export function useCodexEntriesForActiveCampaign(): CodexEntry[] {
-  return useStoreSelector(getCodexEntriesForCampaign);
+  return useCampaignContextStore(useShallow(getCodexEntriesForCampaign));
 }
 
 export function useNpcsForActiveCampaign(): Npc[] {
-  return useStoreSelector(getNpcsForActiveCampaign);
+  return useCampaignContextStore(useShallow(getNpcsForActiveCampaign));
 }
 
 export function useNpcsForVoice(voiceId: string | null | undefined): Npc[] {
-  const state = useStoreSelector((s) => s);
-  return voiceId ? getNpcsForVoice(state, voiceId) : [];
+  return useCampaignContextStore(useShallow((s) => (voiceId ? getNpcsForVoice(s, voiceId) : [])));
 }

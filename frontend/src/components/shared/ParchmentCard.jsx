@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Base container with optional title, header actions, content, and footer.
  * Uses parchment/wood styles from styles.css.

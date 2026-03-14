@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Preferred voice dropdown for the NPC (form field).
  */

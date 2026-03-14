@@ -1,5 +1,3 @@
-import React from "react";
-
 const roleStyles = {
   player: "border-[#5d472a] bg-[#1c120a] text-[#e6c785]",
   error: "border-red-900/70 bg-red-950/20 text-red-300",

@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function TopBanner({ campaignName, activeScene, sessionTime, audioStatus }) {
   const audioLabel =
     audioStatus === "loading" ? "Loading…" : audioStatus === "playing" ? "Playing" : "Idle";

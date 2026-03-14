@@ -1,4 +1,3 @@
-import React from "react";
 import { BookOpen, Users, Mic, LayoutDashboard } from "lucide-react";
 import EmptyState from "./EmptyState";
 

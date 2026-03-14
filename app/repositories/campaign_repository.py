@@ -1,15 +1,17 @@
 """
-Campaign persistence: list, get, delete, create.
+Campaign persistence: list, get, delete, create, voice assignment, session events.
 Uses campaign DB (codm.db) via SessionLocal; session handling is internal.
 """
 from __future__ import annotations
 
 import json
 import logging
+import uuid
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.infrastructure.database import SessionLocal
-from app.infrastructure.db_models import Campaign, NPC, Scene, Location
+from app.infrastructure.db_models import Campaign, NPC, Scene, Location, SessionEvent
 
 
 def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str, Any]]:
@@ -59,6 +61,7 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
                 "ac": n.ac,
                 "cr": n.cr,
                 "image_url": n.image_url,
+                "voice_id": n.voice_id,
             }
             for n in campaign.npcs
         ],
@@ -177,6 +180,7 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
                     ac=n.get("ac") or None,
                     cr=n.get("cr", ""),
                     image_url=n.get("image_url"),
+                    voice_id=n.get("voice_id"),
                 )
             )
         for s in result.get("scenes", []):
@@ -204,5 +208,108 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
             )
         db.commit()
         return campaign.id
+    finally:
+        db.close()
+
+
+def assign_npc_voice(campaign_id: int, npc_name: str, voice_id: str) -> bool:
+    """
+    Set voice_id on the NPC with the given name within campaign_id.
+    Updates both the relational NPC row and the NPC entry in data_json.
+    Returns True if at least one NPC was updated.
+    """
+    db = SessionLocal()
+    try:
+        c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if c is None:
+            return False
+
+        updated = False
+
+        # Update relational NPC row(s) matching the name
+        for npc in db.query(NPC).filter(NPC.campaign_id == campaign_id, NPC.name == npc_name).all():
+            npc.voice_id = voice_id
+            updated = True
+
+        # Update data_json NPC entry
+        raw = (c.data_json or "").strip()
+        if raw:
+            try:
+                payload = json.loads(raw)
+                if isinstance(payload, dict) and isinstance(payload.get("npcs"), list):
+                    for npc_entry in payload["npcs"]:
+                        if isinstance(npc_entry, dict) and npc_entry.get("name") == npc_name:
+                            npc_entry["voice_id"] = voice_id
+                            updated = True
+                    c.data_json = json.dumps(payload, ensure_ascii=False)
+            except (json.JSONDecodeError, TypeError):
+                logging.warning("Campaign %s data_json invalid during voice assignment", campaign_id)
+
+        if updated:
+            db.commit()
+        return updated
+    finally:
+        db.close()
+
+
+def append_session_event(
+    campaign_id: int,
+    event_type: str,
+    text: str,
+    scene_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    event_id: Optional[str] = None,
+    created_at: Optional[str] = None,
+) -> str:
+    """
+    Append a session event for the given campaign. Returns the event id.
+    """
+    db = SessionLocal()
+    try:
+        eid = event_id or str(uuid.uuid4())
+        ts = created_at or datetime.now(timezone.utc).isoformat()
+        event = SessionEvent(
+            id=eid,
+            campaign_id=campaign_id,
+            scene_id=scene_id,
+            session_id=session_id,
+            type=event_type,
+            text=text,
+            created_at=ts,
+        )
+        db.add(event)
+        db.commit()
+        return eid
+    finally:
+        db.close()
+
+
+def get_session_events(
+    campaign_id: int,
+    scene_id: Optional[str] = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """
+    Return session events for a campaign, optionally filtered by scene_id.
+    Ordered oldest-first; capped at limit.
+    """
+    db = SessionLocal()
+    try:
+        q = db.query(SessionEvent).filter(SessionEvent.campaign_id == campaign_id)
+        if scene_id:
+            q = q.filter(SessionEvent.scene_id == scene_id)
+        events = q.order_by(SessionEvent.created_at).limit(limit).all()
+        return [
+            {
+                "id": e.id,
+                "campaign_id": e.campaign_id,
+                "scene_id": e.scene_id,
+                "session_id": e.session_id,
+                "type": e.type,
+                "text": e.text,
+                "created_at": e.created_at,
+            }
+            for e in events
+        ]
     finally:
         db.close()

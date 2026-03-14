@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Center panel: contains SessionLog, NarrationComposer, AudioPlaybackCard (via children from App).
  * Section header "Live Session" is rendered by LiveBoardPage.

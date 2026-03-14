@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Search input for the Codex research view. Fantasy-styled.
  */

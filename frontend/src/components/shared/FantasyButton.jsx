@@ -1,5 +1,3 @@
-import React from "react";
-
 const variants = {
   primary:
     "nav-glyph-btn is-active border-[var(--gold)] text-[var(--candle-glow)] hover:border-[var(--gold)] hover:text-[var(--candle-glow)]",

@@ -7,8 +7,14 @@ from pathlib import Path
 # Project root (app/core/config.py -> parent.parent = app -> parent = root)
 _ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
-# TTS engine (KaniTTS-2 via nineninesix.ai)
+# TTS engine
+TTS_PROVIDER = (os.environ.get("TTS_PROVIDER", "kani") or "kani").strip().lower()
 AUDIO_CACHE_SIZE = int(os.environ.get("AUDIO_CACHE_SIZE", "10"))
+HUME_API_KEY = os.environ.get("HUME_API_KEY", "").strip()
+HUME_SECRET_KEY = os.environ.get("HUME_SECRET_KEY", "").strip()
+HUME_BASE_URL = os.environ.get("HUME_BASE_URL", "https://api.hume.ai").strip()
+HUME_TTS_VERSION = os.environ.get("HUME_TTS_VERSION", "2").strip()
+DEFAULT_VOICE_ID = os.environ.get("DEFAULT_VOICE_ID", "").strip()
 
 # Server (Gradio and FastAPI)
 SERVER_NAME = os.environ.get("SERVER_NAME", "0.0.0.0")
