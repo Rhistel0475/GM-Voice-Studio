@@ -154,7 +154,11 @@ def create_app() -> FastAPI:
         init_db()
         configure_logging()
         settings = get_settings()
-        logging.info("Kani TTS API starting; models load on first request.")
+        logging.info(
+            "GM Voice Studio starting with TTS provider=%s default_voice_id=%s",
+            settings.tts.provider,
+            settings.tts.default_voice_id or "(none)",
+        )
         if not settings.hf_token:
             logging.warning("HF_TOKEN is not set. Voice cloning may fail.")
         else:

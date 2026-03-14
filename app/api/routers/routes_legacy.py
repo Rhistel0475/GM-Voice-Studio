@@ -60,10 +60,14 @@ from app.services.tts_service import (
     DEFAULT_TTS_REPETITION_PENALTY,
     DEFAULT_TTS_TEMPERATURE,
     DEFAULT_TTS_TOP_P,
+    delete_hume_voice,
     generate as tts_generate,
+    get_hume_voice,
     get_preset_voices,
     get_supported_language_tags,
     _is_preset_voice,
+    is_hume_provider,
+    list_hume_voices,
 )
 from app.services.voice_clone_service import clone_voice
 from app.services.voice_store_service import (
@@ -380,6 +384,11 @@ async def create_voice(
     _auth: None = Depends(verify_api_key),
 ):
     """Upload a short audio sample; validate and store speaker embedding. Returns voice_id or job_id when queue is enabled."""
+    if is_hume_provider():
+        raise HTTPException(
+            501,
+            "Voice cloning is not managed by this server when TTS_PROVIDER=hume. Hume custom voices must be created in Hume first, then used here by voice ID.",
+        )
     check_abuse_clone(get_remote_address(request))
     if not audio.filename:
         raise HTTPException(400, "No file")
@@ -488,6 +497,8 @@ def job_result(job_id: str):
 # --- List all voices (for UI dropdown and My voices panel) ---
 @router.get("/voices/list")
 def voices_list(request: Request, owner_id: Optional[str] = Depends(get_owner_id)):
+    if is_hume_provider():
+        return list_hume_voices()
     voices = list_voices(owner_id=owner_id)
     usable = []
     for voice in voices:
@@ -501,6 +512,11 @@ def voices_list(request: Request, owner_id: Optional[str] = Depends(get_owner_id
 # --- GDPR: get voice metadata / delete voice ---
 @router.get("/voices/{voice_id}")
 def get_voice(voice_id: str, request: Request, owner_id: Optional[str] = Depends(get_owner_id)):
+    if is_hume_provider():
+        meta = get_hume_voice(voice_id)
+        if not meta:
+            raise HTTPException(404, "Voice not found")
+        return meta
     meta = get_metadata(voice_id, owner_id=owner_id)
     if not meta:
         raise HTTPException(404, "Voice not found")
@@ -509,6 +525,13 @@ def get_voice(voice_id: str, request: Request, owner_id: Optional[str] = Depends
 @router.delete("/voices/{voice_id}")
 def remove_voice(voice_id: str, request: Request, _auth: None = Depends(verify_api_key), owner_id: Optional[str] = Depends(get_owner_id)):
     """Delete voice embedding and metadata (GDPR right to erasure)."""
+    if is_hume_provider():
+        try:
+            if delete_hume_voice(voice_id):
+                return {"deleted": voice_id}
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        raise HTTPException(404, "Voice not found")
     if delete_voice(voice_id, owner_id=owner_id):
         return {"deleted": voice_id}
     raise HTTPException(404, "Voice not found")
@@ -532,6 +555,8 @@ class PatchVoiceBody(BaseModel):
 @router.patch("/voices/{voice_id}")
 def patch_voice(voice_id: str, body: PatchVoiceBody, request: Request, _auth: None = Depends(verify_api_key), owner_id: Optional[str] = Depends(get_owner_id)):
     """Update voice metadata (e.g. name). Body: {"name": "optional new name"}."""
+    if is_hume_provider():
+        raise HTTPException(501, "Voice metadata edits are not supported by this server when TTS_PROVIDER=hume.")
     if not update_metadata(voice_id, name=body.name, owner_id=owner_id):
         raise HTTPException(404, "Voice not found")
     meta = get_metadata(voice_id, owner_id=owner_id)
@@ -1274,12 +1299,16 @@ async def tts_endpoint(
         if _is_preset_voice(voice_id):
             speaker_emb_path = voice_id.strip()
         else:
+            if is_hume_provider():
+                raise HTTPException(404, "Voice not found")
             speaker_emb_path = load_embedding_path(voice_id)
         if not speaker_emb_path:
             raise HTTPException(404, "Voice not found")
 
     # Option B: One-off reference audio (Pocket loads voice from WAV path)
     elif reference_audio and reference_audio.filename:
+        if is_hume_provider():
+            raise HTTPException(501, "Reference-audio cloning is not supported when TTS_PROVIDER=hume.")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             tmp.write(await reference_audio.read())
             tmp_path = tmp.name
@@ -1393,6 +1422,8 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     if _is_preset_voice(body.voice_id):
         speaker_emb_path = body.voice_id.strip()
     else:
+        if is_hume_provider():
+            raise HTTPException(404, "Voice not found")
         speaker_emb_path = load_embedding_path(body.voice_id)
     if not speaker_emb_path:
         raise HTTPException(404, "Voice not found")

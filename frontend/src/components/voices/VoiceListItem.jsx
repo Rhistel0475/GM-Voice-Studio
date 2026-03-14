@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { Crown, Play } from "lucide-react";
 
 const SOURCE_LABELS = { system: "System", cloned: "Cloned", custom: "Custom" };
 
@@ -10,6 +10,7 @@ export default function VoiceListItem({ voice, selected, onSelect, onPlaySample 
   const name = voice?.name?.trim() || id || "Unknown";
   const source = voice?.source;
   const tone = voice?.tone;
+  const featured = Boolean(voice?.featured);
   const pill = source ? SOURCE_LABELS[source] || source : tone || "";
   const excerpt = voice?.description || (voice?.tags?.length ? voice.tags.slice(0, 3).join(", ") : "");
 
@@ -44,8 +45,14 @@ export default function VoiceListItem({ voice, selected, onSelect, onPlaySample 
           </button>
         )}
         <span className="font-heading text-[var(--text-1)] text-sm">
+          {featured ? <Crown size={13} className="inline mr-1 text-[var(--gold)]" aria-hidden /> : null}
           {name}
         </span>
+        {featured && (
+          <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-[var(--gold)] text-[var(--gold)] shrink-0">
+            Master Voice
+          </span>
+        )}
         {pill && (
           <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-[#5c3e23] text-[var(--text-2)] shrink-0">
             {pill}

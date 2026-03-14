@@ -22,6 +22,8 @@
  * @property {VoiceStatus} status
  * @property {string} [accent]
  * @property {VoiceTone} [tone]
+ * @property {boolean} [featured]
+ * @property {string} [icon]
  * @property {string[]} tags
  * @property {string} [sampleUrl]
  * @property {string[]} [assignedNPCs]

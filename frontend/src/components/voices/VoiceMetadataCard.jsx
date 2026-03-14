@@ -1,3 +1,4 @@
+import { Crown } from "lucide-react";
 import { StatusPill } from "../shared";
 
 const SOURCE_LABELS = { system: "System", cloned: "Cloned", custom: "Custom" };
@@ -17,6 +18,7 @@ export default function VoiceMetadataCard({ voice }) {
   const tags = voice.tags || [];
   const description = voice.description;
   const updatedAt = voice.updatedAt;
+  const featured = Boolean(voice.featured);
 
   const statusVariant = status === "ready" ? "ready" : status === "training" ? "generating" : status === "failed" ? "recording" : "offline";
 
@@ -25,6 +27,15 @@ export default function VoiceMetadataCard({ voice }) {
       <p className="text-xs font-heading uppercase tracking-wider" style={{ color: "#6b3e10" }}>Details</p>
       <div className="flex flex-wrap items-center gap-2">
         <StatusPill status={statusVariant} />
+        {featured && (
+          <span
+            className="text-xs font-heading border px-2 py-0.5 rounded inline-flex items-center gap-1"
+            style={{ color: "#6b3e10", borderColor: "#a17a42", background: "rgba(202,167,75,0.18)" }}
+          >
+            <Crown size={12} aria-hidden />
+            Master Voice
+          </span>
+        )}
         {source && (
           <span
             className="text-xs font-heading border px-2 py-0.5 rounded"

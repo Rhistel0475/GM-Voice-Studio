@@ -124,6 +124,7 @@ After `npm run build`, open **http://localhost:7862/preview**.
 | `VOICE_STORAGE_PATH` | `./voice_storage` | Directory for cloned voice files (.safetensors) and metadata |
 | `API_KEYS` | (empty) | Comma-separated API keys; header `X-API-Key` |
 | `REQUIRE_API_KEY` | (unset) | Set to `1`/`true`/`yes` to require key for TTS/clone |
+| `TTS_PROVIDER` | `kani` | TTS backend: `kani` for local Pocket/Kani TTS, or `hume` for Hume Octave |
 
 Optional features (see [app/core/config.py](app/core/config.py) for full list):
 
@@ -138,6 +139,10 @@ Optional features (see [app/core/config.py](app/core/config.py) for full list):
 | `ABUSE_CLONE_PER_IP_PER_HOUR` | Max clones per IP per hour (0 = disable) |
 | `RATE_LIMIT_GLOBAL`, `RATE_LIMIT_TTS`, `RATE_LIMIT_CLONE` | e.g. `60/minute`; empty = no limit |
 | `HF_TOKEN` | Hugging Face token for **voice cloning** (gated model). Optional if you run `hf auth login` first — then the cached token is used. Otherwise create at [hf.co/settings/tokens](https://huggingface.co/settings/tokens), request access at [hf.co/kyutai/pocket-tts](https://huggingface.co/kyutai/pocket-tts), and set `HF_TOKEN=hf_...` in `.env` (no spaces/quotes). |
+| `HUME_API_KEY` | Hume API key used when `TTS_PROVIDER=hume` |
+| `HUME_SECRET_KEY` | Optional Hume secret key for future integrations; not required by the current TTS path |
+| `HUME_BASE_URL` | Base URL for Hume API requests; defaults to `https://api.hume.ai` |
+| `HUME_TTS_VERSION` | Hume TTS version string sent to `/v0/tts/file`; defaults to `2` |
 
 ## API overview
 
@@ -153,6 +158,8 @@ Optional features (see [app/core/config.py](app/core/config.py) for full list):
 - **POST /tts/narrate** – Long-form: JSON `text`, `voice_id` (preset or cloned), optional `language_tag`, `chunk_by`, `max_chars`; returns WAV.
 - **GET /voices/list**, **GET /voices/{id}**, **PATCH /voices/{id}**, **DELETE /voices/{id}** – List and manage cloned voices.
 - **DELETE /admin/voices/{voice_id}** – Take-down (requires `X-Admin-Key` when `ADMIN_API_KEY` is set).
+
+When `TTS_PROVIDER=hume`, `/voices/list` returns Hume voice IDs in the form `hume:<provider>:<id>`, `/tts` and `/tts/narrate` synthesize through Hume, and local clone endpoints are intentionally unavailable from this server.
 
 Full request/response schemas: **http://localhost:7862/docs** (or your host/port).
 

@@ -16,6 +16,8 @@ function mapVoiceToProfile(raw) {
     name: raw.name || raw.display_name || "Unnamed Voice",
     source: raw.source || "system",
     status: raw.status || "ready",
+    featured: Boolean(raw.featured),
+    icon: raw.icon,
     accent: raw.accent,
     tone: raw.tone,
     tags: Array.isArray(raw.tags) ? raw.tags : [],
