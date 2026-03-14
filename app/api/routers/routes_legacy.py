@@ -10,6 +10,7 @@ try:
 except ImportError:
     pass
 
+import base64
 import io
 import json
 import logging
@@ -49,6 +50,7 @@ from app.core.config import (
     DEEPGRAM_API_KEY,
     DEEPGRAM_LANGUAGE,
     DEEPGRAM_MODEL,
+    DEFAULT_VOICE_ID,
     NARRATE_RESULT_PATH,
     PENDING_CLONE_PATH,
     RATE_LIMIT_CLONE,
@@ -68,6 +70,7 @@ from app.services.tts_service import (
     _is_preset_voice,
     is_hume_provider,
     list_hume_voices,
+    normalize_stored_voice,
 )
 from app.services.voice_clone_service import clone_voice
 from app.services.voice_store_service import (
@@ -93,6 +96,35 @@ _ASSETS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "static" / 
 
 def _lang_tags():
     return get_supported_language_tags()
+
+
+def _resolve_voice_target(voice_id: str) -> str:
+    raw_voice_id = (voice_id or "").strip()
+    if not raw_voice_id:
+        raise HTTPException(400, "Voice not found")
+    if _is_preset_voice(raw_voice_id):
+        return raw_voice_id
+    if is_hume_provider():
+        raise HTTPException(404, "Voice not found")
+    speaker_emb_path = load_embedding_path(raw_voice_id)
+    if not speaker_emb_path:
+        raise HTTPException(404, "Voice not found")
+    return speaker_emb_path
+
+
+def _audio_to_wav_response(audio, sample_rate: int, filename: str = "narration.wav") -> StreamingResponse:
+    buf = io.BytesIO()
+    sf.write(buf, audio, sample_rate, format="WAV")
+    buf.seek(0)
+    response = StreamingResponse(buf, media_type="audio/wav")
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+def _audio_to_wav_base64(audio, sample_rate: int) -> str:
+    buf = io.BytesIO()
+    sf.write(buf, audio, sample_rate, format="WAV")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
 def _cleanup_old_sessions(assets_dir: Path, max_age_seconds: int = 3600) -> None:
@@ -506,7 +538,7 @@ def voices_list(request: Request, owner_id: Optional[str] = Depends(get_owner_id
         if not voice_id:
             continue
         if load_embedding_path(voice_id):
-            usable.append(voice)
+            usable.append(normalize_stored_voice(voice))
     return usable
 
 # --- GDPR: get voice metadata / delete voice ---
@@ -520,7 +552,7 @@ def get_voice(voice_id: str, request: Request, owner_id: Optional[str] = Depends
     meta = get_metadata(voice_id, owner_id=owner_id)
     if not meta:
         raise HTTPException(404, "Voice not found")
-    return meta
+    return normalize_stored_voice(meta)
 
 @router.delete("/voices/{voice_id}")
 def remove_voice(voice_id: str, request: Request, _auth: None = Depends(verify_api_key), owner_id: Optional[str] = Depends(get_owner_id)):
@@ -1373,6 +1405,41 @@ class NarrateBody(BaseModel):
     async_: bool = Field(False, alias="async")  # when True and Celery enabled, enqueue and return job_id
 
 
+class NpcDialogueBody(BaseModel):
+    npc_id: str
+    text: str
+
+
+class NarrateSceneBody(BaseModel):
+    scene_id: str
+
+
+class GenerateNpcDialogueBody(BaseModel):
+    npc_id: str
+    player_input: str
+
+
+def _synthesize_text(
+    *,
+    text: str,
+    voice_id: str,
+    language_tag: str = "en",
+):
+    supported = _lang_tags()
+    lang_tag = (language_tag or "").strip() or "en"
+    if lang_tag not in supported and supported:
+        lang_tag = supported[0]
+    speaker_emb_path = _resolve_voice_target(voice_id)
+    return tts_generate(
+        text.strip(),
+        language_tag=lang_tag,
+        speaker_emb_path=speaker_emb_path,
+        temperature=DEFAULT_TTS_TEMPERATURE,
+        top_p=DEFAULT_TTS_TOP_P,
+        repetition_penalty=DEFAULT_TTS_REPETITION_PENALTY,
+    )
+
+
 @router.post("/tts/narrate")
 @limiter.limit("5/minute")
 async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends(verify_api_key)):
@@ -1480,3 +1547,144 @@ async def tts_narrate(request: Request, body: NarrateBody, _auth: None = Depends
     response = StreamingResponse(buf, media_type="audio/wav")
     response.headers["Content-Disposition"] = 'attachment; filename="narration.wav"'
     return response
+
+
+@router.post("/tts/npc-dialogue")
+@limiter.limit("20/minute")
+async def tts_npc_dialogue(request: Request, body: NpcDialogueBody, _auth: None = Depends(verify_api_key)):
+    text = (body.text or "").strip()
+    if not text:
+        raise HTTPException(400, "No text")
+
+    npc = await run_in_threadpool(campaign_repository.get_npc_record, body.npc_id)
+    if not npc:
+        raise HTTPException(404, "NPC not found")
+
+    voice_id = str(npc.get("voice_id") or "").strip()
+    if not voice_id:
+        raise HTTPException(400, "NPC has no assigned voice.")
+    request.state.voice_id = voice_id
+
+    try:
+        audio, sr = await run_in_threadpool(
+            _synthesize_text,
+            text=text,
+            voice_id=voice_id,
+        )
+    except ValueError as e:
+        increment("errors_total")
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        increment("errors_total")
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        increment("errors_total")
+        logging.exception("NPC dialogue TTS failed")
+        raise HTTPException(500, str(e))
+
+    increment("tts_requests_total")
+    filename = f"npc-{npc.get('id') or body.npc_id}-dialogue.wav"
+    return _audio_to_wav_response(audio, sr, filename=filename)
+
+
+@router.post("/tts/narrate-scene")
+@limiter.limit("10/minute")
+async def tts_narrate_scene(request: Request, body: NarrateSceneBody, _auth: None = Depends(verify_api_key)):
+    scene = await run_in_threadpool(campaign_repository.get_scene_record, body.scene_id)
+    if not scene:
+        raise HTTPException(404, "Scene not found")
+
+    text = str(scene.get("read_aloud") or scene.get("notes") or "").strip()
+    if not text:
+        raise HTTPException(400, "Scene has no narration text.")
+
+    voice_id = str(scene.get("narrator_voice_id") or DEFAULT_VOICE_ID or "").strip()
+    if not voice_id:
+        raise HTTPException(400, "No narrator voice configured for this scene or campaign.")
+    request.state.voice_id = voice_id
+
+    try:
+        audio, sr = await run_in_threadpool(
+            _synthesize_text,
+            text=text,
+            voice_id=voice_id,
+        )
+    except ValueError as e:
+        increment("errors_total")
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        increment("errors_total")
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        increment("errors_total")
+        logging.exception("Scene narration TTS failed")
+        raise HTTPException(500, str(e))
+
+    increment("tts_requests_total")
+    filename = f"scene-{scene.get('id') or body.scene_id}-narration.wav"
+    return _audio_to_wav_response(audio, sr, filename=filename)
+
+
+@router.post("/npc/generate-dialogue")
+@limiter.limit("20/minute")
+async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody, _auth: None = Depends(verify_api_key)):
+    player_input = (body.player_input or "").strip()
+    if not player_input:
+        raise HTTPException(400, "Player input is required.")
+
+    npc = await run_in_threadpool(campaign_repository.get_npc_record, body.npc_id)
+    if not npc:
+        raise HTTPException(404, "NPC not found")
+
+    voice_id = str(npc.get("voice_id") or "").strip()
+    if not voice_id:
+        raise HTTPException(400, "NPC has no assigned voice.")
+    request.state.voice_id = voice_id
+
+    personality = (
+        str(npc.get("description") or "").strip()
+        or str(npc.get("personality") or "").strip()
+        or str(npc.get("role") or "").strip()
+        or "An NPC in a tabletop RPG campaign."
+    )
+
+    from app.services.ai_service import generate_dialogue
+
+    try:
+        generated_text = await run_in_threadpool(
+            generate_dialogue,
+            npc_name=str(npc.get("name") or "NPC"),
+            personality=personality,
+            situation=player_input,
+            conversation_history=[{"role": "user", "content": player_input}],
+            faction=str(npc.get("faction") or "").strip(),
+        )
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+    try:
+        audio, sr = await run_in_threadpool(
+            _synthesize_text,
+            text=generated_text,
+            voice_id=voice_id,
+        )
+    except ValueError as e:
+        increment("errors_total")
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        increment("errors_total")
+        raise HTTPException(404, str(e))
+    except RuntimeError as e:
+        increment("errors_total")
+        logging.exception("Generated NPC dialogue TTS failed")
+        raise HTTPException(500, str(e))
+
+    increment("tts_requests_total")
+    return {
+        "npc_id": str(npc.get("id") or body.npc_id),
+        "npc_name": npc.get("name") or "NPC",
+        "voice_id": voice_id,
+        "generated_text": generated_text,
+        "audio_base64": _audio_to_wav_base64(audio, sr),
+        "mime_type": "audio/wav",
+    }

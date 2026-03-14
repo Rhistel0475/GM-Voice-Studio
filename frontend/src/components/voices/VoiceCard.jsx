@@ -12,6 +12,7 @@ export default function VoiceCard({ voice, selected, onPlaySample, onAssign, onS
   const source = voice?.source;
   const tone = voice?.tone;
   const featured = Boolean(voice?.featured);
+  const canPreview = voice?.capabilities?.preview !== false;
   const placeholderSrc = getVoicePlaceholder(tone);
 
   const handleCardClick = () => onSelect?.(voice);
@@ -51,6 +52,7 @@ export default function VoiceCard({ voice, selected, onPlaySample, onAssign, onS
         variant="secondary"
         className="text-xs mt-1 w-full"
         onClick={(e) => { e.stopPropagation(); onPlaySample?.(id); }}
+        disabled={!canPreview}
       >
         <Play size={12} className="inline mr-1" /> Play sample
       </FantasyButton>

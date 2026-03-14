@@ -1,6 +1,6 @@
 # Architecture overview
 
-GM Voice Studio is a FastAPI backend serving a React preview UI, with TTS (Pocket TTS), voice cloning, campaign/adventure persistence, RAG, and a live Co-DM WebSocket.
+GM Voice Studio is a FastAPI backend serving a React preview UI, with provider-based TTS, voice management, campaign/adventure persistence, RAG, and a live Co-DM WebSocket.
 
 ## High-level flow
 

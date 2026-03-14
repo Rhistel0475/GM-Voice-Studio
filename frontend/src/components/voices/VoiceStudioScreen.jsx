@@ -59,6 +59,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const voicesFromStore = useVoicesFromStore();
   const [voices, setVoices] = useState([]);
   const [generatedAudio, setGeneratedAudio] = useState([]);
+  const [ttsProvider, setTtsProvider] = useState("kani");
   const [filterState, setFilterState] = useState(defaultVoiceFilterState());
   const [viewMode, setViewMode] = useState("grid");
   const [selectedPreset, setSelectedPreset] = useState("");
@@ -67,6 +68,10 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const [isPlayingSample, setIsPlayingSample] = useState(false);
   const [playingClipId, setPlayingClipId] = useState("");
   const [npcOptions, setNpcOptions] = useState([]);
+  const [npcDialogueNpcId, setNpcDialogueNpcId] = useState("");
+  const [npcDialogueText, setNpcDialogueText] = useState("");
+  const [npcDialogueGeneratedText, setNpcDialogueGeneratedText] = useState("");
+  const [npcDialogueBusy, setNpcDialogueBusy] = useState(false);
 
   // Clone wizard state
   const [cloneStep, setCloneStep] = useState(1);
@@ -111,10 +116,44 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   // Narration panel (right column, below detail)
   const [narrationText, setNarrationText] = useState("");
 
+  const playAudioBlob = useCallback(async (blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.onerror = () => URL.revokeObjectURL(url);
+    await audio.play();
+  }, []);
+
+  const playBase64Audio = useCallback(
+    async (encoded, mimeType = "audio/wav") => {
+      if (!encoded) return;
+      const binary = atob(encoded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      await playAudioBlob(new Blob([bytes], { type: mimeType }));
+    },
+    [playAudioBlob]
+  );
+
   const loadVoices = useCallback(async () => {
     if (!authFetch) return;
     const list = await getVoices(authFetch);
     setVoices(list);
+  }, [authFetch]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!authFetch) return undefined;
+    authFetch("/config")
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((cfg) => {
+        if (!cancelled && cfg?.tts_provider) setTtsProvider(String(cfg.tts_provider));
+      })
+      .catch(() => {
+        if (!cancelled) setTtsProvider("kani");
+      });
+    return () => { cancelled = true; };
   }, [authFetch]);
 
   const loadGeneratedAudio = useCallback(async () => {
@@ -141,6 +180,12 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
     setNpcOptions(npcList);
   }, [npcList]);
 
+  useEffect(() => {
+    if (!npcDialogueNpcId && npcList[0]?.id) {
+      setNpcDialogueNpcId(String(npcList[0].id));
+    }
+  }, [npcDialogueNpcId, npcList]);
+
   const allVoices = useMemo(() => {
     const api = voices;
     const store = voicesFromStore ?? [];
@@ -162,6 +207,8 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
     }
     return v;
   }, [allVoices, selectedVoiceId, assignedNpcsForSelectedVoice]);
+
+  const cloneAvailable = ttsProvider !== "hume";
 
   const playSample = useCallback(
     async (voiceId, text = "The quick brown fox jumps over the lazy dog.") => {
@@ -414,13 +461,56 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
       });
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      new Audio(url).play();
+      await playAudioBlob(blob);
       loadGeneratedAudio();
     } catch (e) {
       if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "Narration failed.");
     }
-  }, [narrationText, selectedVoiceId, authFetch, loadGeneratedAudio]);
+  }, [narrationText, selectedVoiceId, authFetch, loadGeneratedAudio, playAudioBlob]);
+
+  const handleSpeakAsNpc = useCallback(async () => {
+    if (!npcDialogueNpcId || !npcDialogueText.trim() || !authFetch || npcDialogueBusy) return;
+    setNpcDialogueBusy(true);
+    setNpcDialogueGeneratedText("");
+    try {
+      const res = await authFetch("/tts/npc-dialogue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ npc_id: npcDialogueNpcId, text: npcDialogueText.trim() }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || "NPC dialogue failed.");
+      const blob = await res.blob();
+      await playAudioBlob(blob);
+    } catch (e) {
+      if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "NPC dialogue failed.");
+    } finally {
+      setNpcDialogueBusy(false);
+    }
+  }, [authFetch, npcDialogueBusy, npcDialogueNpcId, npcDialogueText, playAudioBlob]);
+
+  const handleGenerateNpcResponse = useCallback(async () => {
+    if (!npcDialogueNpcId || !npcDialogueText.trim() || !authFetch || npcDialogueBusy) return;
+    setNpcDialogueBusy(true);
+    try {
+      const res = await authFetch("/npc/generate-dialogue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ npc_id: npcDialogueNpcId, player_input: npcDialogueText.trim() }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.detail || payload?.error || "NPC response generation failed.");
+      }
+      setNpcDialogueGeneratedText(payload.generated_text || "");
+      if (payload.audio_base64) {
+        await playBase64Audio(payload.audio_base64, payload.mime_type || "audio/wav");
+      }
+    } catch (e) {
+      if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "NPC response generation failed.");
+    } finally {
+      setNpcDialogueBusy(false);
+    }
+  }, [authFetch, npcDialogueBusy, npcDialogueNpcId, npcDialogueText, playBase64Audio]);
 
   return (
     <section className="voice-studio-screen min-h-0 flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 p-2 md:p-3 bg-[var(--wood-2)]/50">
@@ -525,7 +615,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
               onAssignToNpc={handleAssignToNpc}
               onUnassignNpc={handleUnassignNpc}
               onReuseForNarration={handleReuseForNarration}
-              onDeleteVoice={selectedVoice?.source === "system" ? undefined : handleDeleteVoice}
+              onDeleteVoice={selectedVoice?.deletable ? handleDeleteVoice : undefined}
               isDeletingVoice={isDeletingVoice}
             />
             {assignStatus && (
@@ -537,28 +627,34 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
         <div className="panel-ornate rounded border border-[#734f2c] p-2 shrink-0">
           <div className="plaque mb-2">Clone voice wizard</div>
           <div className="panel-body">
-            <VoiceCloneWizard
-              step={cloneStep}
-              setStep={setCloneStep}
-              cloneFile={cloneFile}
-              onFileChange={setCloneFile}
-              cloneName={cloneName}
-              onNameChange={setCloneName}
-              cloneTags={cloneTags}
-              onTagsChange={setCloneTags}
-              onTrain={handleClone}
-              isCloning={isCloning}
-              cloneStatus={cloneStatus}
-              cloneProgress={cloneProgress}
-              cloneVoiceId={cloneVoiceId}
-              cloneVoiceName={cloneVoiceName}
-              onPlayPreview={handlePlayPreview}
-              isPlayingPreview={isPlayingPreview}
-              onSave={handleSaveClone}
-              saving={saving}
-              saved={cloneSaved}
-              saveError={cloneSaveError}
-            />
+            {cloneAvailable ? (
+              <VoiceCloneWizard
+                step={cloneStep}
+                setStep={setCloneStep}
+                cloneFile={cloneFile}
+                onFileChange={setCloneFile}
+                cloneName={cloneName}
+                onNameChange={setCloneName}
+                cloneTags={cloneTags}
+                onTagsChange={setCloneTags}
+                onTrain={handleClone}
+                isCloning={isCloning}
+                cloneStatus={cloneStatus}
+                cloneProgress={cloneProgress}
+                cloneVoiceId={cloneVoiceId}
+                cloneVoiceName={cloneVoiceName}
+                onPlayPreview={handlePlayPreview}
+                isPlayingPreview={isPlayingPreview}
+                onSave={handleSaveClone}
+                saving={saving}
+                saved={cloneSaved}
+                saveError={cloneSaveError}
+              />
+            ) : (
+              <div className="rounded border border-[#5c3e23] bg-[#1a1008] p-3 text-sm text-[var(--text-2)]">
+                Voice cloning is disabled in Hume mode. Create custom Hume voices in Hume first, then use them here through the voice library.
+              </div>
+            )}
           </div>
         </div>
 
@@ -591,6 +687,60 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
             >
               Generate & play
             </FantasyButton>
+          </div>
+        </div>
+
+        <div className="panel-ornate rounded border border-[#734f2c] p-2 shrink-0">
+          <div className="plaque mb-2">NPC Dialogue</div>
+          <p className="text-xs text-[var(--text-2)] mb-2">Speak directly as an NPC or generate a short in-character reply.</p>
+          <div className="flex flex-col gap-2">
+            <select
+              className="chat-input w-full"
+              value={npcDialogueNpcId}
+              onChange={(e) => setNpcDialogueNpcId(e.target.value)}
+            >
+              <option value="">Select NPC</option>
+              {npcOptions.map((npc) => (
+                <option key={npc.id} value={npc.id}>
+                  {npc.name || npc.id}
+                </option>
+              ))}
+            </select>
+            <textarea
+              className="chat-input w-full min-h-[88px] resize-y"
+              placeholder="Enter dialogue to speak, or player input for AI response..."
+              value={npcDialogueText}
+              onChange={(e) => setNpcDialogueText(e.target.value)}
+            />
+            <div className="flex flex-wrap gap-2">
+              <FantasyButton
+                variant="secondary"
+                onClick={handleSpeakAsNpc}
+                disabled={!npcDialogueNpcId || !npcDialogueText.trim() || npcDialogueBusy}
+              >
+                {npcDialogueBusy ? "Working..." : "Speak as NPC"}
+              </FantasyButton>
+              <FantasyButton
+                variant="primary"
+                onClick={handleGenerateNpcResponse}
+                disabled={!npcDialogueNpcId || !npcDialogueText.trim() || npcDialogueBusy}
+              >
+                {npcDialogueBusy ? "Working..." : "Generate NPC Response"}
+              </FantasyButton>
+            </div>
+            {npcDialogueGeneratedText ? (
+              <div className="rounded border border-[#5c3e23] bg-[#1a1008]/70 p-3 text-sm text-[var(--text-1)]">
+                <div className="text-xs font-heading uppercase tracking-wider text-[var(--text-2)] mb-1">
+                  Generated Dialogue
+                </div>
+                <p>{npcDialogueGeneratedText}</p>
+              </div>
+            ) : null}
+            {!npcOptions.length ? (
+              <p className="text-xs text-[var(--text-2)]">
+                Load a campaign with NPCs to use NPC dialogue tools.
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

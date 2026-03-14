@@ -11,6 +11,7 @@ export default function VoiceListItem({ voice, selected, onSelect, onPlaySample 
   const source = voice?.source;
   const tone = voice?.tone;
   const featured = Boolean(voice?.featured);
+  const canPreview = voice?.capabilities?.preview !== false;
   const pill = source ? SOURCE_LABELS[source] || source : tone || "";
   const excerpt = voice?.description || (voice?.tags?.length ? voice.tags.slice(0, 3).join(", ") : "");
 
@@ -40,6 +41,7 @@ export default function VoiceListItem({ voice, selected, onSelect, onPlaySample 
             onClick={handlePlay}
             title="Play sample"
             aria-label="Play sample"
+            disabled={!canPreview}
           >
             <Play size={14} />
           </button>

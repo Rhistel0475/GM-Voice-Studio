@@ -1,6 +1,6 @@
-# GM Voice Studio (Pocket TTS)
+# GM Voice Studio
 
-AI voice engine: use built-in voices or clone a voice from a short recording, then generate speech with [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) (Kyutai). English only; CPU-optimized, no GPU required.
+AI voice engine with provider-based TTS. The repo currently supports local Kani/Pocket-style cloning flows and Hume-based hosted voices.
 
 ## Architecture
 

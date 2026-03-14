@@ -20,6 +20,7 @@ export default function NPCPreviewCard({
   onRegeneratePersonality,
   onRegenerateBackstory,
   onSave,
+  onSpeak,
   onAssignVoice,
   onPushToLiveBoard,
   generating = false,
@@ -61,6 +62,7 @@ export default function NPCPreviewCard({
               onRegeneratePersonality={onRegeneratePersonality}
               onRegenerateBackstory={onRegenerateBackstory}
               onSave={onSave}
+              onSpeak={onSpeak}
               onAssignVoice={onAssignVoice}
               onPushToLiveBoard={onPushToLiveBoard}
               generating={generating}

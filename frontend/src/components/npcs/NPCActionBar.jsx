@@ -9,6 +9,7 @@ export default function NPCActionBar({
   onRegeneratePersonality,
   onRegenerateBackstory,
   onSave,
+  onSpeak,
   onAssignVoice,
   onPushToLiveBoard,
   generating = false,
@@ -45,6 +46,12 @@ export default function NPCActionBar({
           <FantasyButton variant="secondary" onClick={onSave} disabled={saving}>
             {saving ? "Saving…" : <><Save size={14} className="inline mr-1.5 shrink-0" />Save NPC</>}
           </FantasyButton>
+          {onSpeak ? (
+            <FantasyButton variant="secondary" onClick={onSpeak}>
+              <Mic size={14} className="inline mr-1.5 shrink-0" />
+              Speak
+            </FantasyButton>
+          ) : null}
           <FantasyButton variant="secondary" onClick={onAssignVoice}>
             <Mic size={14} className="inline mr-1.5 shrink-0" />
             Assign voice

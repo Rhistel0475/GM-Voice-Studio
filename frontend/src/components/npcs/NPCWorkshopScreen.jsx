@@ -97,6 +97,15 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
   const [npcs, setNpcs] = useState([]);
 
+  const playAudioBlob = useCallback(async (blob) => {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    audio.onerror = () => URL.revokeObjectURL(url);
+    await audio.play();
+  }, []);
+
   const npcList = useMemo(() => {
     const apiList = getNPCs(campaignData, authFetch);
     if (!campaignCtx || !npcsFromStore?.length) return apiList;
@@ -289,6 +298,36 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
     }
   }, [selectedNpc, draft, npcName, authFetch, campaignCtx]);
 
+  const handleSpeakNpc = useCallback(async () => {
+    const profile = mergeProfile(selectedNpc, draft, npcName, personalityText);
+    const npcId = profile?.id;
+    if (!npcId) {
+      if (typeof window !== "undefined" && window.toast) window.toast("Save or select an NPC first.");
+      return;
+    }
+    const promptText = typeof window !== "undefined"
+      ? window.prompt(`What should ${profile.name || "this NPC"} say?`, "")
+      : "";
+    const text = (promptText || "").trim();
+    if (!text) return;
+
+    try {
+      const res = await authFetch("/tts/npc-dialogue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ npc_id: npcId, text }),
+      });
+      if (!res.ok) throw new Error((await res.text()) || "Speak failed.");
+      const blob = await res.blob();
+      await playAudioBlob(blob);
+    } catch (e) {
+      if (typeof window !== "undefined") {
+        if (window.toast) window.toast(e?.message || "Speak failed.");
+        else console.log(e?.message || "Speak failed.");
+      }
+    }
+  }, [selectedNpc, draft, npcName, personalityText, authFetch, playAudioBlob]);
+
   const previewProfile = useMemo(
     () => mergeProfile(selectedNpc, draft, npcName, personalityText),
     [selectedNpc, draft, npcName, personalityText]
@@ -353,6 +392,7 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
           onRegeneratePersonality={runGenerate}
           onRegenerateBackstory={regenerateBackstory}
           onSave={handleSave}
+          onSpeak={handleSpeakNpc}
           onAssignVoice={() => {}}
           onPushToLiveBoard={handlePushToLiveBoard}
           generating={npcGenStreaming}

@@ -18,12 +18,17 @@
  * @typedef {Object} VoiceProfile
  * @property {string} id
  * @property {string} name
+ * @property {string} [provider]
+ * @property {string} [providerKind]
  * @property {VoiceSource} source
  * @property {VoiceStatus} status
  * @property {string} [accent]
  * @property {VoiceTone} [tone]
  * @property {boolean} [featured]
  * @property {string} [icon]
+ * @property {{ narrate?: boolean, preview?: boolean, assign?: boolean, delete?: boolean, edit?: boolean, clone?: boolean }} [capabilities]
+ * @property {boolean} [deletable]
+ * @property {boolean} [editable]
  * @property {string[]} tags
  * @property {string} [sampleUrl]
  * @property {string[]} [assignedNPCs]

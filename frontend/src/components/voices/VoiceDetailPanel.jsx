@@ -21,6 +21,8 @@ export default function VoiceDetailPanel({
   isDeletingVoice,
 }) {
   const voiceId = voice?.voice_id || voice?.id;
+  const canPreview = voice?.capabilities?.preview !== false;
+  const canDelete = Boolean(voice?.capabilities?.delete);
 
   if (!voice) {
     return (
@@ -56,7 +58,7 @@ export default function VoiceDetailPanel({
             voiceId={voiceId}
             onPlay={onPlaySample}
             isPlaying={isPlayingSample}
-            disabled={!voiceId}
+            disabled={!voiceId || !canPreview}
           />
           {playError && (
             <p className="text-xs mt-2" style={{ color: "#b91c1c" }} role="alert">
@@ -79,7 +81,7 @@ export default function VoiceDetailPanel({
           />
         </div>
 
-        {(onReuseForNarration || onDeleteVoice) && (
+        {(onReuseForNarration || (onDeleteVoice && canDelete)) && (
           <div className="border-t border-[#5c3e23] pt-3">
             <p className="text-xs font-heading uppercase tracking-wider mb-1" style={{ color: "#6b3e10" }}>Actions</p>
             <div className="flex flex-wrap items-center gap-3">
@@ -90,10 +92,10 @@ export default function VoiceDetailPanel({
                   style={{ color: "#7a4010" }}
                   onClick={() => onReuseForNarration(voice)}
                 >
-                  Reuse for narration →
+                  Use for narration
                 </button>
               )}
-              {onDeleteVoice && (
+              {onDeleteVoice && canDelete && (
                 <button
                   type="button"
                   className="text-sm font-heading hover:underline disabled:opacity-60 disabled:no-underline"

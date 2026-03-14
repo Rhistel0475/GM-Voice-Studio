@@ -252,6 +252,73 @@ def assign_npc_voice(campaign_id: int, npc_name: str, voice_id: str) -> bool:
         db.close()
 
 
+def get_npc_record(npc_id: str) -> Optional[dict[str, Any]]:
+    """Return a normalized NPC record by id, with name fallback for legacy callers."""
+    db = SessionLocal()
+    try:
+        npc = None
+        if str(npc_id).isdigit():
+            npc = db.query(NPC).filter(NPC.id == int(npc_id)).first()
+        if npc is None:
+            npc = db.query(NPC).filter(NPC.name == str(npc_id)).first()
+        if npc is None:
+            return None
+        return {
+            "id": str(npc.id),
+            "campaign_id": npc.campaign_id,
+            "name": npc.name,
+            "role": npc.role,
+            "personality": npc.personality,
+            "faction": npc.faction,
+            "description": npc.description,
+            "motivation": npc.motivation,
+            "secrets": npc.secrets,
+            "voice_id": npc.voice_id,
+        }
+    finally:
+        db.close()
+
+
+def get_scene_record(scene_id: str) -> Optional[dict[str, Any]]:
+    """Return a normalized scene record by id, with title fallback for legacy callers."""
+    db = SessionLocal()
+    try:
+        scene = None
+        if str(scene_id).isdigit():
+            scene = db.query(Scene).filter(Scene.id == int(scene_id)).first()
+        if scene is None:
+            scene = db.query(Scene).filter(Scene.title == str(scene_id)).first()
+        if scene is None:
+            return None
+
+        narrator_voice_id = None
+        campaign = db.query(Campaign).filter(Campaign.id == scene.campaign_id).first()
+        raw = (getattr(campaign, "data_json", "") or "").strip() if campaign is not None else ""
+        if raw:
+            try:
+                payload = json.loads(raw)
+                if isinstance(payload, dict):
+                    narrator_voice_id = (
+                        payload.get("narrator_voice_id")
+                        or payload.get("narrator_voice")
+                        or None
+                    )
+            except (json.JSONDecodeError, TypeError):
+                logging.warning("Campaign %s data_json invalid during scene lookup", scene.campaign_id)
+
+        return {
+            "id": str(scene.id),
+            "campaign_id": scene.campaign_id,
+            "title": scene.title,
+            "read_aloud": scene.read_aloud,
+            "notes": scene.notes,
+            "type": scene.type,
+            "narrator_voice_id": narrator_voice_id,
+        }
+    finally:
+        db.close()
+
+
 def append_session_event(
     campaign_id: int,
     event_type: str,

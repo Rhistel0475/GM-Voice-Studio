@@ -101,7 +101,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Kani TTS API")
+    app = FastAPI(title="GM Voice Studio API")
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)

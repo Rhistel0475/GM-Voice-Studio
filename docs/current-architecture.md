@@ -1,4 +1,4 @@
-# Current Architecture (Pre-Refactor Baseline)
+# Current Architecture
 
 This document captures the GM-Voice-Studio application state before the refactor so behavior can be verified after each phase.
 
