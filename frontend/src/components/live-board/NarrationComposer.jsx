@@ -1,4 +1,3 @@
-import React from "react";
 import { FantasyButton } from "../shared";
 
 export default function NarrationComposer({

@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Placeholder for empty lists; optional icon and action. Fantasy panel styling.
  */

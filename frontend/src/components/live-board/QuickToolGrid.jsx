@@ -1,4 +1,3 @@
-import React from "react";
 import QuickToolCard from "./QuickToolCard";
 
 export default function QuickToolGrid({ tools, onToolClick }) {

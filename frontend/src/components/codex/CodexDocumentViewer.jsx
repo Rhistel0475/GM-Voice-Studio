@@ -1,5 +1,3 @@
-import React from "react";
-import { ParchmentCard } from "../shared";
 import { EmptyState } from "../shared";
 
 export default function CodexDocumentViewer({ doc }) {

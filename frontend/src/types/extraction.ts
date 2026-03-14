@@ -122,6 +122,50 @@ export interface ExtractedCodexEntry extends ExtractionMeta {
   tags: string[];
 }
 
+/** Encounter extraction. Linkable to scenes, locations, NPCs. */
+export interface ExtractedEncounter extends ExtractionMeta {
+  id: string;
+  type: "encounter";
+  name: string;
+  summary?: string;
+  locationRefs: ExtractionRelationRef[];
+  enemyNpcRefs: ExtractionRelationRef[];
+  difficultyHint?: string;
+  narrativeSetup?: string;
+  treasureOrRewards: string[];
+  sceneRefs: ExtractionRelationRef[];
+  tags: string[];
+}
+
+/** Item/loot extraction. Codex, rewards, scene references. */
+export interface ExtractedItem extends ExtractionMeta {
+  id: string;
+  type: "item";
+  name: string;
+  description?: string;
+  rarityHint?: string;
+  locationRefs: ExtractionRelationRef[];
+  ownerRefs: ExtractionRelationRef[];
+  narrativeImportance?: string;
+  tags: string[];
+}
+
+/** Faction/organization extraction. Links to NPCs, locations, scenes, codex. */
+export interface ExtractedFaction extends ExtractionMeta {
+  id: string;
+  type: "faction";
+  name: string;
+  description?: string;
+  goals: string[];
+  knownMemberRefs: ExtractionRelationRef[];
+  alliedNpcRefs: ExtractionRelationRef[];
+  enemyFactionRefs: ExtractionRelationRef[];
+  locationRefs: ExtractionRelationRef[];
+  sceneRefs: ExtractionRelationRef[];
+  codexRefs: ExtractionRelationRef[];
+  tags: string[];
+}
+
 // --- Union and wrapper types ---
 
 /** Discriminated union of all extraction entity types. Use type guards or e.type to narrow. */
@@ -129,7 +173,10 @@ export type ExtractionEntity =
   | ExtractedNPC
   | ExtractedLocation
   | ExtractedSceneSeed
-  | ExtractedCodexEntry;
+  | ExtractedCodexEntry
+  | ExtractedEncounter
+  | ExtractedItem
+  | ExtractedFaction;
 
 /** Literal type of entity discriminants for exhaustive switch. */
 export type ExtractionEntityType = ExtractionEntity["type"];
@@ -143,12 +190,32 @@ export interface ExtractionBatchResult {
   notes?: string[];
 }
 
+/** Single review queue item wrapping an extracted entity. */
+export interface ExtractionReviewItem {
+  id: string;
+  /** The underlying extracted entity under review. */
+  entity: ExtractionEntity;
+  /** Snapshot of confidence at review time. */
+  confidence: ExtractionConfidence;
+  /** Current review status for this item. */
+  reviewStatus: ExtractionReviewStatus;
+  /** Source metadata used for display (excerpt, document, chunk, etc.). */
+  source: ExtractionSourceRef;
+  /** When this item was enqueued into the review queue (ISO 8601 string). */
+  createdAt: string;
+  /** Whether this item was auto-approved by confidence rules. */
+  autoApproved?: boolean;
+}
+
 /** Counts by entity type plus low-confidence and needs-review totals for pipeline/UI. */
 export interface ExtractionSummary {
   npcCount: number;
   locationCount: number;
   sceneSeedCount: number;
   codexEntryCount: number;
+  encounterCount: number;
+  itemCount: number;
+  factionCount: number;
   lowConfidenceCount: number;
   needsReviewCount: number;
 }
@@ -171,6 +238,18 @@ export function isExtractedCodexEntry(e: ExtractionEntity): e is ExtractedCodexE
   return e.type === "codex_entry";
 }
 
+export function isExtractedEncounter(e: ExtractionEntity): e is ExtractedEncounter {
+  return e.type === "encounter";
+}
+
+export function isExtractedItem(e: ExtractionEntity): e is ExtractedItem {
+  return e.type === "item";
+}
+
+export function isExtractedFaction(e: ExtractionEntity): e is ExtractedFaction {
+  return e.type === "faction";
+}
+
 // --- Helper ---
 
 export function buildExtractionSummary(batch: ExtractionBatchResult): ExtractionSummary {
@@ -179,6 +258,9 @@ export function buildExtractionSummary(batch: ExtractionBatchResult): Extraction
     locationCount: 0,
     sceneSeedCount: 0,
     codexEntryCount: 0,
+    encounterCount: 0,
+    itemCount: 0,
+    factionCount: 0,
     lowConfidenceCount: 0,
     needsReviewCount: 0,
   };
@@ -187,6 +269,9 @@ export function buildExtractionSummary(batch: ExtractionBatchResult): Extraction
     else if (e.type === "location") summary.locationCount++;
     else if (e.type === "scene_seed") summary.sceneSeedCount++;
     else if (e.type === "codex_entry") summary.codexEntryCount++;
+    else if (e.type === "encounter") summary.encounterCount++;
+    else if (e.type === "item") summary.itemCount++;
+    else if (e.type === "faction") summary.factionCount++;
     if (e.confidence === "low") summary.lowConfidenceCount++;
     if (e.reviewStatus === "needs_review" || e.reviewStatus === "pending") summary.needsReviewCount++;
   }

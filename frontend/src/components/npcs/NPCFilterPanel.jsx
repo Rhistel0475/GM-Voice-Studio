@@ -1,7 +1,6 @@
 /**
  * Filters: faction, location, favorites. Codex-style labels and pill toggle.
  */
-import React from "react";
 import { Star } from "lucide-react";
 
 export default function NPCFilterPanel({

@@ -1,5 +1,3 @@
-import React from "react";
-
 const statusStyles = {
   ready: "border-[#5f7d63] text-[#9ec24f] bg-[rgba(94,124,99,0.2)]",
   recording: "border-[#c05050] text-[#ff6b6b] bg-[rgba(192,80,80,0.2)]",

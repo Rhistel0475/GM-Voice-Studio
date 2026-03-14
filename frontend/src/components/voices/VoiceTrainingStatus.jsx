@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Step 2: Training progress bar and status label. Fantasy bar; optional pulse when processing.
  */

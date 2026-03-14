@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Overlay + panel for modals; reuses panel style.
  */

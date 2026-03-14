@@ -1,8 +1,13 @@
-import React, { useCallback, useEffect, useRef, useState, Component } from "react";
+import { useCallback, useEffect, useRef, useState, Component } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
 import { CampaignProvider, useCampaignOptional } from "./context/CampaignContext";
 import { useCampaignContextStore } from "./store/campaignContext";
+import { useExtractionReviewQueueStore } from "./store/extractionReview";
+import { parseResultToExtractionBatch } from "./lib/parseResultToExtractionBatch";
+import { importParseResultToStore } from "./lib/campaignImport";
+import { setBackendCampaignId, persistSessionEvent } from "./lib/campaignPersistence";
+import ExtractionReviewQueue from "./components/intake/ExtractionReviewQueue";
 import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
 import LiveBoardPage from "./app/live-board";
@@ -12,6 +17,9 @@ import VoiceStudioPage from "./app/voices";
 import SettingsPage from "./pages/SettingsPage";
 import SessionLog from "./components/live-board/SessionLog";
 import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
+import AiNarrateButton from "./components/live-board/AiNarrateButton";
+import SceneDirectorPanel from "./components/live-board/SceneDirectorPanel";
+import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -39,42 +47,14 @@ class ErrorBoundary extends Component {
   }
 }
 import {
-  Book,
-  Dice5,
   Map,
-  Pause,
   Play,
-  ScrollText,
-  Settings,
-  SlidersHorizontal,
-  Square,
-  Swords,
   Upload,
   Zap,
   Save,
   CheckCircle,
   Trash2,
 } from "lucide-react";
-
-const normalizePath = (path) => (path || "/").replace(/\/+$/, "") || "/";
-const BASE_PATH = normalizePath(import.meta.env.BASE_URL || "/");
-const LIVE_PATH = BASE_PATH;
-const PREP_PATH = LIVE_PATH === "/" ? "/prep" : `${LIVE_PATH}/prep`;
-const INTAKE_PATH = LIVE_PATH === "/" ? "/intake" : `${LIVE_PATH}/intake`;
-const CODEX_PATH = LIVE_PATH === "/" ? "/codex" : `${LIVE_PATH}/codex`;
-const NPC_WORKSHOP_PATH = LIVE_PATH === "/" ? "/npc-workshop" : `${LIVE_PATH}/npc-workshop`;
-const VOICE_STUDIO_PATH = LIVE_PATH === "/" ? "/voice-studio" : `${LIVE_PATH}/voice-studio`;
-const SETTINGS_PATH = LIVE_PATH === "/" ? "/settings" : `${LIVE_PATH}/settings`;
-const resolveViewFromPath = (path) => {
-  const normalized = normalizePath(path);
-  if (normalized.endsWith("/prep")) return "prep";
-  if (normalized.endsWith("/intake")) return "intake";
-  if (normalized.endsWith("/codex")) return "codex";
-  if (normalized.endsWith("/npc-workshop") || normalized.endsWith("/npcs")) return "npc-workshop";
-  if (normalized.endsWith("/voice-studio") || normalized.endsWith("/voices")) return "voice-studio";
-  if (normalized.endsWith("/settings")) return "settings";
-  return "live";
-};
 
 const pathToView = (path) => {
   let p = (path || "/").replace(/\/+$/, "").trim() || "/";
@@ -108,19 +88,8 @@ const normalizeWakeText = (text) => (text || "")
   .replace(/\s+/g, " ")
   .trim();
 const WAKE_WORD = normalizeWakeText(import.meta.env.VITE_WAKE_WORD || "hey co gm");
-const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
 const SILENCE_RMS_THRESHOLD = 0.015;
 const SILENCE_HOLD_MS = 2200;
-
-const WAVE = [20, 45, 28, 60, 35, 70, 26, 52, 41, 63, 30, 47, 22, 58, 37, 66, 29, 49, 31, 54, 24, 62, 34, 57, 27, 64];
-const QUICK_TOOLS = [
-  { id: "dice",     name: "Roll Dice",   img: `${BACKEND_URL}/static/img/Dices.png` },
-  { id: "spells",   name: "Grimoire",    img: `${BACKEND_URL}/static/img/Spellbook.png` },
-  { id: "map",      name: "World Map",   img: `${BACKEND_URL}/static/img/Maps.png` },
-  { id: "loot",     name: "Loot Table",  img: `${BACKEND_URL}/static/img/Loottable.png` },
-  { id: "combat",   name: "Encounter",   img: `${BACKEND_URL}/static/img/Swords.png` },
-  { id: "settings", name: "Settings",    img: `${BACKEND_URL}/static/img/Settings.png` },
-];
 
 // Fallback defaults (shown when no campaign data is loaded)
 const DEFAULT_PARTY = [
@@ -129,7 +98,6 @@ const DEFAULT_PARTY = [
   { name: "BORWIN",   hp: "—", ac: "—" },
   { name: "DUNCAN",   hp: "—", ac: "—" },
 ];
-const DEFAULT_NPCS = ["No campaign loaded. Use Library to import your adventure."];
 const DEFAULT_SCENES = [
   { title: "No scenes loaded", act: "Upload docs in Library", type: "exploration", read_aloud: "", npcs: [], location: "", notes: "" },
 ];
@@ -193,162 +161,6 @@ const formatSessionTimer = (startMs) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-const Header = ({ view, onNavigate, campaignData, sessionTimer, activeSceneTitle, audioStatus }) => (
-  <header className="dm-header">
-    <div className="header-glow" />
-    <ViewTabs view={view} onNavigate={onNavigate} className="header-actions nav-tab-bar" />
-    <div className="relative z-10 flex flex-col items-center gap-1">
-      <h1 className="font-heading text-[clamp(1.6rem,2.25vw,2.85rem)] leading-[1.05] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08]">
-        GM Voice Studio - Live Board
-      </h1>
-      <p className="font-heading text-[clamp(1.1rem,1.7vw,2.1rem)] leading-[1.05] text-[#d9b878]">
-        {campaignData?.title ? `Active Campaign: ${campaignData.title}` : "No Campaign Loaded"}
-      </p>
-      <div className="flex flex-wrap items-center justify-center gap-4 mt-2 text-sm font-heading">
-        <span className="text-[var(--text-2)]">
-          <span className="text-[var(--gold)] uppercase tracking-wider">Session</span> {sessionTimer}
-        </span>
-        <span className="text-[var(--text-2)]">
-          <span className="text-[var(--gold)] uppercase tracking-wider">Scene</span> {activeSceneTitle || "—"}
-        </span>
-        <span className="text-[var(--text-2)]">
-          <span className="text-[var(--gold)] uppercase tracking-wider">Audio</span> {audioStatus === "loading" ? "Loading…" : audioStatus === "playing" ? "Playing" : "Idle"}
-        </span>
-      </div>
-    </div>
-  </header>
-);
-
-const ToolModal = ({ isOpen, onClose, title, children }) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
-      onClick={onClose}>
-      <div className="panel-ornate max-w-lg w-full shadow-2xl relative"
-        onClick={e => e.stopPropagation()}>
-        <div className="panel-head flex justify-between items-center px-4">
-          <div className="plaque text-sm">{title}</div>
-          <button type="button" onClick={onClose}
-            className="text-[#d4af37] hover:text-white text-xl font-bold px-2">×</button>
-        </div>
-        <div className="panel-body p-6 text-center">
-          {children}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const LeftColumn = ({ campaignData, selectedNpcName, onSelectNpc, scene }) => {
-  const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
-
-  const allNpcs = campaignData?.npcs || [];
-  const sceneNpcs = (scene?.npcs || []).map(npcName => allNpcs.find(n => n.name === npcName)).filter(Boolean);
-
-  const allItems = campaignData?.items || [];
-  const sceneItems = (scene?.items || []).map(itemName => allItems.find(i => i.name === itemName)).filter(Boolean);
-
-  const allReveals = campaignData?.reveals || [];
-  const sceneReveals = (scene?.reveals || []).map(revealName => allReveals.find(r => r.name === revealName)).filter(Boolean);
-
-  const [activeTool, setActiveTool] = useState(null);
-
-  return (
-    <div className="h-full min-h-0 grid grid-rows-[1.1fr_1fr_.75fr] gap-3">
-      <Panel title="Quick Tools">
-        <div className="grid grid-cols-3 gap-2 h-full">
-          {QUICK_TOOLS.map((tool) => (
-            <button key={tool.id} type="button" className="quick-tile"
-              style={{ width: "100%", height: "100%", padding: 0, position: "relative", overflow: "hidden" }}
-              onClick={() => setActiveTool(tool)}>
-              <img src={tool.img} alt={tool.name} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              <span style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "rgba(0,0,0,0.55)", color: "#e7c27a", fontFamily: "Cinzel,serif", fontSize: "9px", textAlign: "center", padding: "2px 2px 3px", letterSpacing: "0.04em", lineHeight: 1.2 }}>
-                {tool.name}
-              </span>
-            </button>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel title="Active Scene">
-        <div className="space-y-2">
-          {sceneNpcs.map((npc) => (
-            <button
-              key={npc.name}
-              type="button"
-              className={`tracker-row w-full text-left ${selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""}`}
-              style={{ cursor: "pointer" }}
-              onClick={() => onSelectNpc(npc.name)}
-            >
-              <span className="encounter-name">{npc.name}</span>
-              <span className="text-[#9b7440] text-xs">{npc.role}</span>
-            </button>
-          ))}
-          {sceneItems.map((item) => (
-            <div key={item.name} className="tracker-row w-full text-left">
-              <span className="encounter-name">{item.name}</span>
-              <span className="text-[#9b7440] text-xs">Item</span>
-            </div>
-          ))}
-          {sceneReveals.map((reveal) => (
-            <div key={reveal.name} className="tracker-row w-full text-left">
-              <span className="encounter-name">{reveal.name}</span>
-              <span className="text-[#9b7440] text-xs capitalize">{reveal.type}</span>
-            </div>
-          ))}
-          {sceneNpcs.length === 0 && sceneItems.length === 0 && sceneReveals.length === 0 && (
-            <div className="intake-empty text-xs">No NPCs, items, or reveals in this scene.</div>
-          )}
-        </div>
-      </Panel>
-
-      <Panel title="Party Roster">
-        <div className="grid grid-cols-2 gap-1">
-          {party.slice(0, 4).map((char) => {
-            const portraitSrc = getPartyPlaceholder();
-            return (
-              <article key={char.name} className="party-card">
-                <div
-                  className="party-face"
-                  style={{
-                    backgroundImage: `url(${portraitSrc})`,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                  }}
-                />
-                <div className="party-meta">
-                  <div className="name text-sm">{char.name}</div>
-                  <div className="stats text-xs">
-                    {char.hp !== "—" ? (
-                      <>
-                        HP {char.hp} <span>/ AC {char.ac}</span>
-                      </>
-                    ) : (
-                      <span className="text-[#6b5030]">—</span>
-                    )}
-                  </div>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </Panel>
-      <ToolModal
-        isOpen={!!activeTool}
-        onClose={() => setActiveTool(null)}
-        title={activeTool?.name || "Tool"}
-      >
-        <p className="text-[#e8c787] font-heading text-lg mb-4">
-          {activeTool?.name} Module
-        </p>
-        <p className="text-[#b88b46] text-sm italic">
-          Interface coming soon. This will hook into our backend API for live generation.
-        </p>
-      </ToolModal>
-    </div>
-  );
-};
-
 const MiddleColumn = ({
   campaignData,
   selectedSceneIdx,
@@ -356,6 +168,7 @@ const MiddleColumn = ({
   onSelectNpc,
   authFetch,
   actionLog,
+  onLogEntry,
   coDmQuery,
   onChangeCoDmQuery,
   onSubmitCoDmQuery,
@@ -577,6 +390,25 @@ const MiddleColumn = ({
                   </div>
                 )}
               </div>
+              {/* AI Narrate: Claude-generated narration text → TTS */}
+              <div className="mt-3">
+                <AiNarrateButton
+                  authFetch={authFetch}
+                  scene={scene}
+                  sceneNpcs={sceneNpcs}
+                  onLogEntry={onLogEntry}
+                  onAudioChange={onAudioStatusChange}
+                />
+              </div>
+              {/* Scene Director: dramatic hints for this scene */}
+              <div className="mt-2">
+                <SceneDirectorPanel
+                  authFetch={authFetch}
+                  scene={scene}
+                  sceneNpcs={sceneNpcs}
+                  onLogEntry={onLogEntry}
+                />
+              </div>
               {scene.notes && (
                 <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
               )}
@@ -720,386 +552,8 @@ const MiddleColumn = ({
   );
 };
 
-const RightColumn = ({ campaignData, selectedNpcName, authFetch, onInsertIntoNarration }) => {
-  const [situation, setSituation] = useState("");
-  const [dialogue, setDialogue] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState([]);
-  const [selectedVoiceId, setSelectedVoiceId] = useState("");
-  const [cloneFile, setCloneFile] = useState(null);
-  const [cloneName, setCloneName] = useState("");
-  const [isCloning, setIsCloning] = useState(false);
-  const [cloneStatus, setCloneStatus] = useState("");
-  const [codexTab, setCodexTab] = useState("documents");
-  const [codexSelection, setCodexSelection] = useState(null);
 
-  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
-  const npc = selectedNpcName
-    ? (npcs.find(n => n.name === selectedNpcName) || npcs[0])
-    : npcs[0];
-  const scenes = campaignData?.scenes?.length ? campaignData.scenes : [];
-  const locationsRaw = campaignData?.locations?.length ? campaignData.locations : [];
-  const locations = locationsRaw.length ? locationsRaw : [...new Set(scenes.map((s) => s.location).filter(Boolean))];
-  const documents = [{ id: "campaign", title: campaignData?.title || "No campaign", summary: `${scenes.length} scenes` }];
-
-  const reloadVoices = useCallback(() => {
-    let cancelled = false;
-    authFetch("/voices/list")
-      .then(r => r.ok ? r.json() : [])
-      .then((data) => {
-        if (cancelled) return;
-        const voices = Array.isArray(data) ? data.filter(v => v?.voice_id) : [];
-        setAvailableVoices(voices);
-        setSelectedVoiceId((current) => {
-          if (current && voices.some(v => v.voice_id === current)) return current;
-          return voices[0]?.voice_id || "";
-        });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAvailableVoices([]);
-        setSelectedVoiceId("");
-      });
-    return () => { cancelled = true; };
-  }, [authFetch]);
-
-  useEffect(() => {
-    const cleanup = reloadVoices();
-    return cleanup;
-  }, [reloadVoices]);
-
-  const handleCloneVoice = async () => {
-    if (!cloneFile || isCloning) return;
-    setIsCloning(true);
-    setCloneStatus("Cloning voice...");
-    try {
-      const formData = new FormData();
-      formData.append("audio", cloneFile);
-      formData.append("consent_scope", "tts");
-      if (cloneName.trim()) {
-        formData.append("name", cloneName.trim());
-      }
-
-      const response = await authFetch("/voices/clone", {
-        method: "POST",
-        body: formData,
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Voice clone failed.");
-      }
-
-      const payload = await response.json();
-      if (payload?.voice_id) {
-        setCloneStatus(`Voice created: ${payload.voice_id}`);
-        await reloadVoices();
-        setSelectedVoiceId(payload.voice_id);
-        return;
-      }
-
-      if (payload?.job_id) {
-        setCloneStatus(`Clone queued: ${payload.job_id}`);
-        const maxPolls = 45;
-        for (let attempt = 0; attempt < maxPolls; attempt += 1) {
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          const statusResponse = await authFetch(`/jobs/${payload.job_id}`);
-          if (!statusResponse.ok) continue;
-          const statusPayload = await statusResponse.json();
-          const status = (statusPayload?.status || "").toLowerCase();
-          if (status === "completed" && statusPayload?.voice_id) {
-            setCloneStatus(`Voice created: ${statusPayload.voice_id}`);
-            await reloadVoices();
-            setSelectedVoiceId(statusPayload.voice_id);
-            return;
-          }
-          if (status === "failed" || status === "error") {
-            throw new Error(statusPayload?.error || "Queued voice clone failed.");
-          }
-        }
-        throw new Error("Clone job timed out. Check /jobs/{id} for status.");
-      }
-
-      throw new Error("Clone response missing voice_id/job_id.");
-    } catch (error) {
-      setCloneStatus(error?.message || "Voice clone failed.");
-    } finally {
-      setIsCloning(false);
-    }
-  };
-
-  const handleGenerateDialogue = async () => {
-    if (!situation || !npc) return;
-    setIsGenerating(true);
-    setDialogue("");
-    try {
-      const response = await authFetch('/ai/dialogue', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          npc_name: npc.name,
-          personality: npc.personality,
-          faction: npc.faction || '',
-          situation,
-          conversation_history: [],
-        }),
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Dialogue generation failed: ${errorText}`);
-      }
-      const data = await response.json();
-      setDialogue(data.dialogue);
-    } catch (error) {
-      console.error('Error generating dialogue:', error);
-      setDialogue("Sorry, I'm at a loss for words.");
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleSpeakDialogue = async () => {
-    if (!dialogue || !npc) return;
-    setIsSpeaking(true);
-    try {
-        const formData = new FormData();
-        formData.append('text', dialogue);
-        if (selectedVoiceId) {
-          formData.append('voice_id', selectedVoiceId);
-        }
-
-        const response = await authFetch('/tts', {
-            method: 'POST',
-            body: formData,
-        });
-
-        if (!response.ok) {
-            throw new Error('TTS failed');
-        }
-        const blob = await response.blob();
-        const audio = new Audio(URL.createObjectURL(blob));
-        audio.play();
-    } catch (error) {
-        console.error('Error speaking dialogue:', error);
-    } finally {
-        setIsSpeaking(false);
-    }
-  };
-
-  return (
-    <div className="h-full min-h-0 grid grid-rows-[1fr_0.95fr_1.1fr] gap-3">
-      <Panel title="Codex">
-        <div className="tab-strip mb-2">
-          {["documents", "npcs", "locations", "rules"].map((tab) => (
-            <button
-              key={tab}
-              type="button"
-              className={codexTab === tab ? "tab-active" : ""}
-              onClick={() => { setCodexTab(tab); setCodexSelection(null); }}
-            >
-              {tab === "documents" ? "Documents" : tab === "npcs" ? "NPCs" : tab === "locations" ? "Locations" : "Rules"}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 min-h-0 overflow-auto flex flex-col gap-2">
-          {codexTab === "documents" && (
-            <>
-              {documents.map((doc) => (
-                <div
-                  key={doc.id}
-                  className={`border border-[#5c3e23] bg-[#1a1008] p-2 cursor-pointer hover:border-[var(--gold)] ${codexSelection?.id === doc.id ? "ring-1 ring-[var(--gold)]" : ""}`}
-                  onClick={() => setCodexSelection(codexSelection?.id === doc.id ? null : doc)}
-                >
-                  <div className="font-heading text-[var(--text-1)] text-sm">{doc.title}</div>
-                  <div className="text-xs text-[var(--text-2)]">{doc.summary}</div>
-                  {codexSelection?.id === doc.id && onInsertIntoNarration && (
-                    <button type="button" className="cta-secondary mt-2 text-xs" onClick={(e) => { e.stopPropagation(); onInsertIntoNarration(doc.title); }}>
-                      Insert into narration
-                    </button>
-                  )}
-                </div>
-              ))}
-              {scenes.length > 0 && (
-                <div className="text-xs text-[var(--text-2)] mt-1">Scenes: {scenes.map((s) => s.title).filter(Boolean).join(", ") || "—"}</div>
-              )}
-            </>
-          )}
-          {codexTab === "npcs" && (
-            <>
-              {npcs.length ? npcs.map((n) => (
-                <div
-                  key={n.name}
-                  className={`border border-[#5c3e23] bg-[#1a1008] p-2 cursor-pointer hover:border-[var(--gold)] ${codexSelection?.name === n.name ? "ring-1 ring-[var(--gold)]" : ""}`}
-                  onClick={() => setCodexSelection(codexSelection?.name === n.name ? null : n)}
-                >
-                  <div className="font-heading text-[var(--text-1)] text-sm">{n.name}</div>
-                  <div className="text-xs text-[var(--text-2)]">{n.role || ""}</div>
-                  {n.personality && <div className="text-xs text-[var(--text-2)] mt-1 line-clamp-2">{n.personality}</div>}
-                  {codexSelection?.name === n.name && onInsertIntoNarration && (
-                    <button type="button" className="cta-secondary mt-2 text-xs" onClick={(e) => { e.stopPropagation(); onInsertIntoNarration(n.personality || n.name); }}>
-                      Insert into narration
-                    </button>
-                  )}
-                </div>
-              )) : (
-                <div className="intake-empty">No NPCs loaded.</div>
-              )}
-            </>
-          )}
-          {codexTab === "locations" && (
-            <>
-              {locations.length ? locations.map((loc) => (
-                <div
-                  key={typeof loc === "string" ? loc : loc.name || loc}
-                  className={`border border-[#5c3e23] bg-[#1a1008] p-2 cursor-pointer hover:border-[var(--gold)] ${codexSelection === loc ? "ring-1 ring-[var(--gold)]" : ""}`}
-                  onClick={() => setCodexSelection(codexSelection === loc ? null : loc)}
-                >
-                  <div className="font-heading text-[var(--text-1)] text-sm">{typeof loc === "string" ? loc : loc.name || loc}</div>
-                  {codexSelection === loc && onInsertIntoNarration && (
-                    <button type="button" className="cta-secondary mt-2 text-xs" onClick={(e) => { e.stopPropagation(); onInsertIntoNarration(typeof loc === "string" ? loc : loc.name || loc); }}>
-                      Insert into narration
-                    </button>
-                  )}
-                </div>
-              )) : (
-                <div className="intake-empty">No locations extracted. Use Library to parse adventures.</div>
-              )}
-            </>
-          )}
-          {codexTab === "rules" && (
-            <div className="intake-empty">Rules lookup (RAG) — ask in Live Session or use Co-DM query.</div>
-          )}
-        </div>
-      </Panel>
-
-      <Panel title="Voice Studio">
-        <div className="space-y-2">
-          <label className="field-wrap">
-            <span>Clone Voice Sample:</span>
-            <input
-              type="file"
-              accept="audio/*"
-              className="chat-input"
-              onChange={(e) => setCloneFile(e.target.files?.[0] || null)}
-            />
-          </label>
-          <label className="field-wrap">
-            <span>Voice Name:</span>
-            <input
-              type="text"
-              placeholder="Optional display name"
-              className="chat-input"
-              value={cloneName}
-              onChange={(e) => setCloneName(e.target.value)}
-            />
-          </label>
-          <button
-            type="button"
-            className="send-btn w-full"
-            onClick={handleCloneVoice}
-            disabled={!cloneFile || isCloning}
-          >
-            {isCloning ? "Cloning..." : "Clone Voice"}
-          </button>
-          {cloneStatus && (
-            <div className="text-xs text-[#b69055]">{cloneStatus}</div>
-          )}
-
-          <label className="field-wrap">
-            <span>Choose Voice:</span>
-            <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}>
-              <option value="">Random voice</option>
-              {availableVoices.map((voice) => (
-                <option key={voice.voice_id} value={voice.voice_id}>
-                  {voice.name?.trim() ? voice.name : voice.voice_id}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field-wrap">
-            <select value={npc?.name || ''} onChange={() => {}}>
-              {campaignData?.npcs?.length
-                ? campaignData.npcs.slice(0, 6).map(n => <option key={n.name} value={n.name}>{n.name} (campaign NPC)</option>)
-                : <option>No NPCs loaded</option>}
-            </select>
-          </label>
-          <div className="wave-box">
-            {WAVE.map((h, idx) => (
-              <span key={idx} style={{ height: `${h}%` }} />
-            ))}
-          </div>
-          <div className="flex items-center justify-between gap-2 mt-1">
-            <div className="flex gap-1">
-              <button type="button" className="ctl-btn"><Play size={14} /></button>
-              <button type="button" className="ctl-btn"><Pause size={14} /></button>
-              <button type="button" className="ctl-btn"><Square size={14} /></button>
-            </div>
-            <div className="voice-temp-row">
-              <span>Temperature</span>
-              <input type="range" className="accent-[#d4a857] w-24" />
-            </div>
-          </div>
-        </div>
-      </Panel>
-
-      <Panel title="NPC Profile">
-        <div className="flex items-start gap-2 border-b border-[#54351f] pb-2 mb-2">
-          <div className="size-16 border border-[#6e4a28] rounded-full bg-[radial-gradient(circle_at_30%_25%,#74522f,#2b1a10)]" />
-          <div className="flex-1">
-            <div className="voice-label">Name:</div>
-            <div className="voice-name">{npc?.name || "No NPC loaded"}</div>
-            <div className="voice-tag">{npc?.role || "Load campaign data"}</div>
-          </div>
-        </div>
-
-        {npc && (
-          <div className="text-xs text-[#b08040] mb-2">{npc.personality}</div>
-        )}
-
-        <div className="mt-auto flex flex-col">
-          {dialogue && (
-            <div className="mb-2">
-              <blockquote className="text-amber-200 italic border-l-2 border-amber-600/50 pl-3 py-1 text-sm">
-                {dialogue}
-              </blockquote>
-              <div className="text-right mt-1">
-                <button
-                  type="button"
-                  className="cta-secondary text-xs"
-                  onClick={handleSpeakDialogue}
-                  disabled={isSpeaking}
-                >
-                  {isSpeaking ? '...' : 'Speak'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 mt-auto">
-            <input
-              type="text"
-              placeholder="Describe what happens..."
-              className="chat-input"
-              value={situation}
-              onChange={(e) => setSituation(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleGenerateDialogue()}
-            />
-            <button
-              type="button"
-              className="send-btn"
-              onClick={handleGenerateDialogue}
-              disabled={isGenerating || !npc}
-            >
-              {isGenerating ? '...' : 'Send'}
-            </button>
-          </div>
-        </div>
-      </Panel>
-    </div>
-  );
-};
-
-const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, defaultAutoQueryOnVoice = true }) => {
+const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFetch, setBannerState, defaultAutoQueryOnVoice = true }) => {
   const campaignCtx = useCampaignOptional();
   const useSharedCampaign = Boolean(campaignCtx);
 
@@ -1470,11 +924,15 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
     if (payload.type === "stat_block") {
       const meta = [payload.intent, payload.sources?.length ? `${payload.sources.length} sources` : ""].filter(Boolean).join(" • ");
       appendActionLog("stat_block", payload.content || "", meta);
+      addSessionLogEntry({ type: "assistant", text: payload.content || "" });
+      persistSessionEvent(authFetch, { type: "assistant", text: payload.content || "" });
       return;
     }
     if (payload.type === "lore") {
       const meta = [payload.intent, payload.sources?.length ? `${payload.sources.length} sources` : ""].filter(Boolean).join(" • ");
       appendActionLog("lore", payload.content || "", meta);
+      addSessionLogEntry({ type: "assistant", text: payload.content || "" });
+      persistSessionEvent(authFetch, { type: "assistant", text: payload.content || "" });
       return;
     }
     const content = typeof payload.content === "string" ? payload.content : JSON.stringify(payload.content || payload);
@@ -1482,7 +940,9 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
     if (payload.intent) parts.push(payload.intent);
     if (Array.isArray(payload.sources) && payload.sources.length) parts.push(`${payload.sources.length} sources`);
     appendActionLog("assistant", content, parts.join(" • "));
-  }, [appendActionLog, autoQueryOnVoice]);
+    addSessionLogEntry({ type: "assistant", text: content });
+    persistSessionEvent(authFetch, { type: "assistant", text: content });
+  }, [appendActionLog, authFetch, autoQueryOnVoice]);
 
   useEffect(() => {
     if (!isWakeArmed || isMicActive) {
@@ -1562,6 +1022,8 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
     if (!text || isSubmittingQuery) return;
 
     appendActionLog("player", text);
+    addSessionLogEntry({ type: "player", text });
+    persistSessionEvent(authFetch, { type: "player", text });
     setCoDmQuery("");
 
     const ws = socketRef.current;
@@ -1619,6 +1081,7 @@ const LiveBoard = ({ view, onNavigate, campaignData, authFetch, setBannerState, 
             onSelectNpc={setSelectedNpcName}
             authFetch={authFetch}
             actionLog={actionLog}
+            onLogEntry={appendActionLog}
             coDmQuery={coDmQuery}
             onChangeCoDmQuery={setCoDmQuery}
             onSubmitCoDmQuery={submitCoDmQuery}
@@ -2110,7 +1573,25 @@ const DetailDrawer = ({ item, onClose, onLightbox }) => {
   );
 };
 
+// Review tab button — shows a live count badge from the review queue store.
+const ReviewTabButton = ({ activePanel, setActivePanel }) => {
+  const items = useExtractionReviewQueueStore((s) => s.items);
+  const pendingCount = items.filter(
+    (i) => i.reviewStatus === "pending" || i.reviewStatus === "needs_review"
+  ).length;
+  return (
+    <button
+      type="button"
+      className={activePanel === "review" ? "tab-active" : ""}
+      onClick={() => setActivePanel("review")}
+    >
+      Review{items.length > 0 ? ` (${items.length}${pendingCount > 0 ? ` · ${pendingCount} pending` : ""})` : ""}
+    </button>
+  );
+};
+
 const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authFetch }) => {
+  const { enqueueBatch } = useExtractionReviewQueueStore();
   const [files, setFiles] = useState([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isExtractingImages, setIsExtractingImages] = useState(false);
@@ -2244,6 +1725,19 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       if (!res.ok) throw new Error((payload?.detail) || raw || `Parse failed (${res.status})`);
       if (!payload) throw new Error("Parse returned no data.");
       setParseResult(payload);
+      // Persist backend campaign ID for sync operations
+      if (payload.campaign_id) setBackendCampaignId(payload.campaign_id);
+      // Enqueue extracted entities into review queue
+      try {
+        const batch = parseResultToExtractionBatch(
+          payload,
+          files.length === 1 ? files[0].name : (payload.title || undefined)
+        );
+        if (batch.entities.length > 0) {
+          enqueueBatch(batch);
+          setActivePanel("review");
+        }
+      } catch { /* non-fatal — review queue is optional */ }
       // Refresh saved campaigns list (new campaign was just persisted to DB)
       authFetch("/api/campaigns")
         .then(r => r.ok ? r.json() : [])
@@ -2289,7 +1783,8 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
 
   const saveToSession = () => {
     if (!parseResult) return;
-    onSaveCampaign(parseResult);
+    onSaveCampaign(parseResult);           // legacy AppState + localStorage (unchanged)
+    try { importParseResultToStore(parseResult); } catch { /* non-fatal */ }
     setSaved(true);
   };
 
@@ -2299,13 +1794,17 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       const res = await authFetch(`/api/campaigns/${id}`);
       if (!res.ok) return;
       const data = await res.json();
-      setParseResult({
+      const normalized = {
         ...data,
         party: data.party ?? [],
         reveals: data.reveals ?? [],
         items: data.items ?? [],
         images: data.images ?? [],
-      });
+      };
+      setParseResult(normalized);
+      onSaveCampaign(normalized);          // sync to AppState so legacy views update
+      try { importParseResultToStore(normalized); } catch { /* non-fatal */ }
+      setBackendCampaignId(id);            // persist backend ID for sync operations
       setSaved(true);
       setActivePanel("outline");
       const firstAct = data?.scenes?.[0]?.act;
@@ -2332,7 +1831,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
           if (c?.id) await authFetch(`/api/campaigns/${c.id}`, { method: "DELETE" });
         }
       }
-    } catch (_) { /* ignore */ }
+    } catch { /* ignore */ }
     localStorage.removeItem("gm_parse_result");
     localStorage.removeItem("gm_parse_images");
     localStorage.removeItem("gm_campaign_data");
@@ -2535,6 +2034,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
               <button type="button" className={activePanel === "images" ? "tab-active" : ""} onClick={() => setActivePanel("images")}>
                 Images {(images.embedded.length + images.pages.length) > 0 ? `(${images.embedded.length + images.pages.length})` : ""}
               </button>
+              <ReviewTabButton activePanel={activePanel} setActivePanel={setActivePanel} />
             </div>
 
             {parseResult?.summary && activePanel !== "images" && (
@@ -2866,6 +2366,12 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                 )}
               </div>
             )}
+
+            {activePanel === "review" && (
+              <ExtractionReviewQueue
+                documentName={parseResult?.title || (files.length === 1 ? files[0].name : undefined)}
+              />
+            )}
           </PrepPanel>
         </div>
 
@@ -2996,13 +2502,25 @@ function CurrentView() {
     );
   }
   if (view === "codex") {
-    return <CodexPage campaignData={campaignData} authFetch={authFetch} />;
+    return (
+      <ErrorBoundary>
+        <CodexPage campaignData={campaignData} authFetch={authFetch} />
+      </ErrorBoundary>
+    );
   }
   if (view === "npc-workshop") {
-    return <NPCWorkshopPage campaignData={campaignData} authFetch={authFetch} />;
+    return (
+      <ErrorBoundary>
+        <NPCWorkshopPage campaignData={campaignData} authFetch={authFetch} />
+      </ErrorBoundary>
+    );
   }
   if (view === "voice-studio") {
-    return <VoiceStudioPage authFetch={authFetch} />;
+    return (
+      <ErrorBoundary>
+        <VoiceStudioPage authFetch={authFetch} />
+      </ErrorBoundary>
+    );
   }
   if (view === "settings") {
     return <SettingsPage />;

@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function PanelShell({ title, children, className = "" }) {
   return (
     <section className={`panel-ornate ${className}`}>

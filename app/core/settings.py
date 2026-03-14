@@ -71,11 +71,17 @@ class StorageSettings:
 @dataclass(frozen=True)
 class TTSSettings:
     """TTS and voice clone constraints."""
+    provider: str = field(default_factory=lambda: (os.environ.get("TTS_PROVIDER", "kani") or "kani").strip().lower())
+    default_voice_id: str = field(default_factory=lambda: os.environ.get("DEFAULT_VOICE_ID", "").strip())
     audio_cache_size: int = field(default_factory=lambda: int(os.environ.get("AUDIO_CACHE_SIZE", "10")))
     clone_min_duration_sec: float = field(default_factory=lambda: float(os.environ.get("CLONE_MIN_DURATION_SEC", "3.0")))
     clone_max_duration_sec: float = field(default_factory=lambda: float(os.environ.get("CLONE_MAX_DURATION_SEC", "60.0")))
     clone_target_sample_rate: int = 16000
     voice_retention_days: int = field(default_factory=lambda: int(os.environ.get("VOICE_RETENTION_DAYS", "0")))
+    hume_api_key: str = field(default_factory=lambda: os.environ.get("HUME_API_KEY", "").strip())
+    hume_secret_key: str = field(default_factory=lambda: os.environ.get("HUME_SECRET_KEY", "").strip())
+    hume_base_url: str = field(default_factory=lambda: os.environ.get("HUME_BASE_URL", "https://api.hume.ai").strip())
+    hume_version: str = field(default_factory=lambda: os.environ.get("HUME_TTS_VERSION", "2").strip())
 
 
 @dataclass(frozen=True)

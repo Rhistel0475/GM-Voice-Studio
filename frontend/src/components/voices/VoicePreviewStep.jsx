@@ -1,4 +1,3 @@
-import React from "react";
 import { Play, ChevronLeft } from "lucide-react";
 import { FantasyButton } from "../shared";
 

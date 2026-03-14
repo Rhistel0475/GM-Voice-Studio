@@ -77,6 +77,7 @@ export const useCampaignContextStore = create<CampaignContextState & {
   upsertVoice: (voice: Voice) => void;
   upsertCodexEntry: (entry: CodexEntry) => void;
   upsertScene: (scene: Scene) => void;
+  upsertCampaign: (campaign: Campaign) => void;
   setVoices: (voices: Voice[]) => void;
   hydrateFromSeed: () => void;
   resetCampaignContext: () => void;
@@ -339,6 +340,16 @@ export const useCampaignContextStore = create<CampaignContextState & {
         ? state.scenes.map((s) => (s.id === scene.id ? scene : s))
         : [...state.scenes, scene];
       return { scenes };
+    });
+  },
+
+  upsertCampaign(campaign) {
+    set((state) => {
+      const idx = state.campaigns.findIndex((c) => c.id === campaign.id);
+      const campaigns = idx >= 0
+        ? state.campaigns.map((c) => (c.id === campaign.id ? campaign : c))
+        : [...state.campaigns, campaign];
+      return { campaigns };
     });
   },
 

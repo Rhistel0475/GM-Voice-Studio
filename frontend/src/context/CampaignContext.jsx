@@ -1,14 +1,14 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo } from "react";
 import { useCampaignContextStore } from "../store/campaignContext";
 import {
   getActiveCampaign,
   getActiveSession,
   getActiveScene,
-  getSceneNpcs,
   getActionLogForActiveScene,
   getNarrationClipsForActiveScene,
 } from "../store/selectors";
 import { getNpcsForScene } from "../types/campaign";
+import { importParseResultToStore } from "../lib/campaignImport";
 
 const CampaignContext = createContext(null);
 
@@ -99,10 +99,20 @@ export function CampaignProvider({ children }) {
   const hydrateFromSeed = useCampaignContextStore((s) => s.hydrateFromSeed);
 
   useEffect(() => {
-    if (!state.activeCampaignId && state.campaigns.length === 0) {
-      hydrateFromSeed();
+    if (state.activeCampaignId || state.campaigns.length > 0) return;
+    // Import previously-saved parse result if present; otherwise stay empty.
+    try {
+      const saved = localStorage.getItem("gm_campaign_data");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && parsed.title) {
+          importParseResultToStore(parsed);
+        }
+      }
+    } catch {
+      // localStorage unreadable or corrupt — stay empty.
     }
-  }, [state.activeCampaignId, state.campaigns.length, hydrateFromSeed]);
+  }, [state.activeCampaignId, state.campaigns.length]);
 
   const campaignScenes = useMemo(
     () => (state.activeCampaignId ? state.scenes.filter((s) => s.campaignId === state.activeCampaignId) : []),
@@ -122,7 +132,7 @@ export function CampaignProvider({ children }) {
   );
 
   const appendActionLog = useCallback(
-    (role, text, meta = "") => {
+    (role, text, _meta = "") => {
       if (!text) return;
       state.addActionLogEvent({ type: roleToEventType(role), text });
     },

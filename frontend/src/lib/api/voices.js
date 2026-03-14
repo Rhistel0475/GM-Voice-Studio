@@ -1,13 +1,7 @@
 /**
- * Voice Studio API layer. Fetches voices from /voices/list when available;
- * falls back to mock data. Generated audio and jobs use mock until backend is ready.
+ * Voice Studio API layer. Fetches voices from /voices/list when available.
+ * Returns empty arrays on failure — no mock data fallbacks.
  */
-
-import {
-  MOCK_VOICE_PROFILES,
-  MOCK_GENERATED_AUDIO,
-  MOCK_VOICE_CLONE_JOB,
-} from "../utils/mockData";
 
 /**
  * Map backend voice item to VoiceProfile shape.
@@ -22,6 +16,8 @@ function mapVoiceToProfile(raw) {
     name: raw.name || raw.display_name || "Unnamed Voice",
     source: raw.source || "system",
     status: raw.status || "ready",
+    featured: Boolean(raw.featured),
+    icon: raw.icon,
     accent: raw.accent,
     tone: raw.tone,
     tags: Array.isArray(raw.tags) ? raw.tags : [],
@@ -38,26 +34,53 @@ function mapVoiceToProfile(raw) {
  * @returns {Promise<import("../../types/voice").VoiceProfile[]>}
  */
 export async function getVoices(authFetch) {
-  if (!authFetch) return MOCK_VOICE_PROFILES;
+  if (!authFetch) return [];
   try {
     const res = await authFetch("/voices/list");
-    if (!res.ok) return MOCK_VOICE_PROFILES;
+    if (!res.ok) return [];
     const data = await res.json();
     const list = Array.isArray(data) ? data : data?.voices || data?.items || [];
-    return list.length ? list.map(mapVoiceToProfile) : MOCK_VOICE_PROFILES;
+    return list.map(mapVoiceToProfile);
   } catch {
-    return MOCK_VOICE_PROFILES;
+    return [];
   }
 }
 
 /**
- * Get generated audio clips. Uses mock data until backend endpoint exists.
+ * Delete a stored voice via DELETE /voices/:id.
+ * @param {string} voiceId
+ * @param {Function} authFetch
+ * @returns {Promise<{ok: boolean, deleted?: string, error?: string}>}
+ */
+export async function deleteVoice(voiceId, authFetch) {
+  if (!authFetch || !voiceId) return { ok: false, error: "Voice not found" };
+  try {
+    const res = await authFetch(`/voices/${encodeURIComponent(voiceId)}`, { method: "DELETE" });
+    const payload = await res.json().catch(() => ({}));
+    if (res.ok) {
+      return { ok: true, deleted: payload.deleted || voiceId };
+    }
+    return { ok: false, error: payload.detail || payload.error || res.statusText || "Delete failed" };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Delete failed" };
+  }
+}
+
+/**
+ * Get generated audio clips from GET /voices/generated.
  * @param {Function} [authFetch]
  * @returns {Promise<import("../../types/voice").GeneratedAudio[]>}
  */
 export async function getGeneratedAudio(authFetch) {
-  // Future: GET /voices/generated or /api/generated-audio
-  return Promise.resolve(MOCK_GENERATED_AUDIO);
+  if (!authFetch) return [];
+  try {
+    const res = await authFetch("/voices/generated");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : data?.clips || data?.items || [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -76,9 +99,9 @@ export async function submitClone(formData, authFetch) {
     if (res.ok && (payload.job_id || payload.voice_id)) {
       return { ok: true, job_id: payload.job_id, voice_id: payload.voice_id };
     }
-    return { ok: false };
-  } catch {
-    return { ok: false };
+    return { ok: false, error: payload.detail || payload.error || `Server error ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Network error" };
   }
 }
 
@@ -104,12 +127,4 @@ export async function getCloneJobStatus(jobId, authFetch) {
   } catch {
     return null;
   }
-}
-
-/**
- * Stub: return a mock job for demo when no real job id.
- * @returns {import("../../types/voice").VoiceCloneJob}
- */
-export function getMockCloneJob() {
-  return { ...MOCK_VOICE_CLONE_JOB };
 }

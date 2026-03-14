@@ -70,7 +70,7 @@ function campaignToCodexItems(campaignData) {
  * @param {Function} [authFetch] - Optional; for future backend codex API
  * @returns {import("../../types/codex").CodexItem[]}
  */
-export function getCodexItems(campaignData, authFetch) {
+export function getCodexItems(campaignData, _authFetch) {
   const fromCampaign = campaignToCodexItems(campaignData);
   if (fromCampaign.length > 0) return fromCampaign;
   return MOCK_CODEX_ITEMS;

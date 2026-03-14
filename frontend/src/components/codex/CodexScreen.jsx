@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { defaultCodexFilterState } from "../../types/codex";
 import { getCodexItems } from "../../lib/api/codex";
 import CodexSidebar from "./CodexSidebar";

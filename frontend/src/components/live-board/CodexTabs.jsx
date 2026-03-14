@@ -1,4 +1,3 @@
-import React from "react";
 import { TabGroup } from "../shared";
 import { CODEX_TABS } from "./constants";
 

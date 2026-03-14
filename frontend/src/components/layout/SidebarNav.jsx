@@ -1,6 +1,5 @@
-import React from "react";
 import { NavLink } from "react-router-dom";
-import { Book, Mic, Users, Volume2, LayoutDashboard, Settings } from "lucide-react";
+import { Book, Users, Volume2, LayoutDashboard, Settings } from "lucide-react";
 
 const navItems = [
   { to: "/", label: "Live Board", icon: LayoutDashboard },

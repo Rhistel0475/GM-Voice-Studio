@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Textarea for GM notes on the NPC.
  */

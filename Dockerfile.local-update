@@ -1,0 +1,17 @@
+# Local incremental rebuild path:
+# layer the current workspace over the existing kani-tts image so we can
+# update code and compatible extras without re-solving the full TTS stack.
+FROM kani-tts:latest
+
+WORKDIR /app
+
+COPY requirements-server.txt requirements-rag.txt ./
+RUN pip install --no-cache-dir -r requirements-server.txt && \
+    pip install --no-cache-dir -r requirements-rag.txt && \
+    pip install --no-cache-dir --upgrade "transformers==5.3.0"
+
+COPY . .
+
+EXPOSE 7862
+ENV PORT=7862
+CMD ["python", "server.py"]

@@ -1,4 +1,4 @@
-import React from "react";
+import { useState } from "react";
 import { UserPlus } from "lucide-react";
 import { FantasyButton } from "../shared";
 
@@ -14,7 +14,7 @@ export default function VoiceAssignmentPanel({
 }) {
   const voiceId = voice?.voice_id || voice?.id;
   const assignedNPCs = voice?.assignedNPCs || [];
-  const [selectedNpcId, setSelectedNpcId] = React.useState("");
+  const [selectedNpcId, setSelectedNpcId] = useState("");
 
   const handleAssign = () => {
     if (!selectedNpcId || !onAssign) return;
@@ -24,7 +24,7 @@ export default function VoiceAssignmentPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider">Assign to NPC</p>
+      <p className="text-xs font-heading uppercase tracking-wider" style={{ color: "#6b3e10" }}>Assign to NPC</p>
       <div className="flex gap-2">
         <select
           className="chat-input flex-1 min-w-0 text-sm"
@@ -49,22 +49,26 @@ export default function VoiceAssignmentPanel({
         </FantasyButton>
       </div>
       {assignedNPCs.length > 0 && (
-        <ul className="text-sm text-[var(--ink-1)] space-y-1">
-          <p className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider mb-1">Assigned</p>
-          {assignedNPCs.map((npcId) => (
-            <li key={npcId} className="flex items-center justify-between gap-2">
-              <span>{npcId}</span>
-              {onUnassign && (
-                <button
-                  type="button"
-                  className="text-xs text-[var(--gold)] hover:underline"
-                  onClick={() => onUnassign(voiceId, npcId)}
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
+        <ul className="text-sm space-y-1" style={{ color: "#3a1e08" }}>
+          <p className="text-xs font-heading uppercase tracking-wider mb-1" style={{ color: "#6b3e10" }}>Assigned</p>
+          {assignedNPCs.map((npcId) => {
+            const npc = npcOptions.find((n) => n.id === npcId);
+            return (
+              <li key={npcId} className="flex items-center justify-between gap-2">
+                <span>{npc?.name || npcId}</span>
+                {onUnassign && (
+                  <button
+                    type="button"
+                    className="text-xs hover:underline"
+                    style={{ color: "#7a4010" }}
+                    onClick={() => onUnassign(voiceId, npcId)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

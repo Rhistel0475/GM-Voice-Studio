@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Tab strip with selected key and onChange(key). Renders tabs from tabs array of { key, label }.
  */

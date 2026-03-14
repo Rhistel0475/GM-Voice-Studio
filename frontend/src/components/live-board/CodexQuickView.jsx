@@ -1,4 +1,3 @@
-import React from "react";
 import { FantasyButton, EmptyState } from "../shared";
 
 /**

@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Single roster row: name, role pill, excerpt. Matches CodexResultCard selected/ring style for scanability.
  */

@@ -1,6 +1,5 @@
-import React from "react";
 import { FantasyButton } from "../shared";
-import { Play, UserPlus } from "lucide-react";
+import { Crown, Play, UserPlus } from "lucide-react";
 import { getVoicePlaceholder } from "../../lib/placeholders";
 
 /**
@@ -12,6 +11,7 @@ export default function VoiceCard({ voice, selected, onPlaySample, onAssign, onS
   const status = voice?.status;
   const source = voice?.source;
   const tone = voice?.tone;
+  const featured = Boolean(voice?.featured);
   const placeholderSrc = getVoicePlaceholder(tone);
 
   const handleCardClick = () => onSelect?.(voice);
@@ -33,10 +33,18 @@ export default function VoiceCard({ voice, selected, onPlaySample, onAssign, onS
           className="w-full aspect-square object-cover"
         />
       </div>
-      <p className="mt-1 text-sm font-heading text-[var(--text-1)] text-center line-clamp-2">{name}</p>
+      <p className="mt-1 text-sm font-heading text-[var(--text-1)] text-center line-clamp-2 flex items-center justify-center gap-1">
+        {featured ? <Crown size={14} className="text-[var(--gold)] shrink-0" aria-hidden /> : null}
+        <span>{name}</span>
+      </p>
       {(status && status !== "ready") || source ? (
         <span className="text-[10px] uppercase tracking-wide text-[var(--text-2)] mt-0.5">
           {status && status !== "ready" ? status : source}
+        </span>
+      ) : null}
+      {featured ? (
+        <span className="text-[10px] uppercase tracking-wide text-[var(--gold)] mt-0.5">
+          Featured voice
         </span>
       ) : null}
       <FantasyButton

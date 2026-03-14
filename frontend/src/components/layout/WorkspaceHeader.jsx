@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * Page header for workspace views: icon, title, optional subtitle.
  * icon can be a string (emoji) or a Lucide component.

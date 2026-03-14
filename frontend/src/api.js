@@ -67,6 +67,10 @@ export function createClient(apiKey = "") {
     getCampaigns: () => request("/api/campaigns").then((r) => r.json()),
     getCampaign: (id) => request(`/api/campaigns/${id}`).then((r) => r.json()),
     deleteCampaign: (id) => request(`/api/campaigns/${id}`, { method: "DELETE" }),
+
+    /** Upload adventure document(s) (.txt, .md, .pdf). Returns parsed result with files metadata. */
+    postAdventureParse: (formData) =>
+      request("/adventure/parse", { method: "POST", body: formData }).then((r) => r.json()),
   };
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAppState } from "../context/AppStateContext";
 import { useCampaignOptional } from "../context/CampaignContext";
 import { useCodexEntriesForActiveCampaign } from "../store/selectors";
