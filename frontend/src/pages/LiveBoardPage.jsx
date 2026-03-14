@@ -17,6 +17,9 @@ export default function LiveBoardPage({
   selectedNpcName,
   onSelectNpc,
   onInsertIntoNarration,
+  onNarrateScene,
+  isNarratingScene = false,
+  narrateSceneError = "",
   middleColumn,
   showSessionEmpty = false,
 }) {
@@ -38,6 +41,9 @@ export default function LiveBoardPage({
               scene={scene}
               selectedNpcName={selectedNpcName}
               onSelectNpc={onSelectNpc}
+              onNarrateScene={onNarrateScene}
+              isNarratingScene={isNarratingScene}
+              narrateSceneError={narrateSceneError}
             />
           </div>
         </aside>

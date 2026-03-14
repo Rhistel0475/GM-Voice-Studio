@@ -11,7 +11,15 @@ const DEFAULT_PARTY = [
   { name: "DUNCAN", hp: "—", ac: "—" },
 ];
 
-export default function GMControlPanel({ campaignData, scene, selectedNpcName, onSelectNpc }) {
+export default function GMControlPanel({
+  campaignData,
+  scene,
+  selectedNpcName,
+  onSelectNpc,
+  onNarrateScene,
+  isNarratingScene = false,
+  narrateSceneError = "",
+}) {
   const [activeTool, setActiveTool] = useState(null);
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
   const allNpcs = campaignData?.npcs || [];
@@ -37,6 +45,19 @@ export default function GMControlPanel({ campaignData, scene, selectedNpcName, o
           <div className="plaque">Active Scene</div>
         </div>
         <div className="panel-body space-y-2 overflow-y-auto min-h-[120px] max-h-[220px]">
+          {(scene?.id || scene?.read_aloud || scene?.notes) && onNarrateScene ? (
+            <div className="space-y-1">
+              <button
+                type="button"
+                className="cta-secondary w-full text-center transition-all hover:brightness-110"
+                onClick={() => onNarrateScene(scene)}
+                disabled={isNarratingScene}
+              >
+                {isNarratingScene ? "Narrating..." : "Narrate Scene"}
+              </button>
+              {narrateSceneError ? <div className="text-xs text-red-400">{narrateSceneError}</div> : null}
+            </div>
+          ) : null}
           {sceneNpcs.map((npc) => (
             <button
               key={npc.name}

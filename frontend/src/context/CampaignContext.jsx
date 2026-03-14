@@ -96,7 +96,6 @@ function deriveLegacyActionLog(state) {
 
 export function CampaignProvider({ children }) {
   const state = useCampaignContextStore((s) => s);
-  const hydrateFromSeed = useCampaignContextStore((s) => s.hydrateFromSeed);
 
   useEffect(() => {
     if (state.activeCampaignId || state.campaigns.length > 0) return;

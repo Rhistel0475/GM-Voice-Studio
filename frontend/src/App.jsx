@@ -19,6 +19,7 @@ import SessionLog from "./components/live-board/SessionLog";
 import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
 import AiNarrateButton from "./components/live-board/AiNarrateButton";
 import SceneDirectorPanel from "./components/live-board/SceneDirectorPanel";
+import NpcVoiceModal from "./components/live-board/NpcVoiceModal";
 import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
 
 class ErrorBoundary extends Component {
@@ -166,6 +167,11 @@ const MiddleColumn = ({
   selectedSceneIdx,
   onSelectScene,
   onSelectNpc,
+  onNarrateScene,
+  isNarratingScene = false,
+  narrateSceneError = "",
+  onSpeakNpc,
+  onGenerateNpcResponse,
   authFetch,
   actionLog,
   onLogEntry,
@@ -189,8 +195,6 @@ const MiddleColumn = ({
   audioStatus = "idle",
 }) => {
   const [sceneTab, setSceneTab] = useState("text");
-  const [isNarrating, setIsNarrating] = useState(false);
-  const [narrateError, setNarrateError] = useState("");
   const [npcGenre, setNpcGenre] = useState("1930s noir fantasy");
   const [npcLocation, setNpcLocation] = useState("");
   const [npcName, setNpcName] = useState("");
@@ -217,37 +221,6 @@ const MiddleColumn = ({
       throw new Error("No cloned voice found. Create a voice first, then narrate.");
     }
     return firstVoice.voice_id;
-  };
-
-  const handleNarrate = async () => {
-    if (!scene.read_aloud) return;
-    setIsNarrating(true);
-    setNarrateError("");
-    onAudioStatusChange?.("loading");
-    try {
-      const voiceId = await resolveNarrationVoiceId();
-      const response = await authFetch('/tts/narrate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: scene.read_aloud, voice_id: voiceId }),
-      });
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText || "Narration failed.");
-      }
-      const blob = await response.blob();
-      const audio = new Audio(URL.createObjectURL(blob));
-      onAudioStatusChange?.("playing");
-      audio.onended = () => onAudioStatusChange?.("idle");
-      audio.onerror = () => onAudioStatusChange?.("idle");
-      audio.play();
-    } catch (error) {
-      console.error('Error narrating scene:', error);
-      setNarrateError(error?.message || "Narration failed.");
-      onAudioStatusChange?.("idle");
-    } finally {
-      setIsNarrating(false);
-    }
   };
 
   const handleNpcGen = async () => {
@@ -368,13 +341,13 @@ const MiddleColumn = ({
                   <button
                     type="button"
                     className="cta-secondary transition-all hover:brightness-110"
-                    onClick={handleNarrate}
-                    disabled={isNarrating}
+                    onClick={() => onNarrateScene?.(scene)}
+                    disabled={isNarratingScene}
                   >
-                    {isNarrating ? "Generating…" : <><Play size={13} className="inline-block mr-1" /> Narrate Scene</>}
+                    {isNarratingScene ? "Generating…" : <><Play size={13} className="inline-block mr-1" /> Narrate Scene</>}
                   </button>
                 )}
-                {narrateError && <span className="text-xs text-red-400">{narrateError}</span>}
+                {narrateSceneError && <span className="text-xs text-red-400">{narrateSceneError}</span>}
               </div>
               {/* Audio playback: card when active, placeholder when idle */}
               <div className="mt-2">
@@ -470,6 +443,28 @@ const MiddleColumn = ({
                   : <div className="portrait-slot" />}
                 <p>{npc.name}</p>
                 <p className="text-[#9b7440] text-xs">{npc.role}</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSpeakNpc?.(npc);
+                    }}
+                  >
+                    Speak
+                  </button>
+                  <button
+                    type="button"
+                    className="send-btn text-[10px] px-2 py-1 transition-all hover:brightness-110"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onGenerateNpcResponse?.(npc);
+                    }}
+                  >
+                    AI Reply
+                  </button>
+                </div>
               </article>
             )) : (
               <div className="col-span-3 intake-empty">No NPCs loaded yet.</div>
@@ -571,6 +566,17 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   const [autoQueryOnVoice, setAutoQueryOnVoice] = useState(Boolean(defaultAutoQueryOnVoice));
   const [sessionTimer, setSessionTimer] = useState("0:00");
   const [audioStatus, setAudioStatus] = useState("idle");
+  const [isNarratingScene, setIsNarratingScene] = useState(false);
+  const [narrateSceneError, setNarrateSceneError] = useState("");
+  const [npcVoiceModal, setNpcVoiceModal] = useState({
+    open: false,
+    mode: "speak",
+    npc: null,
+    value: "",
+    busy: false,
+    error: "",
+    generatedText: "",
+  });
   const sessionStartRef = useRef(null);
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -605,6 +611,203 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     setActionLogLocal((prev) => [...prev, entry].slice(-100));
   }, []);
   const appendActionLog = useSharedCampaign ? campaignCtx.appendActionLog : appendActionLogLocal;
+
+  const appendSessionEntry = useCallback((legacyRole, eventType, text, meta = "") => {
+    if (!text) return;
+    appendActionLog(legacyRole, text, meta);
+    const store = useCampaignContextStore.getState();
+    addSessionLogEntry({
+      type: eventType,
+      text,
+      sceneId: store.activeSceneId ?? undefined,
+      sessionId: store.activeSessionId ?? undefined,
+    });
+    persistSessionEvent(authFetch, {
+      type: eventType,
+      text,
+      scene_id: store.activeSceneId,
+      session_id: store.activeSessionId,
+    });
+  }, [appendActionLog, authFetch]);
+
+  const playAudioUrl = useCallback((audioUrl, { revokeOnEnd = true } = {}) => new Promise((resolve, reject) => {
+    if (!audioUrl) {
+      reject(new Error("No audio returned."));
+      return;
+    }
+    const audio = new Audio(audioUrl);
+    setAudioStatus("playing");
+    audio.onended = () => {
+      setAudioStatus("idle");
+      if (revokeOnEnd) URL.revokeObjectURL(audioUrl);
+      resolve();
+    };
+    audio.onerror = () => {
+      setAudioStatus("idle");
+      if (revokeOnEnd) URL.revokeObjectURL(audioUrl);
+      reject(new Error("Audio failed to play."));
+    };
+    audio.play().catch((error) => {
+      setAudioStatus("idle");
+      if (revokeOnEnd) URL.revokeObjectURL(audioUrl);
+      reject(error);
+    });
+  }), []);
+
+  const playAudioBlob = useCallback(async (blob, { persistUrl = false } = {}) => {
+    const audioUrl = URL.createObjectURL(blob);
+    await playAudioUrl(audioUrl, { revokeOnEnd: !persistUrl });
+    return audioUrl;
+  }, [playAudioUrl]);
+
+  const playBase64Audio = useCallback(async (encoded, mimeType = "audio/wav") => {
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    await playAudioBlob(new Blob([bytes], { type: mimeType }));
+  }, [playAudioBlob]);
+
+  const resolveNarrationVoiceId = useCallback(async () => {
+    const response = await authFetch("/voices/list");
+    if (!response.ok) {
+      throw new Error("Could not load available voices.");
+    }
+    const voices = await response.json();
+    const firstVoice = Array.isArray(voices) ? voices.find((voice) => voice?.voice_id) : null;
+    if (!firstVoice?.voice_id) {
+      throw new Error("No voice available for narration.");
+    }
+    return firstVoice.voice_id;
+  }, [authFetch]);
+
+  const handleNarrateScene = useCallback(async (activeScene) => {
+    const sceneTarget = activeScene || scene;
+    const sceneText = (sceneTarget?.read_aloud || sceneTarget?.notes || "").trim();
+    if (!sceneTarget || !sceneText) return;
+
+    setIsNarratingScene(true);
+    setNarrateSceneError("");
+    setAudioStatus("loading");
+
+    try {
+      let response;
+      if (sceneTarget.id) {
+        response = await authFetch("/tts/narrate-scene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scene_id: String(sceneTarget.id) }),
+        });
+      } else {
+        const voiceId = await resolveNarrationVoiceId();
+        response = await authFetch("/tts/narrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: sceneText, voice_id: voiceId }),
+        });
+      }
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Narration failed.");
+      }
+
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      appendSessionEntry("assistant", "narration", sceneText, "Scene Narration");
+
+      useCampaignContextStore.getState().addNarrationClip({
+        title: sceneTarget?.title || "Scene Narration",
+        voiceId: sceneTarget?.narrator_voice_id,
+        audioUrl,
+      });
+      await playAudioUrl(audioUrl, { revokeOnEnd: false });
+    } catch (error) {
+      setNarrateSceneError(error?.message || "Narration failed.");
+      setAudioStatus("idle");
+    } finally {
+      setIsNarratingScene(false);
+    }
+  }, [appendSessionEntry, authFetch, playAudioUrl, resolveNarrationVoiceId, scene]);
+
+  const openNpcVoiceModal = useCallback((npc, mode) => {
+    if (!npc) return;
+    setSelectedNpcName(npc.name || null);
+    setNpcVoiceModal({
+      open: true,
+      mode,
+      npc,
+      value: "",
+      busy: false,
+      error: "",
+      generatedText: "",
+    });
+  }, []);
+
+  const closeNpcVoiceModal = useCallback(() => {
+    setNpcVoiceModal((current) => (
+      current.busy
+        ? current
+        : { open: false, mode: "speak", npc: null, value: "", busy: false, error: "", generatedText: "" }
+    ));
+  }, []);
+
+  const submitNpcVoiceModal = useCallback(async () => {
+    const npc = npcVoiceModal.npc;
+    const value = (npcVoiceModal.value || "").trim();
+    if (!npc || !value || npcVoiceModal.busy) return;
+
+    const npcId = npc.id || npc.name;
+    setNpcVoiceModal((current) => ({ ...current, busy: true, error: "" }));
+    setAudioStatus("loading");
+
+    try {
+      if (npcVoiceModal.mode === "generate") {
+        appendSessionEntry("player", "player", value, `${npc.name || "NPC"} Prompt`);
+        const response = await authFetch("/npc/generate-dialogue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ npc_id: String(npcId), player_input: value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.detail || payload?.error || "NPC response failed.");
+        }
+
+        const generatedLine = `${npc.name || "NPC"}: ${payload.generated_text || ""}`.trim();
+        appendSessionEntry("assistant", "npc", generatedLine, "AI NPC Response");
+        if (payload.audio_base64) {
+          await playBase64Audio(payload.audio_base64, payload.mime_type || "audio/wav");
+        }
+        setNpcVoiceModal((current) => ({
+          ...current,
+          busy: false,
+          error: "",
+          generatedText: payload.generated_text || "",
+        }));
+        return;
+      }
+
+      const response = await authFetch("/tts/npc-dialogue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ npc_id: String(npcId), text: value }),
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "NPC dialogue failed.");
+      }
+      const blob = await response.blob();
+      appendSessionEntry("assistant", "npc", `${npc.name || "NPC"}: ${value}`, "NPC Voice");
+      await playAudioBlob(blob);
+      setNpcVoiceModal({ open: false, mode: "speak", npc: null, value: "", busy: false, error: "", generatedText: "" });
+    } catch (error) {
+      setAudioStatus("idle");
+      setNpcVoiceModal((current) => ({
+        ...current,
+        busy: false,
+        error: error?.message || "NPC voice action failed.",
+      }));
+    }
+  }, [appendSessionEntry, authFetch, npcVoiceModal, playAudioBlob, playBase64Audio]);
 
   useEffect(() => {
     if (sessionStartRef.current == null) sessionStartRef.current = Date.now();
@@ -1066,12 +1269,16 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   }, []);
 
   return (
-    <LiveBoardPage
+    <>
+      <LiveBoardPage
         campaignData={campaign}
         scene={scene}
         selectedNpcName={selectedNpcName}
         onSelectNpc={setSelectedNpcName}
         onInsertIntoNarration={(text) => setCoDmQuery((prev) => (prev ? prev + "\n" + text : text))}
+        onNarrateScene={handleNarrateScene}
+        isNarratingScene={isNarratingScene}
+        narrateSceneError={narrateSceneError}
         showSessionEmpty={!campaign}
         middleColumn={
           <MiddleColumn
@@ -1079,6 +1286,11 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
             selectedSceneIdx={selectedSceneIdx}
             onSelectScene={setSelectedSceneIdx}
             onSelectNpc={setSelectedNpcName}
+            onNarrateScene={handleNarrateScene}
+            isNarratingScene={isNarratingScene}
+            narrateSceneError={narrateSceneError}
+            onSpeakNpc={(npc) => openNpcVoiceModal(npc, "speak")}
+            onGenerateNpcResponse={(npc) => openNpcVoiceModal(npc, "generate")}
             authFetch={authFetch}
             actionLog={actionLog}
             onLogEntry={appendActionLog}
@@ -1103,6 +1315,19 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
           />
         }
       />
+      <NpcVoiceModal
+        open={npcVoiceModal.open}
+        mode={npcVoiceModal.mode}
+        npc={npcVoiceModal.npc}
+        value={npcVoiceModal.value}
+        onChange={(value) => setNpcVoiceModal((current) => ({ ...current, value }))}
+        onClose={closeNpcVoiceModal}
+        onSubmit={submitNpcVoiceModal}
+        busy={npcVoiceModal.busy}
+        error={npcVoiceModal.error}
+        generatedText={npcVoiceModal.generatedText}
+      />
+    </>
   );
 };
 
