@@ -66,6 +66,12 @@ class StorageSettings:
     narrate_result_path: str = field(
         default_factory=lambda: os.environ.get("NARRATE_RESULT_PATH", str(_root_dir() / "narrate_results"))
     )
+    campaign_document_storage_path: str = field(
+        default_factory=lambda: os.environ.get(
+            "CAMPAIGN_DOCUMENT_STORAGE_PATH",
+            str(_root_dir() / "campaign_documents"),
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -98,6 +104,7 @@ class RetrievalSettings:
     openai_api_key: str = field(default_factory=lambda: os.environ.get("OPENAI_API_KEY", "").strip())
     pinecone_api_key: str = field(default_factory=lambda: os.environ.get("PINECONE_API_KEY", "").strip())
     pinecone_index_name: str = field(default_factory=lambda: os.environ.get("PINECONE_INDEX_NAME", "co-dm-index").strip())
+    embedding_model: str = field(default_factory=lambda: os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small").strip())
 
 
 @dataclass(frozen=True)

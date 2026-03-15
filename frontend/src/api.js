@@ -67,6 +67,12 @@ export function createClient(apiKey = "") {
     getCampaigns: () => request("/api/campaigns").then((r) => r.json()),
     getCampaign: (id) => request(`/api/campaigns/${id}`).then((r) => r.json()),
     deleteCampaign: (id) => request(`/api/campaigns/${id}`, { method: "DELETE" }),
+    getCampaignDocuments: (id) => request(`/api/campaigns/${id}/documents`).then((r) => r.json()),
+    uploadCampaignDocuments: (id, formData) => request(`/api/campaigns/${id}/documents`, { method: "POST", body: formData }).then((r) => r.json()),
+    postCampaignQuery: (body) =>
+      request("/campaign/query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json()),
+    postNarrateAnswer: (body) =>
+      request("/tts/narrate-answer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
 
     /** Upload adventure document(s) (.txt, .md, .pdf). Returns parsed result with files metadata. */
     postAdventureParse: (formData) =>

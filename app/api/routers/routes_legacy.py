@@ -1009,6 +1009,57 @@ class AssignVoiceBody(BaseModel):
     voice_id: str
 
 
+@router.post("/api/campaigns/{campaign_id}/documents")
+@limiter.limit("20/minute")
+async def upload_campaign_documents(
+    campaign_id: int,
+    request: Request,
+    files: list[UploadFile] = File(...),
+    _auth: None = Depends(verify_api_key),
+):
+    """Upload and index campaign source documents for Campaign Brain retrieval."""
+    if not files:
+        raise HTTPException(400, "Upload at least one campaign document.")
+
+    uploads: list[dict[str, object]] = []
+    for upload in files:
+        content = await upload.read()
+        uploads.append(
+            {
+                "filename": upload.filename or "document",
+                "content_type": upload.content_type or "",
+                "content": content,
+            }
+        )
+
+    from app.services.campaign_brain_service import ingest_campaign_documents
+
+    try:
+        return await run_in_threadpool(ingest_campaign_documents, campaign_id, uploads)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/api/campaigns/{campaign_id}/documents")
+@limiter.limit("60/minute")
+async def list_campaign_documents(
+    campaign_id: int,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """List indexed campaign documents for Campaign Brain."""
+    from app.services.campaign_brain_service import list_campaign_documents as list_campaign_documents_service
+
+    data = campaign_repository.get_by_id(campaign_id)
+    if data is None:
+        raise HTTPException(404, "Campaign not found")
+    return {"campaign_id": campaign_id, "documents": await run_in_threadpool(list_campaign_documents_service, campaign_id)}
+
+
 @router.patch("/api/campaigns/{campaign_id}/npcs/{npc_name}/voice")
 @limiter.limit("120/minute")
 async def assign_npc_voice(
@@ -1191,6 +1242,12 @@ class RagQueryRequest(BaseModel):
     doc_type: Optional[str] = None
 
 
+class CampaignQueryRequest(BaseModel):
+    campaign_id: int
+    question: str
+    top_k: int = 5
+
+
 @router.post("/rag/query")
 @limiter.limit("60/minute")
 async def rag_query(req: RagQueryRequest, request: Request, _auth: None = Depends(verify_api_key)):
@@ -1203,10 +1260,33 @@ async def rag_query(req: RagQueryRequest, request: Request, _auth: None = Depend
     return {"results": results}
 
 
+@router.post("/campaign/query")
+@limiter.limit("60/minute")
+async def campaign_query(req: CampaignQueryRequest, request: Request, _auth: None = Depends(verify_api_key)):
+    """Query campaign-ingested documents and return matched chunks plus a concise answer."""
+    from app.services.campaign_brain_service import query_campaign_documents
+
+    try:
+        return await run_in_threadpool(query_campaign_documents, req.campaign_id, req.question, req.top_k)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(400, str(exc))
+
+
 # --- Co-DM LLM brain (Sprint 3) ---
 
 class BrainQueryRequest(BaseModel):
     query: str
+
+
+class SessionAssistantAnalyzeRequest(BaseModel):
+    transcript_entries: list[str]
+    scene_title: str = ""
+    scene_summary: str = ""
+    npcs: list[dict] = Field(default_factory=list)
 
 
 @router.post("/brain/query")
@@ -1222,6 +1302,35 @@ async def brain_query(req: BrainQueryRequest, request: Request, _auth: None = De
     except RuntimeError as e:
         raise HTTPException(503, str(e))
     return result
+
+
+@router.post("/session-assistant/analyze")
+@limiter.limit("20/minute")
+async def session_assistant_analyze(
+    req: SessionAssistantAnalyzeRequest,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """
+    Analyze recent transcript lines and return actionable live-play suggestions.
+    Returns: {"suggestions": [{type, title, text, npc_name, spoken_text, action_prompt}, ...]}
+    """
+    from app.services.ai_service import analyze_session_context
+
+    if not req.transcript_entries:
+        return {"suggestions": []}
+
+    try:
+        suggestions = await run_in_threadpool(
+            analyze_session_context,
+            transcript_entries=req.transcript_entries,
+            scene_title=req.scene_title,
+            scene_summary=req.scene_summary,
+            npcs=req.npcs,
+        )
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+    return {"suggestions": suggestions}
 
 
 # --- Co-DM NPC Generator (Sprint 4) ---
@@ -1417,6 +1526,12 @@ class NarrateSceneBody(BaseModel):
 class GenerateNpcDialogueBody(BaseModel):
     npc_id: str
     player_input: str
+
+
+class NarrateAnswerBody(BaseModel):
+    campaign_id: int
+    answer: str
+    voice_id: Optional[str] = None
 
 
 def _synthesize_text(
@@ -1622,6 +1737,46 @@ async def tts_narrate_scene(request: Request, body: NarrateSceneBody, _auth: Non
 
     increment("tts_requests_total")
     filename = f"scene-{scene.get('id') or body.scene_id}-narration.wav"
+    return _audio_to_wav_response(audio, sr, filename=filename)
+
+
+@router.post("/tts/narrate-answer")
+@limiter.limit("20/minute")
+async def tts_narrate_answer(request: Request, body: NarrateAnswerBody, _auth: None = Depends(verify_api_key)):
+    text = (body.answer or "").strip()
+    if not text:
+        raise HTTPException(400, "Answer text is required.")
+    if len(text) > MAX_TOTAL_CHARS:
+        raise HTTPException(400, f"Answer exceeds {MAX_TOTAL_CHARS} characters")
+
+    voice_id = (
+        str(body.voice_id or "").strip()
+        or await run_in_threadpool(campaign_repository.get_narrator_voice_id, body.campaign_id)
+        or str(DEFAULT_VOICE_ID or "").strip()
+    )
+    if not voice_id:
+        raise HTTPException(400, "No narrator voice configured for this campaign.")
+    request.state.voice_id = voice_id
+
+    try:
+        audio, sr = await run_in_threadpool(
+            _synthesize_text,
+            text=text,
+            voice_id=voice_id,
+        )
+    except ValueError as exc:
+        increment("errors_total")
+        raise HTTPException(400, str(exc))
+    except FileNotFoundError as exc:
+        increment("errors_total")
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        increment("errors_total")
+        logging.exception("Campaign answer narration failed")
+        raise HTTPException(500, str(exc))
+
+    increment("tts_requests_total")
+    filename = f"campaign-{body.campaign_id}-brain-answer.wav"
     return _audio_to_wav_response(audio, sr, filename=filename)
 
 

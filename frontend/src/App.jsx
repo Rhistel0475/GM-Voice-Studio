@@ -20,6 +20,7 @@ import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
 import AiNarrateButton from "./components/live-board/AiNarrateButton";
 import SceneDirectorPanel from "./components/live-board/SceneDirectorPanel";
 import NpcVoiceModal from "./components/live-board/NpcVoiceModal";
+import SessionAssistantPanel from "./components/live-board/SessionAssistantPanel";
 import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
 
 class ErrorBoundary extends Component {
@@ -172,6 +173,18 @@ const MiddleColumn = ({
   narrateSceneError = "",
   onSpeakNpc,
   onGenerateNpcResponse,
+  assistantSupported = false,
+  assistantListening = false,
+  assistantAnalyzing = false,
+  assistantError = "",
+  assistantPartialTranscript = "",
+  assistantSuggestions = [],
+  assistantRecentEntries = [],
+  assistantActionBusyId = "",
+  onStartAssistantListening,
+  onStopAssistantListening,
+  onAnalyzeAssistant,
+  onRunAssistantSuggestion,
   authFetch,
   actionLog,
   onLogEntry,
@@ -382,6 +395,22 @@ const MiddleColumn = ({
                   onLogEntry={onLogEntry}
                 />
               </div>
+              <div className="mt-2">
+                <SessionAssistantPanel
+                  supported={assistantSupported}
+                  listening={assistantListening}
+                  analyzing={assistantAnalyzing}
+                  error={assistantError}
+                  partialTranscript={assistantPartialTranscript}
+                  suggestions={assistantSuggestions}
+                  recentEntries={assistantRecentEntries}
+                  actionBusyId={assistantActionBusyId}
+                  onStartListening={onStartAssistantListening}
+                  onStopListening={onStopAssistantListening}
+                  onAnalyzeNow={onAnalyzeAssistant}
+                  onRunSuggestion={onRunAssistantSuggestion}
+                />
+              </div>
               {scene.notes && (
                 <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
               )}
@@ -408,7 +437,7 @@ const MiddleColumn = ({
                     </button>
                   </div>
                 </div>
-                <SessionLog actionLog={actionLog} liveTranscript={liveTranscript} />
+                <SessionLog actionLog={actionLog} liveTranscript={assistantPartialTranscript || liveTranscript} />
                 {micError && <div className="text-xs text-red-400 px-2 pb-1">{micError}</div>}
                 {wakeError && <div className="text-xs text-red-400 px-2 pb-1">{wakeError}</div>}
                 <div className="text-[10px] text-[#8f6a39] px-2 pb-1">Wake phrase: "{wakePhrase}"</div>
@@ -568,6 +597,13 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   const [audioStatus, setAudioStatus] = useState("idle");
   const [isNarratingScene, setIsNarratingScene] = useState(false);
   const [narrateSceneError, setNarrateSceneError] = useState("");
+  const [assistantListening, setAssistantListening] = useState(false);
+  const [assistantAnalyzing, setAssistantAnalyzing] = useState(false);
+  const [assistantError, setAssistantError] = useState("");
+  const [assistantPartialTranscript, setAssistantPartialTranscript] = useState("");
+  const [assistantSuggestions, setAssistantSuggestions] = useState([]);
+  const [assistantActionBusyId, setAssistantActionBusyId] = useState("");
+  const [assistantRecentEntries, setAssistantRecentEntries] = useState([]);
   const [npcVoiceModal, setNpcVoiceModal] = useState({
     open: false,
     mode: "speak",
@@ -585,6 +621,11 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   const wakeRecognitionRef = useRef(null);
   const wakeRestartTimerRef = useRef(null);
   const wakeCaptureTimeoutRef = useRef(null);
+  const assistantRecognitionRef = useRef(null);
+  const assistantRestartTimerRef = useRef(null);
+  const assistantListeningRef = useRef(false);
+  const assistantRecentEntriesRef = useRef([]);
+  const assistantPendingEntriesRef = useRef(0);
   const silenceMonitorFrameRef = useRef(null);
   const silenceStartAtRef = useRef(0);
   const audioContextRef = useRef(null);
@@ -680,6 +721,167 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     return firstVoice.voice_id;
   }, [authFetch]);
 
+  const getAssistantContextPayload = useCallback((transcriptEntries) => {
+    const recentEntries = (transcriptEntries || []).filter(Boolean).slice(-8);
+    const allNpcs = campaign?.npcs || [];
+    const sceneNpcNames = scene?.npcs || [];
+    const sceneNpcs = sceneNpcNames.length
+      ? sceneNpcNames.map((name) => allNpcs.find((npc) => npc.name === name)).filter(Boolean)
+      : allNpcs.slice(0, 8);
+    return {
+      transcript_entries: recentEntries,
+      scene_title: scene?.title || "",
+      scene_summary: scene?.read_aloud || scene?.summary || scene?.notes || "",
+      npcs: sceneNpcs.map((npc) => ({
+        id: npc.id,
+        name: npc.name,
+        role: npc.role,
+        description: npc.description || npc.personality || npc.summary || "",
+      })),
+    };
+  }, [campaign?.npcs, scene]);
+
+  const runSessionAssistantAnalysis = useCallback(async (transcriptEntries, { force = false } = {}) => {
+    const entries = (transcriptEntries || []).filter(Boolean).slice(-8);
+    if (!entries.length) return;
+    if (!force && entries.length < 3) return;
+
+    setAssistantAnalyzing(true);
+    setAssistantError("");
+
+    try {
+      const response = await authFetch("/session-assistant/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(getAssistantContextPayload(entries)),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || "Session assistant analysis failed.");
+      }
+      const suggestions = Array.isArray(payload?.suggestions)
+        ? payload.suggestions.map((suggestion, index) => ({
+            ...suggestion,
+            id: suggestion.id || `${suggestion.type || "suggestion"}-${index}`,
+          }))
+        : [];
+      setAssistantSuggestions(suggestions);
+    } catch (error) {
+      setAssistantError(error?.message || "Session assistant analysis failed.");
+    } finally {
+      setAssistantAnalyzing(false);
+    }
+  }, [authFetch, getAssistantContextPayload]);
+
+  const stopAssistantListening = useCallback(() => {
+    if (assistantRestartTimerRef.current) {
+      clearTimeout(assistantRestartTimerRef.current);
+      assistantRestartTimerRef.current = null;
+    }
+    assistantListeningRef.current = false;
+    setAssistantListening(false);
+    setAssistantPartialTranscript("");
+    const recognition = assistantRecognitionRef.current;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      assistantRecognitionRef.current = null;
+      try {
+        recognition.stop();
+      } catch {
+        /* no-op */
+      }
+    }
+  }, []);
+
+  useEffect(() => () => {
+    stopAssistantListening();
+  }, [stopAssistantListening]);
+
+  const startAssistantListening = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (assistantListeningRef.current) return;
+    if (isMicActiveRef.current) {
+      setAssistantError("Stop live microphone capture before starting Session Assistant.");
+      return;
+    }
+
+    const SpeechRecognitionApi = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionApi) {
+      setAssistantError("Browser speech recognition is not supported in this browser.");
+      return;
+    }
+
+    setAssistantError("");
+    setAssistantPartialTranscript("");
+    assistantListeningRef.current = true;
+    setAssistantListening(true);
+
+    const bootRecognition = () => {
+      if (!assistantListeningRef.current) return;
+
+      const recognition = new SpeechRecognitionApi();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event) => {
+        let partial = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const transcript = String(event.results[i]?.[0]?.transcript || "").replace(/\s+/g, " ").trim();
+          if (!transcript) continue;
+
+          if (event.results[i].isFinal) {
+            appendSessionEntry("player", "player", transcript, "Session Assistant");
+            const nextEntries = [...assistantRecentEntriesRef.current, transcript].slice(-8);
+            assistantRecentEntriesRef.current = nextEntries;
+            setAssistantRecentEntries(nextEntries);
+            assistantPendingEntriesRef.current += 1;
+            if (assistantPendingEntriesRef.current >= 3) {
+              assistantPendingEntriesRef.current = 0;
+              void runSessionAssistantAnalysis(nextEntries, { force: true });
+            }
+          } else {
+            partial = partial ? `${partial} ${transcript}` : transcript;
+          }
+        }
+
+        setAssistantPartialTranscript(partial);
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === "no-speech" || event.error === "aborted") return;
+        setAssistantError(`Listening error: ${event.error}`);
+      };
+
+      recognition.onend = () => {
+        assistantRecognitionRef.current = null;
+        setAssistantPartialTranscript("");
+        if (!assistantListeningRef.current) {
+          setAssistantListening(false);
+          return;
+        }
+        assistantRestartTimerRef.current = setTimeout(() => {
+          bootRecognition();
+        }, 350);
+      };
+
+      assistantRecognitionRef.current = recognition;
+      try {
+        recognition.start();
+      } catch (error) {
+        assistantRecognitionRef.current = null;
+        assistantListeningRef.current = false;
+        setAssistantListening(false);
+        setAssistantError(error?.message || "Failed to start session assistant listening.");
+      }
+    };
+
+    bootRecognition();
+  }, [appendSessionEntry, runSessionAssistantAnalysis]);
+
   const handleNarrateScene = useCallback(async (activeScene) => {
     const sceneTarget = activeScene || scene;
     const sceneText = (sceneTarget?.read_aloud || sceneTarget?.notes || "").trim();
@@ -728,6 +930,32 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
       setIsNarratingScene(false);
     }
   }, [appendSessionEntry, authFetch, playAudioUrl, resolveNarrationVoiceId, scene]);
+
+  const handleNarrateCampaignAnswer = useCallback(async ({ campaignId, answer }) => {
+    const text = (answer || "").trim();
+    if (!campaignId || !text) {
+      throw new Error("Campaign answer narration requires a saved campaign and answer text.");
+    }
+
+    setAudioStatus("loading");
+    const response = await authFetch("/tts/narrate-answer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaign_id: campaignId,
+        answer: text,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      setAudioStatus("idle");
+      throw new Error(payload?.detail || payload?.error || "Campaign answer narration failed.");
+    }
+
+    const blob = await response.blob();
+    await playAudioBlob(blob);
+  }, [authFetch, playAudioBlob]);
 
   const openNpcVoiceModal = useCallback((npc, mode) => {
     if (!npc) return;
@@ -837,8 +1065,25 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   }, [isWakeArmed]);
 
   useEffect(() => {
+    assistantListeningRef.current = assistantListening;
+  }, [assistantListening]);
+
+  useEffect(() => {
     setAutoQueryOnVoice(Boolean(defaultAutoQueryOnVoice));
   }, [defaultAutoQueryOnVoice]);
+
+  useEffect(() => {
+    assistantRecentEntriesRef.current = [];
+    assistantPendingEntriesRef.current = 0;
+    setAssistantRecentEntries([]);
+    setAssistantSuggestions([]);
+    setAssistantPartialTranscript("");
+    setAssistantError("");
+  }, [scene?.id, scene?.title]);
+
+  useEffect(() => () => {
+    stopAssistantListening();
+  }, [stopAssistantListening]);
 
   const stopSilenceMonitoring = useCallback(() => {
     if (silenceMonitorFrameRef.current) {
@@ -937,6 +1182,10 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
 
   const startMicCapture = useCallback(async ({ fromWakeWord = false } = {}) => {
     if (isMicActive) return;
+    if (assistantListeningRef.current) {
+      stopAssistantListening();
+      setAssistantError("Session Assistant listening paused while live microphone capture is active.");
+    }
     setMicError("");
     setLiveTranscript("");
 
@@ -1012,7 +1261,7 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
       setLiveTranscript("");
       setMicError(error?.message || "Microphone access failed.");
     }
-  }, [appendActionLog, isMicActive, startSilenceMonitoring, stopMediaStream, stopMicCapture]);
+  }, [appendActionLog, isMicActive, startSilenceMonitoring, stopAssistantListening, stopMediaStream, stopMicCapture]);
 
   const stopWakeRecognition = useCallback(() => {
     if (wakeRestartTimerRef.current) {
@@ -1147,6 +1396,83 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     persistSessionEvent(authFetch, { type: "assistant", text: content });
   }, [appendActionLog, authFetch, autoQueryOnVoice]);
 
+  const analyzeAssistantNow = useCallback(() => {
+    void runSessionAssistantAnalysis(assistantRecentEntriesRef.current, { force: true });
+  }, [runSessionAssistantAnalysis]);
+
+  const handleAssistantSuggestionAction = useCallback(async (suggestion) => {
+    if (!suggestion || !suggestion.id || assistantActionBusyId) return;
+    setAssistantActionBusyId(suggestion.id);
+    setAssistantError("");
+
+    try {
+      if (suggestion.type === "npc_dialogue") {
+        const npc = (campaign?.npcs || []).find((item) => item.name === suggestion.npc_name);
+        if (!npc) throw new Error(`NPC not found for suggestion: ${suggestion.npc_name || "Unknown NPC"}`);
+
+        const spokenText = (suggestion.spoken_text || suggestion.text || "").trim();
+        if (!spokenText) throw new Error("No dialogue text returned for this suggestion.");
+
+        const response = await authFetch("/tts/npc-dialogue", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ npc_id: String(npc.id || npc.name), text: spokenText }),
+        });
+        if (!response.ok) {
+          throw new Error((await response.text()) || "NPC voice failed.");
+        }
+        const blob = await response.blob();
+        appendSessionEntry("assistant", "npc", `${npc.name}: ${spokenText}`, "Session Assistant");
+        await playAudioBlob(blob);
+        return;
+      }
+
+      if (suggestion.type === "narration") {
+        const voiceId = await resolveNarrationVoiceId();
+        const narrationText = (suggestion.spoken_text || suggestion.text || "").trim();
+        if (!narrationText) throw new Error("No narration text returned for this suggestion.");
+
+        const response = await authFetch("/tts/narrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: narrationText, voice_id: voiceId }),
+        });
+        if (!response.ok) {
+          throw new Error((await response.text()) || "Narration failed.");
+        }
+        const blob = await response.blob();
+        appendSessionEntry("assistant", "narration", narrationText, "Session Assistant");
+        await playAudioBlob(blob);
+        return;
+      }
+
+      const query = (suggestion.action_prompt || suggestion.text || "").trim();
+      if (!query) throw new Error("No rule or lore prompt returned for this suggestion.");
+      const response = await authFetch("/brain/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "Rule explanation failed.");
+      }
+      const payload = await response.json();
+      renderBrainPayload(payload);
+    } catch (error) {
+      setAssistantError(error?.message || "Session assistant action failed.");
+    } finally {
+      setAssistantActionBusyId("");
+    }
+  }, [
+    appendSessionEntry,
+    assistantActionBusyId,
+    authFetch,
+    campaign?.npcs,
+    playAudioBlob,
+    renderBrainPayload,
+    resolveNarrationVoiceId,
+  ]);
+
   useEffect(() => {
     if (!isWakeArmed || isMicActive) {
       stopWakeRecognition();
@@ -1268,6 +1594,9 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     setAutoQueryOnVoice((current) => !current);
   }, []);
 
+  const assistantSupported = typeof window !== "undefined"
+    && Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+
   return (
     <>
       <LiveBoardPage
@@ -1276,6 +1605,8 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
         selectedNpcName={selectedNpcName}
         onSelectNpc={setSelectedNpcName}
         onInsertIntoNarration={(text) => setCoDmQuery((prev) => (prev ? prev + "\n" + text : text))}
+        authFetch={authFetch}
+        onNarrateCampaignAnswer={handleNarrateCampaignAnswer}
         onNarrateScene={handleNarrateScene}
         isNarratingScene={isNarratingScene}
         narrateSceneError={narrateSceneError}
@@ -1291,6 +1622,18 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
             narrateSceneError={narrateSceneError}
             onSpeakNpc={(npc) => openNpcVoiceModal(npc, "speak")}
             onGenerateNpcResponse={(npc) => openNpcVoiceModal(npc, "generate")}
+            assistantSupported={assistantSupported}
+            assistantListening={assistantListening}
+            assistantAnalyzing={assistantAnalyzing}
+            assistantError={assistantError}
+            assistantPartialTranscript={assistantPartialTranscript}
+            assistantSuggestions={assistantSuggestions}
+            assistantRecentEntries={assistantRecentEntries}
+            assistantActionBusyId={assistantActionBusyId}
+            onStartAssistantListening={startAssistantListening}
+            onStopAssistantListening={stopAssistantListening}
+            onAnalyzeAssistant={analyzeAssistantNow}
+            onRunAssistantSuggestion={handleAssistantSuggestionAction}
             authFetch={authFetch}
             actionLog={actionLog}
             onLogEntry={appendActionLog}

@@ -4,7 +4,7 @@ Mirrors the pattern of tts_service.py — lazy client init, clear public API.
 """
 import json
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import anthropic
 
@@ -95,6 +95,141 @@ def generate_dialogue(
     except Exception as e:
         logging.exception("Unexpected error calling Anthropic API")
         raise RuntimeError(f"Dialogue generation failed: {e!s}") from e
+
+
+def _parse_json_payload(raw_text: str) -> Any:
+    raw = (raw_text or "").strip()
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        if len(parts) >= 2:
+            raw = parts[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+    raw = raw.strip()
+    return json.loads(raw)
+
+
+def analyze_session_context(
+    transcript_entries: list[str],
+    scene_title: str = "",
+    scene_summary: str = "",
+    npcs: Optional[list[dict[str, Any]]] = None,
+) -> list[dict[str, str]]:
+    """
+    Analyze recent live-session transcript entries and return actionable GM suggestions.
+
+    Suggestion types:
+      - npc_dialogue
+      - narration
+      - rule_check
+      - lore_reference
+    """
+    client = _get_client()
+    transcript_lines = [str(entry).strip() for entry in transcript_entries if str(entry).strip()]
+    if not transcript_lines:
+        return []
+
+    npc_rows: list[str] = []
+    npc_name_set: set[str] = set()
+    for npc in npcs or []:
+        if not isinstance(npc, dict):
+            continue
+        name = str(npc.get("name") or "").strip()
+        if not name:
+            continue
+        npc_name_set.add(name)
+        role = str(npc.get("role") or "").strip()
+        summary = str(npc.get("description") or npc.get("personality") or "").strip()
+        parts = [name]
+        if role:
+            parts.append(f"role={role}")
+        if summary:
+            parts.append(f"notes={summary}")
+        npc_rows.append("- " + " | ".join(parts))
+
+    system_prompt = (
+        "You are Session Assistant for a tabletop RPG GM. "
+        "Analyze recent table conversation and return ONLY valid JSON. "
+        "Keep suggestions practical, brief, and immediately usable during live play."
+    )
+    user_prompt = (
+        "Return JSON with this exact shape:\n"
+        '{'
+        '"suggestions": ['
+        '{"type":"npc_dialogue|narration|rule_check|lore_reference",'
+        '"title":"short label",'
+        '"text":"short actionable suggestion",'
+        '"npc_name":"exact NPC name or empty string",'
+        '"spoken_text":"what should be spoken aloud if relevant, else empty string",'
+        '"action_prompt":"question to send to the GM assistant for rule/lore help, else empty string"}'
+        "]}\n\n"
+        "Rules:\n"
+        "- Return 0 to 4 suggestions.\n"
+        "- Prefer concrete opportunities over vague advice.\n"
+        "- npc_dialogue must use an NPC name exactly from the provided NPC list.\n"
+        "- narration should be one or two spoken sentences.\n"
+        "- rule_check should identify a likely check, save, or ruling question.\n"
+        "- lore_reference should identify a likely lore callback or world detail.\n"
+        "- Do not include markdown fences.\n\n"
+        f"Scene title: {scene_title.strip() or 'Unknown scene'}\n"
+        f"Scene summary: {scene_summary.strip() or 'No summary provided.'}\n"
+        "NPCs in play:\n"
+        f"{chr(10).join(npc_rows) if npc_rows else '- None provided'}\n\n"
+        "Recent transcript entries:\n"
+        + "\n".join(f"- {line}" for line in transcript_lines[-8:])
+    )
+
+    try:
+        response = client.messages.create(
+            model=AI_MODEL,
+            max_tokens=800,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+        raw = response.content[0].text.strip()
+        payload = _parse_json_payload(raw)
+    except anthropic.APIConnectionError as e:
+        logging.error("Anthropic connection error: %s", e)
+        raise RuntimeError("Could not reach Anthropic API. Check your network connection.") from e
+    except anthropic.AuthenticationError as e:
+        logging.error("Anthropic auth error: %s", e)
+        raise RuntimeError("Invalid ANTHROPIC_API_KEY. Check your .env file.") from e
+    except anthropic.RateLimitError as e:
+        logging.error("Anthropic rate limit: %s", e)
+        raise RuntimeError("Anthropic rate limit hit; try again in a moment.") from e
+    except Exception as e:
+        logging.exception("Unexpected error calling Anthropic for session analysis")
+        raise RuntimeError(f"Session analysis failed: {e!s}") from e
+
+    raw_suggestions = payload.get("suggestions") if isinstance(payload, dict) else payload
+    if not isinstance(raw_suggestions, list):
+        return []
+
+    allowed_types = {"npc_dialogue", "narration", "rule_check", "lore_reference"}
+    normalized: list[dict[str, str]] = []
+
+    for item in raw_suggestions[:4]:
+        if not isinstance(item, dict):
+            continue
+        suggestion_type = str(item.get("type") or "").strip().lower()
+        text = str(item.get("text") or "").strip()
+        if suggestion_type not in allowed_types or not text:
+            continue
+
+        npc_name = str(item.get("npc_name") or "").strip()
+        if suggestion_type == "npc_dialogue" and npc_name_set and npc_name not in npc_name_set:
+            continue
+
+        normalized.append({
+            "type": suggestion_type,
+            "title": str(item.get("title") or suggestion_type.replace("_", " ").title()).strip(),
+            "text": text,
+            "npc_name": npc_name,
+            "spoken_text": str(item.get("spoken_text") or "").strip(),
+            "action_prompt": str(item.get("action_prompt") or "").strip(),
+        })
+
+    return normalized
 
 
 def extract_text_from_file(path: str, suffix: str) -> str:

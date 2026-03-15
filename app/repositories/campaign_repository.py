@@ -11,7 +11,14 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.infrastructure.database import SessionLocal
-from app.infrastructure.db_models import Campaign, NPC, Scene, Location, SessionEvent
+from app.infrastructure.db_models import (
+    Campaign,
+    CampaignDocument,
+    Location,
+    NPC,
+    Scene,
+    SessionEvent,
+)
 
 
 def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str, Any]]:
@@ -38,6 +45,8 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     for key in ("codex_entries", "relationships"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
+    if not isinstance(payload.get("documents"), list):
+        payload["documents"] = []
     return payload
 
 
@@ -93,7 +102,39 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
         "images": [],
         "codex_entries": [],
         "relationships": [],
+        "documents": [],
     }
+
+
+def _campaign_documents_payload(db, campaign_id: int) -> list[dict[str, Any]]:
+    docs = (
+        db.query(CampaignDocument)
+        .filter(CampaignDocument.campaign_id == campaign_id)
+        .order_by(CampaignDocument.created_at.desc(), CampaignDocument.id.desc())
+        .all()
+    )
+    payload: list[dict[str, Any]] = []
+    for doc in docs:
+        try:
+            metadata = json.loads(doc.metadata_json or "{}")
+            if not isinstance(metadata, dict):
+                metadata = {}
+        except json.JSONDecodeError:
+            metadata = {}
+        payload.append(
+            {
+                "id": doc.id,
+                "title": doc.filename,
+                "filename": doc.filename,
+                "summary": doc.summary or metadata.get("summary", ""),
+                "file_type": doc.file_type,
+                "mime_type": doc.mime_type,
+                "chunk_count": doc.chunk_count,
+                "created_at": doc.created_at,
+                "metadata": metadata,
+            }
+        )
+    return payload
 
 
 def list_all() -> list[dict[str, Any]]:
@@ -114,9 +155,10 @@ def get_by_id(campaign_id: int) -> Optional[dict[str, Any]]:
         if c is None:
             return None
         payload = _campaign_payload_from_json_record(c)
-        if payload is not None:
-            return payload
-        return _campaign_payload_from_relations(c)
+        if payload is None:
+            payload = _campaign_payload_from_relations(c)
+        payload["documents"] = _campaign_documents_payload(db, campaign_id)
+        return payload
     finally:
         db.close()
 
@@ -315,6 +357,28 @@ def get_scene_record(scene_id: str) -> Optional[dict[str, Any]]:
             "type": scene.type,
             "narrator_voice_id": narrator_voice_id,
         }
+    finally:
+        db.close()
+
+
+def get_narrator_voice_id(campaign_id: int) -> Optional[str]:
+    """Return narrator voice id from campaign JSON payload when available."""
+    db = SessionLocal()
+    try:
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if campaign is None:
+            return None
+        raw = (getattr(campaign, "data_json", "") or "").strip()
+        if not raw:
+            return None
+        try:
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            logging.warning("Campaign %s data_json invalid during narrator voice lookup", campaign_id)
+            return None
+        if not isinstance(payload, dict):
+            return None
+        return str(payload.get("narrator_voice_id") or payload.get("narrator_voice") or "").strip() or None
     finally:
         db.close()
 

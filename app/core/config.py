@@ -70,6 +70,11 @@ HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
 PINECONE_API_KEY = os.environ.get("PINECONE_API_KEY", "").strip()
 PINECONE_INDEX_NAME = os.environ.get("PINECONE_INDEX_NAME", "co-dm-index").strip()
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small").strip()
+CAMPAIGN_DOCUMENT_STORAGE_PATH = os.environ.get(
+    "CAMPAIGN_DOCUMENT_STORAGE_PATH",
+    str(_ROOT_DIR / "campaign_documents"),
+).strip()
 
 # Co-DM speech-to-text (Sprint 1)
 DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY", "").strip()

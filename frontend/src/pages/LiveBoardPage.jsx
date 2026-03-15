@@ -17,6 +17,8 @@ export default function LiveBoardPage({
   selectedNpcName,
   onSelectNpc,
   onInsertIntoNarration,
+  authFetch,
+  onNarrateCampaignAnswer,
   onNarrateScene,
   isNarratingScene = false,
   narrateSceneError = "",
@@ -92,6 +94,8 @@ export default function LiveBoardPage({
             <CodexSidePanel
               campaignData={campaignData}
               onInsertIntoNarration={onInsertIntoNarration}
+              authFetch={authFetch}
+              onNarrateAnswer={onNarrateCampaignAnswer}
             />
           </div>
         </aside>
