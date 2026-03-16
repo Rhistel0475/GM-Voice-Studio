@@ -37,9 +37,20 @@ function deriveLegacyCampaign(state) {
   if (!campaign) return null;
   const campaignScenes = state.scenes.filter((s) => s.campaignId === campaign.id);
   const campaignNpcs = state.npcs.filter((n) => n.campaignId === campaign.id);
+  const campaignSessions = state.sessions.filter((s) => s.campaignId === campaign.id);
   return {
     id: campaign.id,
     title: campaign.name,
+    activeSessionId: campaign.activeSessionId,
+    active_session_id: campaign.activeSessionId,
+    sessions: campaignSessions.map((session) => ({
+      id: session.id,
+      campaign_id: session.campaignId,
+      title: session.title,
+      active_scene_id: session.activeSceneId,
+      started_at: session.startedAt,
+      status: session.status,
+    })),
     scenes: campaignScenes.map((s) => ({
       id: s.id,
       title: s.title,

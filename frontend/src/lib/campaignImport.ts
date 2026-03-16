@@ -10,7 +10,7 @@
  */
 import { useCampaignContextStore } from "../store/campaignContext";
 import { createId } from "./utils/ids";
-import type { Campaign, Npc, Scene, SceneTrigger, CodexEntry } from "../types";
+import type { Campaign, Npc, Scene, SceneTrigger, CodexEntry, Session } from "../types";
 
 export interface CampaignImportResult {
   campaignId: string;
@@ -45,7 +45,20 @@ type RawScene = {
     voice_id?: string;
   }>;
   narrator_voice_id?: string;
+  session_id?: string;
   id?: string;
+};
+
+type RawSession = {
+  id?: string;
+  title?: string;
+  campaign_id?: string | number;
+  active_scene_id?: string;
+  activeSceneId?: string;
+  scene_id?: string;
+  started_at?: string;
+  startedAt?: string;
+  status?: string;
 };
 
 type RawLocation =
@@ -82,6 +95,17 @@ export function importParseResultToStore(
   parseResult: Record<string, any>
 ): CampaignImportResult {
   const store = useCampaignContextStore.getState();
+  const rawSessions: RawSession[] = Array.isArray(parseResult.sessions) ? parseResult.sessions : [];
+  const activeRawSession = rawSessions.find(
+    (session) => String(session?.status || "").toLowerCase() === "active"
+  );
+  const parsedActiveSessionId = parseResult.activeSessionId != null && parseResult.activeSessionId !== ""
+    ? String(parseResult.activeSessionId)
+    : parseResult.active_session_id != null && parseResult.active_session_id !== ""
+      ? String(parseResult.active_session_id)
+      : activeRawSession?.id != null
+        ? String(activeRawSession.id)
+        : undefined;
 
   // ── Campaign ───────────────────────────────────────────────────────────────
   const campaignId: string =
@@ -94,15 +118,37 @@ export function importParseResultToStore(
     setting: typeof parseResult.summary === "string"
       ? parseResult.summary.slice(0, 300)
       : undefined,
+    activeSessionId: parsedActiveSessionId,
   };
   store.upsertCampaign(campaign);
-  store.setActiveCampaign(campaignId);
 
   // Keep a name→id map so scene.npcs can be linked to NPC IDs.
   const npcIdByName = new Map<string, string>();
   let npcCount = 0;
   let sceneCount = 0;
   let codexCount = 0;
+
+  // ── Sessions ───────────────────────────────────────────────────────────────
+  for (const raw of rawSessions) {
+    const sessionId = raw?.id != null && raw.id !== "" ? String(raw.id) : createId("session");
+    const session: Session = {
+      id: sessionId,
+      campaignId,
+      title: String(raw?.title || "Session").trim() || "Session",
+      activeSceneId: raw?.activeSceneId != null && raw.activeSceneId !== ""
+        ? String(raw.activeSceneId)
+        : raw?.active_scene_id != null && raw.active_scene_id !== ""
+          ? String(raw.active_scene_id)
+          : raw?.scene_id != null && raw.scene_id !== ""
+            ? String(raw.scene_id)
+            : undefined,
+      startedAt: raw?.startedAt || raw?.started_at || undefined,
+      status: raw?.status === "active" || raw?.status === "closed" || raw?.status === "prep"
+        ? raw.status
+        : undefined,
+    };
+    store.upsertSession(session);
+  }
 
   // ── NPCs ───────────────────────────────────────────────────────────────────
   const rawNpcs: RawNpc[] = Array.isArray(parseResult.npcs) ? parseResult.npcs : [];
@@ -165,6 +211,7 @@ export function importParseResultToStore(
       readAloud: raw.read_aloud || "",
       read_aloud: raw.read_aloud || "",
       narrator_voice_id: raw.narrator_voice_id,
+      sessionId: raw.session_id,
       triggers,
     };
     store.upsertScene(scene);
@@ -206,6 +253,8 @@ export function importParseResultToStore(
     store.upsertCodexEntry(entry);
     codexCount++;
   }
+
+  store.setActiveCampaign(campaignId);
 
   return { campaignId, npcCount, sceneCount, codexCount };
 }

@@ -8,4 +8,4 @@ Ownership:
 - Depends on: voice domain (TTS, voice list), AI domain (handle_query, generate_dialogue)
 """
 
-__all__ = ["scene_control", "scene_triggers"]
+__all__ = ["scene_control", "scene_triggers", "session_control"]

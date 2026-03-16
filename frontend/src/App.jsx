@@ -10,6 +10,7 @@ import { getBackendCampaignId, setBackendCampaignId, persistSessionEvent } from 
 import ExtractionReviewQueue from "./components/intake/ExtractionReviewQueue";
 import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
+import CommandPalette from "./components/layout/CommandPalette";
 import LiveBoardPage from "./app/live-board";
 import CodexPage from "./app/codex";
 import NPCWorkshopPage from "./app/npcs";
@@ -21,6 +22,7 @@ import AiNarrateButton from "./components/live-board/AiNarrateButton";
 import SceneDirectorPanel from "./components/live-board/SceneDirectorPanel";
 import NpcVoiceModal from "./components/live-board/NpcVoiceModal";
 import SessionAssistantPanel from "./components/live-board/SessionAssistantPanel";
+import StartSessionPanel from "./components/live-board/StartSessionPanel";
 import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
 
 class ErrorBoundary extends Component {
@@ -49,9 +51,15 @@ class ErrorBoundary extends Component {
   }
 }
 import {
+  BookOpenText,
+  LayoutDashboard,
   Map,
+  Mic2,
   Play,
+  ScrollText,
+  Sparkles,
   Upload,
+  Volume2,
   Zap,
   Save,
   CheckCircle,
@@ -106,6 +114,23 @@ const DEFAULT_SCENES = [
 const DEFAULT_REVEALS = [
   { name: "Upload adventure docs to see plot hooks", when: "", type: "hook" },
 ];
+
+const resolvePreferredNpc = (campaign, activeScene, selectedNpcName = null) => {
+  const allNpcs = campaign?.npcs || [];
+  if (!allNpcs.length) return null;
+
+  if (selectedNpcName) {
+    const selectedNpc = allNpcs.find((npc) => npc.name === selectedNpcName || npc.id === selectedNpcName);
+    if (selectedNpc) return selectedNpc;
+  }
+
+  const sceneNpcNames = activeScene?.npcs || [];
+  const sceneNpc = sceneNpcNames
+    .map((npcName) => allNpcs.find((npc) => npc.name === npcName || npc.id === npcName))
+    .find(Boolean);
+
+  return sceneNpc || allNpcs[0] || null;
+};
 
 // ─── Shared Components ─────────────────────────────────────────────────────
 
@@ -577,7 +602,16 @@ const MiddleColumn = ({
 };
 
 
-const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFetch, setBannerState, defaultAutoQueryOnVoice = true }) => {
+const LiveBoard = ({
+  view: _view,
+  onNavigate,
+  campaignData,
+  authFetch,
+  setBannerState,
+  defaultAutoQueryOnVoice = true,
+  onRegisterCommandActions,
+  onSessionStarted,
+}) => {
   const campaignCtx = useCampaignOptional();
   const useSharedCampaign = Boolean(campaignCtx);
 
@@ -641,7 +675,23 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   const scenes = campaign?.scenes?.length ? campaign.scenes : DEFAULT_SCENES;
   const selectedSceneIdx = useSharedCampaign ? campaignCtx.activeSceneIndex : selectedSceneIdxLocal;
   const setSelectedSceneIdx = useSharedCampaign ? campaignCtx.setActiveSceneIndex : setSelectedSceneIdxLocal;
-  const scene = useSharedCampaign ? campaignCtx.activeScene : (scenes[selectedSceneIdxLocal] || scenes[0]);
+  const fallbackScene = scenes[selectedSceneIdx] || scenes[0] || null;
+  const scene = useSharedCampaign ? (campaignCtx.activeScene || fallbackScene) : (scenes[selectedSceneIdxLocal] || scenes[0] || null);
+  const activeSessionRecord = useCampaignContextStore((state) => (
+    state.activeSessionId
+      ? state.sessions.find((session) => session.id === state.activeSessionId) ?? null
+      : null
+  ));
+  const campaignActiveSessionId = String(
+    campaign?.activeSessionId
+    || campaign?.active_session_id
+    || (Array.isArray(campaign?.sessions)
+      ? campaign.sessions.find((session) => String(session?.status || "").toLowerCase() === "active")?.id || ""
+      : "")
+  ).trim();
+  const hasActiveSession = useSharedCampaign
+    ? Boolean(activeSessionRecord?.id || campaignActiveSessionId)
+    : Boolean(campaignActiveSessionId);
   const actionLog = useSharedCampaign ? campaignCtx.actionLog : actionLogLocal;
   const appendActionLogLocal = useCallback((role, text, meta = "") => {
     if (!text) return;
@@ -1147,13 +1197,51 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
     }
   }, [appendSessionEntry, authFetch, npcVoiceModal, playAudioBlob, playBase64Audio]);
 
+  const preferredPaletteNpc = resolvePreferredNpc(campaign, scene, selectedNpcName);
+
   useEffect(() => {
-    if (sessionStartRef.current == null) sessionStartRef.current = Date.now();
+    if (!onRegisterCommandActions) return;
+    if (!hasActiveSession) {
+      onRegisterCommandActions(null);
+      return;
+    }
+
+    const sceneNarrationText = String(scene?.read_aloud || scene?.notes || "").trim();
+    onRegisterCommandActions({
+      preferredNpcName: preferredPaletteNpc?.name || "",
+      sceneTitle: scene?.title || "",
+      hasNarrationText: Boolean(sceneNarrationText),
+      narrateScene: () => handleNarrateScene(scene),
+      speakAsNpc: () => {
+        if (!preferredPaletteNpc) return;
+        openNpcVoiceModal(preferredPaletteNpc, "speak");
+      },
+      generateNpcDialogue: () => {
+        if (!preferredPaletteNpc) return;
+        openNpcVoiceModal(preferredPaletteNpc, "generate");
+      },
+    });
+  }, [
+    handleNarrateScene,
+    hasActiveSession,
+    onRegisterCommandActions,
+    openNpcVoiceModal,
+    preferredPaletteNpc,
+    scene,
+  ]);
+
+  useEffect(() => () => {
+    onRegisterCommandActions?.(null);
+  }, [onRegisterCommandActions]);
+
+  useEffect(() => {
+    const startedAt = activeSessionRecord?.startedAt ? new Date(activeSessionRecord.startedAt).getTime() : NaN;
+    sessionStartRef.current = Number.isFinite(startedAt) && startedAt > 0 ? startedAt : Date.now();
     const tick = () => setSessionTimer(formatSessionTimer(sessionStartRef.current));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [activeSessionRecord?.startedAt, hasActiveSession]);
 
   useEffect(() => {
     if (setBannerState) {
@@ -1723,7 +1811,15 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
         onNarrateScene={handleNarrateScene}
         isNarratingScene={isNarratingScene}
         narrateSceneError={narrateSceneError}
-        showSessionEmpty={!campaign}
+        showSessionEmpty={!hasActiveSession}
+        emptyStateContent={
+          <StartSessionPanel
+            authFetch={authFetch}
+            initialCampaign={campaign}
+            onSessionStarted={onSessionStarted}
+            onOpenLibrary={() => onNavigate?.("intake")}
+          />
+        }
         middleColumn={
           <MiddleColumn
             campaignData={campaign}
@@ -3154,10 +3250,17 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
 
 function CurrentView() {
   const { campaignData, setCampaignData, authFetch, setBannerState } = useAppState();
+  const campaignCtx = useCampaignOptional();
+  const activeSessionId = useCampaignContextStore((state) => state.activeSessionId);
   const navigate = useNavigate();
   const location = useLocation();
   const path = (location.pathname || "").replace(/^\/preview\/?/, "") || "/";
   const view = pathToView(path);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [liveCommandActions, setLiveCommandActions] = useState(null);
+  const pendingLiveCommandRef = useRef("");
+  const campaign = campaignCtx?.campaign ?? campaignData;
+  const activeScene = campaignCtx?.activeScene ?? (campaign?.scenes?.[0] || null);
   const onNavigate = useCallback(
     (nextView) => {
       const target = viewToPath[nextView] ?? "/";
@@ -3165,12 +3268,176 @@ function CurrentView() {
     },
     [navigate]
   );
+  const preferredNpc = resolvePreferredNpc(
+    campaign,
+    activeScene,
+    view === "live" ? liveCommandActions?.preferredNpcName || null : null
+  );
+  const sceneNarrationText = String(activeScene?.read_aloud || activeScene?.notes || "").trim();
+
+  const handleGuidedSessionStarted = useCallback(
+    async (payload) => {
+      const campaignId = payload?.campaign_id != null && payload.campaign_id !== ""
+        ? String(payload.campaign_id)
+        : "";
+      let refreshedCampaign = payload?.campaign && typeof payload.campaign === "object" ? payload.campaign : null;
+
+      if (!refreshedCampaign && campaignId) {
+        const response = await authFetch(`/api/campaigns/${campaignId}`);
+        if (!response.ok) {
+          throw new Error((await response.text()) || "Could not load started session.");
+        }
+        refreshedCampaign = await response.json();
+      }
+      if (!refreshedCampaign) {
+        throw new Error("Could not load started session.");
+      }
+
+      const normalized = {
+        ...refreshedCampaign,
+        party: refreshedCampaign.party ?? [],
+        reveals: refreshedCampaign.reveals ?? [],
+        items: refreshedCampaign.items ?? [],
+        images: refreshedCampaign.images ?? [],
+        sessions: Array.isArray(refreshedCampaign.sessions) ? refreshedCampaign.sessions : [],
+      };
+
+      setCampaignData(normalized);
+      importParseResultToStore(normalized);
+      setBackendCampaignId(campaignId || normalized.id);
+      onNavigate("live");
+    },
+    [authFetch, onNavigate, setCampaignData]
+  );
+
+  const runLivePaletteCommand = useCallback(
+    (commandId) => {
+      const handler = liveCommandActions?.[commandId];
+      if (view === "live" && typeof handler === "function") {
+        void handler();
+        return;
+      }
+
+      pendingLiveCommandRef.current = commandId;
+      if (view !== "live") onNavigate("live");
+    },
+    [liveCommandActions, onNavigate, view]
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+      if (String(event.key || "").toLowerCase() !== "k") return;
+      event.preventDefault();
+      setCommandPaletteOpen((current) => !current);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    setCommandPaletteOpen(false);
+  }, [view]);
+
+  useEffect(() => {
+    const pendingCommandId = pendingLiveCommandRef.current;
+    if (view !== "live" || !pendingCommandId || !liveCommandActions) return;
+
+    const pendingHandler = liveCommandActions[pendingCommandId];
+    if (typeof pendingHandler !== "function") return;
+
+    pendingLiveCommandRef.current = "";
+    void pendingHandler();
+  }, [liveCommandActions, view]);
+
+  const commandPaletteCommands = [
+    {
+      id: "narrate-scene",
+      title: "Narrate Scene",
+      description: activeScene?.title
+        ? `Read ${activeScene.title} aloud with the current narration flow.`
+        : "Read the active scene aloud with the current narration flow.",
+      keywords: ["scene", "narration", "read aloud", "tts", "live"],
+      icon: ScrollText,
+      group: "Live",
+      disabled: !activeSessionId || !sceneNarrationText,
+      disabledReason: !activeSessionId
+        ? "Start a session first in Guided Session Mode."
+        : sceneNarrationText
+          ? ""
+          : "Add read-aloud text or scene notes to narrate this scene.",
+      onSelect: () => runLivePaletteCommand("narrateScene"),
+    },
+    {
+      id: "speak-as-npc",
+      title: "Speak as NPC",
+      description: preferredNpc
+        ? `Open the voice modal for ${preferredNpc.name}.`
+        : "Open the active scene NPC voice modal.",
+      keywords: ["npc", "voice", "dialogue", "speech", "character"],
+      icon: Mic2,
+      group: "Live",
+      disabled: !activeSessionId || !preferredNpc,
+      disabledReason: !activeSessionId
+        ? "Start a session first in Guided Session Mode."
+        : preferredNpc
+          ? ""
+          : "Add or select an NPC to use direct voice playback.",
+      onSelect: () => runLivePaletteCommand("speakAsNpc"),
+    },
+    {
+      id: "generate-npc-dialogue",
+      title: "Generate NPC Dialogue",
+      description: preferredNpc
+        ? `Open AI dialogue generation for ${preferredNpc.name}.`
+        : "Open AI dialogue generation for the current NPC.",
+      keywords: ["npc", "ai", "dialogue", "response", "generate"],
+      icon: Sparkles,
+      group: "Live",
+      disabled: !activeSessionId || !preferredNpc,
+      disabledReason: !activeSessionId
+        ? "Start a session first in Guided Session Mode."
+        : preferredNpc
+          ? ""
+          : "Add or select an NPC before generating dialogue.",
+      onSelect: () => runLivePaletteCommand("generateNpcDialogue"),
+    },
+    {
+      id: "open-voice-studio",
+      title: "Open Voice Studio",
+      description: "Jump to the Voice Studio tool deck.",
+      keywords: ["voices", "audio", "narration", "tool deck"],
+      icon: Volume2,
+      group: "Navigate",
+      onSelect: () => onNavigate("voice-studio"),
+    },
+    {
+      id: "open-codex",
+      title: "Open Codex",
+      description: "Jump to the campaign codex and reference tools.",
+      keywords: ["codex", "lore", "search", "reference"],
+      icon: BookOpenText,
+      group: "Navigate",
+      onSelect: () => onNavigate("codex"),
+    },
+    {
+      id: "open-liveboard",
+      title: "Open LiveBoard",
+      description: "Return to the live session command center.",
+      keywords: ["live", "board", "session", "gm control"],
+      icon: LayoutDashboard,
+      group: "Navigate",
+      onSelect: () => onNavigate("live"),
+    },
+  ];
+
+  let content = null;
 
   if (view === "prep") {
-    return <PrepRoom view={view} onNavigate={onNavigate} campaignData={campaignData} onUpdateCampaign={setCampaignData} />;
-  }
-  if (view === "intake") {
-    return (
+    content = <PrepRoom view={view} onNavigate={onNavigate} campaignData={campaignData} onUpdateCampaign={setCampaignData} />;
+  } else if (view === "intake") {
+    content = (
       <ErrorBoundary>
         <AdventureIntake
           view={view}
@@ -3181,40 +3448,52 @@ function CurrentView() {
         />
       </ErrorBoundary>
     );
-  }
-  if (view === "codex") {
-    return (
+  } else if (view === "codex") {
+    content = (
       <ErrorBoundary>
         <CodexPage campaignData={campaignData} authFetch={authFetch} />
       </ErrorBoundary>
     );
-  }
-  if (view === "npc-workshop") {
-    return (
+  } else if (view === "npc-workshop") {
+    content = (
       <ErrorBoundary>
         <NPCWorkshopPage campaignData={campaignData} authFetch={authFetch} />
       </ErrorBoundary>
     );
-  }
-  if (view === "voice-studio") {
-    return (
+  } else if (view === "voice-studio") {
+    content = (
       <ErrorBoundary>
         <VoiceStudioPage authFetch={authFetch} />
       </ErrorBoundary>
     );
+  } else if (view === "settings") {
+    content = <SettingsPage />;
+  } else {
+    content = (
+      <ErrorBoundary>
+        <LiveBoard
+          view={view}
+          onNavigate={onNavigate}
+          campaignData={campaignData}
+          authFetch={authFetch}
+          setBannerState={setBannerState}
+          defaultAutoQueryOnVoice={true}
+          onRegisterCommandActions={setLiveCommandActions}
+          onSessionStarted={handleGuidedSessionStarted}
+        />
+      </ErrorBoundary>
+    );
   }
-  if (view === "settings") {
-    return <SettingsPage />;
-  }
+
   return (
-    <LiveBoard
-      view={view}
-      onNavigate={onNavigate}
-      campaignData={campaignData}
-      authFetch={authFetch}
-      setBannerState={setBannerState}
-      defaultAutoQueryOnVoice={true}
-    />
+    <>
+      {content}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        commands={commandPaletteCommands}
+      />
+    </>
   );
 }
 

@@ -27,6 +27,7 @@ export default function LiveBoardPage({
   narrateSceneError = "",
   middleColumn,
   showSessionEmpty = false,
+  emptyStateContent = null,
 }) {
   const npcs = campaignData?.npcs || [];
   const sceneNpcNames = scene?.npcs || [];
@@ -58,7 +59,7 @@ export default function LiveBoardPage({
           <SectionHeader title="Live Session" className="rounded-t-lg" />
           <div className="min-h-0 flex-1 min-w-0 overflow-hidden flex flex-col items-center justify-center p-4">
             {showSessionEmpty ? (
-              <LiveBoardEmptyState />
+              emptyStateContent || <LiveBoardEmptyState />
             ) : (
               <SessionStream>{middleColumn}</SessionStream>
             )}

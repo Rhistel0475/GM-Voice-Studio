@@ -81,6 +81,7 @@ from app.services.voice_store_service import (
     update_metadata,
 )
 from app.repositories import campaign_repository
+from app.domain.live.session_control import start_session as start_live_session
 
 from fastapi import APIRouter
 router = APIRouter()
@@ -1086,6 +1087,12 @@ class SessionEventBody(BaseModel):
     created_at: Optional[str] = None
 
 
+class StartSessionBody(BaseModel):
+    campaign_id: int
+    scene_id: str
+    narrator_voice: str = Field(..., min_length=1)
+
+
 @router.post("/api/campaigns/{campaign_id}/events")
 @limiter.limit("300/minute")
 async def append_campaign_event(
@@ -1123,6 +1130,27 @@ async def get_campaign_events(
     """Return session events for a campaign, optionally filtered by scene_id."""
     events = campaign_repository.get_session_events(campaign_id, scene_id=scene_id, limit=min(limit, 500))
     return {"campaign_id": campaign_id, "events": events}
+
+
+@router.post("/session/start")
+@limiter.limit("60/minute")
+async def start_session_route(
+    body: StartSessionBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Start a guided live session and return the refreshed campaign payload."""
+    try:
+        return await run_in_threadpool(
+            start_live_session,
+            int(body.campaign_id),
+            str(body.scene_id),
+            str(body.narrator_voice),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 def _extract_images_from_pdf(

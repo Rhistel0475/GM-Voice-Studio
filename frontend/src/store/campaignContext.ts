@@ -64,6 +64,7 @@ export const useCampaignContextStore = create<CampaignContextState & {
   setActiveCampaign: (id: string | null) => void;
   setActiveSession: (id: string | null) => void;
   setActiveScene: (id: string | null) => void;
+  upsertSession: (session: Session) => void;
   assignVoiceToNpc: (npcId: string, voiceId: string) => void;
   unassignVoiceFromNpc: (npcId: string) => void;
   assignNpcToScene: (sceneId: string, npcId: string) => void;
@@ -94,8 +95,8 @@ export const useCampaignContextStore = create<CampaignContextState & {
       const sceneId = session?.activeSceneId ?? state.scenes.find((s) => s.campaignId === id)?.id ?? null;
       return {
         activeCampaignId: id,
-        activeSessionId: sessionId ?? state.activeSessionId,
-        activeSceneId: sceneId ?? state.activeSceneId,
+        activeSessionId: sessionId,
+        activeSceneId: sceneId,
       };
     });
   },
@@ -113,6 +114,16 @@ export const useCampaignContextStore = create<CampaignContextState & {
 
   setActiveScene(id) {
     set({ activeSceneId: id });
+  },
+
+  upsertSession(session) {
+    set((state) => {
+      const idx = state.sessions.findIndex((s) => s.id === session.id);
+      const sessions = idx >= 0
+        ? state.sessions.map((s) => (s.id === session.id ? session : s))
+        : [...state.sessions, session];
+      return { sessions };
+    });
   },
 
   assignVoiceToNpc(npcId, voiceId) {

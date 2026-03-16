@@ -43,9 +43,44 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
+    if not isinstance(payload.get("sessions"), list):
+        payload["sessions"] = []
+    payload["active_session_id"] = str(
+        payload.get("active_session_id")
+        or payload.get("activeSessionId")
+        or ""
+    ).strip() or None
     for scene in payload.get("scenes", []):
         if isinstance(scene, dict) and not isinstance(scene.get("triggers"), list):
             scene["triggers"] = []
+    normalized_sessions: list[dict[str, Any]] = []
+    for session in payload.get("sessions", []):
+        if not isinstance(session, dict):
+            continue
+        normalized_sessions.append(
+            {
+                "id": str(session.get("id") or session.get("session_id") or "").strip() or str(uuid.uuid4()),
+                "campaign_id": campaign.id,
+                "title": str(session.get("title") or "Session").strip() or "Session",
+                "active_scene_id": str(
+                    session.get("active_scene_id")
+                    or session.get("activeSceneId")
+                    or session.get("scene_id")
+                    or ""
+                ).strip()
+                or None,
+                "started_at": str(session.get("started_at") or session.get("startedAt") or "").strip() or None,
+                "status": str(session.get("status") or "prep").strip() or "prep",
+                "narrator_voice": str(
+                    session.get("narrator_voice")
+                    or session.get("narratorVoice")
+                    or session.get("narrator_voice_id")
+                    or ""
+                ).strip()
+                or None,
+            }
+        )
+    payload["sessions"] = normalized_sessions
     for key in ("codex_entries", "relationships"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
@@ -59,6 +94,8 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
         "id": campaign.id,
         "title": campaign.title,
         "summary": campaign.summary,
+        "active_session_id": None,
+        "sessions": [],
         "npcs": [
             {
                 "id": n.id,
@@ -381,6 +418,8 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
         canonical_payload = {
             "title": result.get("title", ""),
             "summary": result.get("summary", ""),
+            "active_session_id": None,
+            "sessions": [],
             "npcs": npcs_payload,
             "party": result.get("party", []),
             "scenes": scenes_payload,
@@ -629,6 +668,139 @@ def append_session_event(
         return eid
     finally:
         db.close()
+
+
+def start_session(campaign_id: int, scene_id: str, narrator_voice: str) -> dict[str, Any]:
+    """
+    Create a new active session for a campaign, initialize its log, and activate the chosen scene.
+    Returns the created session plus the refreshed campaign payload.
+    """
+    db = SessionLocal()
+    try:
+        campaign = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if campaign is None:
+            raise FileNotFoundError("Campaign not found")
+
+        payload = _campaign_payload_from_json_record(campaign) or _campaign_payload_from_relations(campaign)
+        payload = _enrich_campaign_payload(campaign, payload)
+
+        scene_ref = str(scene_id or "").strip()
+        if not scene_ref:
+            raise ValueError("Scene id is required")
+
+        relation_scene = None
+        if scene_ref.isdigit():
+            relation_scene = (
+                db.query(Scene)
+                .filter(Scene.campaign_id == campaign_id, Scene.id == int(scene_ref))
+                .first()
+            )
+        if relation_scene is None:
+            relation_scene = (
+                db.query(Scene)
+                .filter(Scene.campaign_id == campaign_id, Scene.title == scene_ref)
+                .first()
+            )
+
+        scene_payload = _find_scene_payload(payload, scene_ref, relation_scene=relation_scene)
+        if scene_payload is None:
+            raise FileNotFoundError("Scene not found")
+
+        scene_title = str(
+            scene_payload.get("title")
+            or (relation_scene.title if relation_scene is not None else "")
+            or scene_ref
+        ).strip()
+        resolved_scene_id = str(
+            scene_payload.get("id")
+            or (relation_scene.id if relation_scene is not None else "")
+            or scene_ref
+        ).strip()
+        if not resolved_scene_id:
+            raise ValueError("Scene id is required")
+
+        narrator_voice_id = str(narrator_voice or "").strip()
+        if not narrator_voice_id:
+            raise ValueError("Narrator voice is required")
+
+        existing_sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
+        normalized_sessions: list[dict[str, Any]] = []
+        for session in existing_sessions:
+            if not isinstance(session, dict):
+                continue
+            normalized_session = {
+                "id": str(session.get("id") or session.get("session_id") or "").strip() or str(uuid.uuid4()),
+                "campaign_id": campaign_id,
+                "title": str(session.get("title") or "Session").strip() or "Session",
+                "active_scene_id": str(
+                    session.get("active_scene_id")
+                    or session.get("activeSceneId")
+                    or session.get("scene_id")
+                    or ""
+                ).strip()
+                or None,
+                "started_at": str(session.get("started_at") or session.get("startedAt") or "").strip() or None,
+                "status": str(session.get("status") or "prep").strip() or "prep",
+                "narrator_voice": str(
+                    session.get("narrator_voice")
+                    or session.get("narratorVoice")
+                    or session.get("narrator_voice_id")
+                    or ""
+                ).strip()
+                or None,
+            }
+            if normalized_session["status"] == "active":
+                normalized_session["status"] = "closed"
+            normalized_sessions.append(normalized_session)
+
+        session_id = str(uuid.uuid4())
+        started_at = datetime.now(timezone.utc).isoformat()
+        session_title = f"Session - {scene_title}" if scene_title else "Session"
+        session_record = {
+            "id": session_id,
+            "campaign_id": campaign_id,
+            "title": session_title,
+            "active_scene_id": resolved_scene_id,
+            "started_at": started_at,
+            "status": "active",
+            "narrator_voice": narrator_voice_id,
+        }
+        normalized_sessions.append(session_record)
+
+        payload["sessions"] = normalized_sessions
+        payload["active_session_id"] = session_id
+        payload["narrator_voice_id"] = narrator_voice_id
+        payload["narrator_voice"] = narrator_voice_id
+        scene_payload["narrator_voice_id"] = narrator_voice_id
+        scene_payload["voice_id"] = scene_payload.get("voice_id") or narrator_voice_id
+        campaign.data_json = json.dumps(payload, ensure_ascii=False)
+
+        log_text = f"Session started in {scene_title}."
+        db.add(
+            SessionEvent(
+                id=str(uuid.uuid4()),
+                campaign_id=campaign_id,
+                scene_id=resolved_scene_id,
+                session_id=session_id,
+                type="system",
+                text=log_text,
+                created_at=started_at,
+            )
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    refreshed_campaign = get_by_id(campaign_id)
+    if refreshed_campaign is None:
+        raise FileNotFoundError("Campaign not found")
+
+    return {
+        "campaign_id": campaign_id,
+        "scene_id": resolved_scene_id,
+        "session": session_record,
+        "campaign": refreshed_campaign,
+    }
 
 
 def get_session_events(
