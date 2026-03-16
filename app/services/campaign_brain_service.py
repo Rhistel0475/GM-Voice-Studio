@@ -22,7 +22,10 @@ from pathlib import Path
 from typing import Any, Optional
 from xml.etree import ElementTree
 
-import anthropic
+try:
+    import anthropic
+except ModuleNotFoundError:
+    anthropic = None
 import fitz
 
 from app.core.config import (
@@ -49,7 +52,7 @@ _LOCATION_RE = re.compile(
 _ITEM_HINT_RE = re.compile(r"\b(?:Sword|Blade|Amulet|Key|Scroll|Orb|Crown|Ring|Staff|Dagger|Lantern)\b", re.IGNORECASE)
 _QUEST_HINT_RE = re.compile(r"\b(?:quest|mission|objective|task|bounty|goal|must|seek|recover|rescue|escort)\b", re.IGNORECASE)
 
-_ANTHROPIC_CLIENT: Optional[anthropic.Anthropic] = None
+_ANTHROPIC_CLIENT: Optional[Any] = None
 
 
 def _utcnow_iso() -> str:
@@ -196,9 +199,11 @@ def _heuristic_metadata(text: str, filename: str) -> dict[str, Any]:
     }
 
 
-def _get_anthropic_client() -> anthropic.Anthropic:
+def _get_anthropic_client() -> Any:
     global _ANTHROPIC_CLIENT
     if _ANTHROPIC_CLIENT is None:
+        if anthropic is None:
+            raise RuntimeError("Anthropic SDK is not installed. Install the 'anthropic' package in the active environment.")
         if not ANTHROPIC_API_KEY:
             raise RuntimeError("ANTHROPIC_API_KEY is not set. Add it to .env.")
         _ANTHROPIC_CLIENT = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)

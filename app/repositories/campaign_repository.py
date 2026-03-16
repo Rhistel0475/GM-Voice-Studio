@@ -49,6 +49,85 @@ def _normalize_atmosphere_type(value: Any) -> Optional[str]:
     return None
 
 
+def _normalize_scene_title(scene_payload: Optional[dict[str, Any]], *, relation_scene: Optional[Scene] = None) -> str:
+    if isinstance(scene_payload, dict):
+        title = str(scene_payload.get("title") or scene_payload.get("name") or "").strip()
+        if title:
+            return title
+    if relation_scene is not None:
+        return str(relation_scene.title or "").strip()
+    return ""
+
+
+def _normalize_scene_description(scene_payload: Optional[dict[str, Any]], *, relation_scene: Optional[Scene] = None) -> str:
+    if isinstance(scene_payload, dict):
+        for candidate in (
+            scene_payload.get("description"),
+            scene_payload.get("summary"),
+            scene_payload.get("read_aloud"),
+            scene_payload.get("notes"),
+        ):
+            text = str(candidate or "").strip()
+            if text:
+                return text
+    if relation_scene is not None:
+        for candidate in (relation_scene.read_aloud, relation_scene.notes):
+            text = str(candidate or "").strip()
+            if text:
+                return text
+    return ""
+
+
+def _normalize_connected_scene_refs(value: Any) -> list[str]:
+    if value is None:
+        return []
+
+    if isinstance(value, str):
+        raw_items = [item.strip() for item in value.split(",")]
+    elif isinstance(value, (list, tuple, set)):
+        raw_items = list(value)
+    else:
+        raw_items = [value]
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        candidate = item
+        if isinstance(item, dict):
+            candidate = (
+                item.get("id")
+                or item.get("scene_id")
+                or item.get("sceneId")
+                or item.get("title")
+                or item.get("name")
+            )
+        ref = str(candidate or "").strip()
+        if not ref:
+            continue
+        key = ref.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(ref)
+    return normalized
+
+
+def _normalize_scene_graph_fields(
+    scene_payload: dict[str, Any],
+    *,
+    relation_scene: Optional[Scene] = None,
+) -> dict[str, Any]:
+    title = _normalize_scene_title(scene_payload, relation_scene=relation_scene)
+    description = _normalize_scene_description(scene_payload, relation_scene=relation_scene)
+    scene_payload["title"] = title
+    scene_payload["name"] = str(scene_payload.get("name") or title).strip() or title
+    scene_payload["description"] = description
+    scene_payload["connected_scenes"] = _normalize_connected_scene_refs(
+        scene_payload.get("connected_scenes") or scene_payload.get("connectedScenes")
+    )
+    return scene_payload
+
+
 def _resolve_scene_atmosphere_type(
     scene_payload: Optional[dict[str, Any]],
     *,
@@ -145,6 +224,8 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
+    if not isinstance(payload.get("encounters"), list):
+        payload["encounters"] = []
     if not isinstance(payload.get("sessions"), list):
         payload["sessions"] = []
     payload["active_session_id"] = str(
@@ -156,6 +237,7 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
         if isinstance(scene, dict):
             if not isinstance(scene.get("triggers"), list):
                 scene["triggers"] = []
+            _normalize_scene_graph_fields(scene)
             scene["atmosphere_type"] = _resolve_scene_atmosphere_type(scene)
     normalized_sessions: list[dict[str, Any]] = []
     for session in payload.get("sessions", []):
@@ -201,6 +283,8 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
             {
                 "id": s.id,
                 "title": s.title,
+                "name": s.title,
+                "description": str(s.read_aloud or s.notes or "").strip(),
                 "act": s.act,
                 "type": s.type,
                 "atmosphere_type": _resolve_scene_atmosphere_type(None, relation_scene=s),
@@ -210,6 +294,7 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
                 "notes": s.notes,
                 "image_url": s.image_url,
                 "location": "",
+                "connected_scenes": [],
                 "npcs": [],
                 "reveals": [],
                 "items": [],
@@ -221,6 +306,7 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
             {"id": loc.id, "name": loc.name, "description": loc.description, "image_url": loc.image_url}
             for loc in campaign.locations
         ],
+        "encounters": [],
         "reveals": [],
         "items": [],
         "images": [],
@@ -286,7 +372,7 @@ def _find_scene_payload(
         if not isinstance(scene_payload, dict):
             continue
         payload_id = str(scene_payload.get("id") or "").strip()
-        payload_title = str(scene_payload.get("title") or "").strip()
+        payload_title = _normalize_scene_title(scene_payload)
         if any(candidate in {payload_id, payload_title} for candidate in wanted):
             return scene_payload
     return None
@@ -320,12 +406,17 @@ def _build_scene_record(
             or scene_ref
         ),
         "campaign_id": campaign.id,
-        "title": str(payload_scene.get("title") or (relation_scene.title if relation_scene is not None else "") or "").strip(),
+        "title": _normalize_scene_title(payload_scene, relation_scene=relation_scene),
+        "name": str(payload_scene.get("name") or _normalize_scene_title(payload_scene, relation_scene=relation_scene)).strip(),
+        "description": _normalize_scene_description(payload_scene, relation_scene=relation_scene),
         "read_aloud": str(payload_scene.get("read_aloud") or (relation_scene.read_aloud if relation_scene is not None else "") or "").strip(),
         "notes": str(payload_scene.get("notes") or (relation_scene.notes if relation_scene is not None else "") or "").strip(),
         "type": str(payload_scene.get("type") or (relation_scene.type if relation_scene is not None else "") or "").strip(),
         "atmosphere_type": _resolve_scene_atmosphere_type(payload_scene, relation_scene=relation_scene),
         "location": str(payload_scene.get("location") or "").strip(),
+        "connected_scenes": _normalize_connected_scene_refs(
+            payload_scene.get("connected_scenes") or payload_scene.get("connectedScenes")
+        ),
         "npcs": [item for item in npcs if item],
         "triggers": [item for item in triggers if isinstance(item, dict)],
         "narrator_voice_id": narrator_voice_id,
@@ -389,6 +480,7 @@ def _enrich_campaign_payload(campaign: Campaign, payload: dict[str, Any]) -> dic
         for key in ("npcs", "reveals", "items"):
             if not isinstance(scene_entry.get(key), list):
                 scene_entry[key] = []
+        _normalize_scene_graph_fields(scene_entry, relation_scene=relation_scene)
         scene_entry["atmosphere_type"] = _resolve_scene_atmosphere_type(scene_entry, relation_scene=relation_scene)
         scene_entry["triggers"] = normalize_scene_triggers(scene_entry, npcs=payload_npcs)
 
@@ -486,7 +578,7 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
 
             scene_payload = dict(scene_source)
             scene_payload["id"] = str(scene_row.id)
-            scene_payload["title"] = str(scene_payload.get("title") or scene_row.title or "").strip()
+            _normalize_scene_graph_fields(scene_payload, relation_scene=scene_row)
             scene_payload["atmosphere_type"] = _resolve_scene_atmosphere_type(scene_payload, relation_scene=scene_row)
             scene_payload["triggers"] = normalize_scene_triggers(scene_payload, npcs=npcs_payload)
             scenes_payload.append(scene_payload)
@@ -510,6 +602,7 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
             "party": result.get("party", []),
             "scenes": scenes_payload,
             "locations": result.get("locations", []),
+            "encounters": result.get("encounters", []) if isinstance(result.get("encounters"), list) else [],
             "reveals": result.get("reveals", []),
             "items": result.get("items", []),
             "images": result.get("images", []),

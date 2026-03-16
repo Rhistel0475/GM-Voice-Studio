@@ -26,7 +26,9 @@ export interface Scene {
   campaignId: string;
   sessionId?: string;
   title: string;
+  name?: string;
   summary: string;
+  description?: string;
   act?: string;
   type?: string;
   locationId?: string;
@@ -44,4 +46,6 @@ export interface Scene {
   narratorVoiceId?: string;
   narrator_voice_id?: string;
   triggers?: SceneTrigger[];
+  connectedScenes?: string[];
+  connected_scenes?: string[];
 }

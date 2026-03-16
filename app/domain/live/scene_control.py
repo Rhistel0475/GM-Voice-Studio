@@ -11,6 +11,9 @@ from app.services.scene_activation_service import (
     activate_scene as _activate_scene,
     start_scene_combat as _start_scene_combat,
 )
+from app.services.scene_suggestion_service import (
+    suggest_next_scenes_for_scene as _suggest_next_scenes_for_scene,
+)
 
 
 def get_scene_triggers(scene_id: str) -> list[dict[str, Any]]:
@@ -31,3 +34,8 @@ def activate_scene(scene_id: str, reset_atmosphere_override: bool = False) -> di
 def start_scene_combat(scene_id: str) -> dict[str, Any]:
     """Switch the active scene ambience into combat mode."""
     return _start_scene_combat(scene_id)
+
+
+def suggest_next_scenes(scene_id: str, player_action: str) -> dict[str, Any]:
+    """Suggest likely next scenes for the active campaign flow."""
+    return _suggest_next_scenes_for_scene(scene_id, player_action)

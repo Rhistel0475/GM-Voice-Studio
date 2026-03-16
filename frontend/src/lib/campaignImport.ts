@@ -26,8 +26,10 @@ type RawNpc =
   | { name: string; summary?: string; description?: string; role?: string; profession?: string; goals?: string[]; tags?: string[]; id?: string };
 
 type RawScene = {
-  title: string;
+  title?: string;
+  name?: string;
   summary?: string;
+  description?: string;
   read_aloud?: string;
   act?: string;
   type?: string;
@@ -38,6 +40,8 @@ type RawScene = {
   notes?: string;
   npcs?: string[];
   tags?: string[];
+  connected_scenes?: Array<string | { id?: string; scene_id?: string; title?: string; name?: string }>;
+  connectedScenes?: Array<string | { id?: string; scene_id?: string; title?: string; name?: string }>;
   triggers?: Array<{
     name?: string;
     type?: string;
@@ -83,6 +87,28 @@ function isNpcObj(v: RawNpc): v is Exclude<RawNpc, string> {
 
 function isLocObj(v: RawLocation): v is Exclude<RawLocation, string> {
   return typeof v === "object" && v !== null && typeof (v as { name?: unknown }).name === "string";
+}
+
+function normalizeConnectedSceneRefs(
+  input: RawScene["connected_scenes"] | RawScene["connectedScenes"]
+): string[] {
+  const items = Array.isArray(input) ? input : input ? [input] : [];
+  const refs: string[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    const raw = typeof item === "string"
+      ? item
+      : item?.id || item?.scene_id || item?.title || item?.name || "";
+    const ref = String(raw || "").trim();
+    if (!ref) continue;
+    const key = ref.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    refs.push(ref);
+  }
+
+  return refs;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -177,12 +203,14 @@ export function importParseResultToStore(
   // ── Scenes ─────────────────────────────────────────────────────────────────
   const rawScenes: RawScene[] = Array.isArray(parseResult.scenes) ? parseResult.scenes : [];
   for (const raw of rawScenes) {
-    if (!raw?.title?.trim()) continue;
+    const sceneTitle = String(raw?.title || raw?.name || "").trim();
+    if (!sceneTitle) continue;
 
-    const sceneId = raw.id != null && raw.id !== "" ? String(raw.id) : raw.title.trim();
+    const sceneId = raw.id != null && raw.id !== "" ? String(raw.id) : sceneTitle;
     const npcIds: string[] = (Array.isArray(raw.npcs) ? raw.npcs : [])
       .map((n: string) => npcIdByName.get(n.trim()))
       .filter((id): id is string => Boolean(id));
+    const connectedScenes = normalizeConnectedSceneRefs(raw.connected_scenes || raw.connectedScenes);
     const triggers: SceneTrigger[] = (Array.isArray(raw.triggers) ? raw.triggers : [])
       .filter((trigger): trigger is NonNullable<typeof trigger> => Boolean(trigger?.name))
       .map((trigger) => ({
@@ -200,8 +228,10 @@ export function importParseResultToStore(
     const scene: Scene = {
       id: sceneId,
       campaignId,
-      title: raw.title.trim(),
-      summary: raw.summary || raw.read_aloud || "",
+      title: sceneTitle,
+      name: String(raw.name || sceneTitle).trim() || sceneTitle,
+      summary: raw.summary || raw.description || raw.read_aloud || "",
+      description: raw.description || raw.summary || raw.read_aloud || raw.notes || "",
       act: raw.act || "",
       type: raw.type || "",
       atmosphereType: raw.atmosphereType || raw.atmosphere_type || (Array.isArray(raw.atmosphere) ? raw.atmosphere[0] : raw.atmosphere) || "",
@@ -218,6 +248,8 @@ export function importParseResultToStore(
       narrator_voice_id: raw.narrator_voice_id,
       sessionId: raw.session_id,
       triggers,
+      connectedScenes,
+      connected_scenes: connectedScenes,
     };
     store.upsertScene(scene);
     sceneCount++;

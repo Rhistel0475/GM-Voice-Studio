@@ -21,12 +21,15 @@
  * @typedef {Object} Scene
  * @property {string} [id]
  * @property {string} title
+ * @property {string} [name]
+ * @property {string} [description]
  * @property {string} [act]
  * @property {string} [type] - e.g. "combat" | "social" | "exploration" | "mystery" | "travel"
  * @property {string} [atmosphere_type] - e.g. "forest" | "tavern" | "town" | "dungeon" | "combat"
  * @property {string} [location]
  * @property {string} [read_aloud]
  * @property {string} [notes]
+ * @property {string[]} [connected_scenes]
  * @property {string[]} [npcs] - NPC names present in this scene
  * @property {string[]} [items]
  * @property {string[]} [reveals]

@@ -54,13 +54,20 @@ function deriveLegacyCampaign(state) {
     scenes: campaignScenes.map((s) => ({
       id: s.id,
       title: s.title,
+      name: s.name || s.title,
       summary: s.summary,
+      description: s.description || s.summary || s.readAloud || s.read_aloud || s.notes || "",
       act: s.act || "",
       type: s.type || "",
       atmosphere_type: s.atmosphereType || s.atmosphere_type || "",
       read_aloud: s.readAloud || s.read_aloud || s.summary || "",
       notes: s.notes || "",
       location: s.location || "",
+      connected_scenes: Array.isArray(s.connectedScenes)
+        ? s.connectedScenes
+        : Array.isArray(s.connected_scenes)
+          ? s.connected_scenes
+          : [],
       narrator_voice_id: s.narratorVoiceId || s.narrator_voice_id,
       npcs: s.npcIds
         .map((id) => campaignNpcs.find((n) => n.id === id)?.name)
@@ -104,13 +111,20 @@ function deriveLegacyActiveScene(state) {
   return {
     id: scene.id,
     title: scene.title,
+    name: scene.name || scene.title,
     summary: scene.summary,
+    description: scene.description || scene.summary || scene.readAloud || scene.read_aloud || scene.notes || "",
     act: scene.act || "",
     type: scene.type || "",
     atmosphere_type: scene.atmosphereType || scene.atmosphere_type || "",
     read_aloud: scene.readAloud || scene.read_aloud || scene.summary || "",
     notes: scene.notes || "",
     location: scene.location || "",
+    connected_scenes: Array.isArray(scene.connectedScenes)
+      ? scene.connectedScenes
+      : Array.isArray(scene.connected_scenes)
+        ? scene.connected_scenes
+        : [],
     narrator_voice_id: scene.narratorVoiceId || scene.narrator_voice_id,
     npcs: scene.npcIds.map((id) => campaignNpcs.find((n) => n.id === id)?.name).filter(Boolean),
     codexRefs: scene.codexEntryIds ?? [],

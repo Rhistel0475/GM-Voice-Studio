@@ -1,6 +1,8 @@
 import { useState } from "react";
 import QuickToolGrid from "./QuickToolGrid";
+import EncounterLaunchPanel from "./EncounterLaunchPanel";
 import SceneControlPanel from "./SceneControlPanel";
+import SceneSuggestionsPanel from "./SceneSuggestionsPanel";
 import { QUICK_TOOLS } from "./constants";
 import { ModalShell } from "../shared";
 import { getPartyPlaceholder } from "../../lib/placeholders";
@@ -20,6 +22,14 @@ export default function GMControlPanel({
   onTriggerScene,
   activeTriggerName = "",
   triggerSceneError = "",
+  sceneSuggestions = [],
+  sceneSuggestionsLoading = false,
+  sceneSuggestionsError = "",
+  onActivateSuggestedScene,
+  activeSuggestedSceneId = "",
+  onLaunchEncounter,
+  isLaunchingEncounter = false,
+  launchEncounterError = "",
 }) {
   const [activeTool, setActiveTool] = useState(null);
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
@@ -46,6 +56,21 @@ export default function GMControlPanel({
         onTrigger={onTriggerScene}
         busyTriggerName={activeTriggerName}
         triggerError={triggerSceneError}
+      />
+
+      <EncounterLaunchPanel
+        scene={scene}
+        onLaunch={onLaunchEncounter}
+        isLaunching={isLaunchingEncounter}
+        error={launchEncounterError}
+      />
+
+      <SceneSuggestionsPanel
+        suggestions={sceneSuggestions}
+        isLoading={sceneSuggestionsLoading}
+        error={sceneSuggestionsError}
+        onActivate={onActivateSuggestedScene}
+        busySceneId={activeSuggestedSceneId}
       />
 
       <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">

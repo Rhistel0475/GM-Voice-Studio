@@ -7,6 +7,14 @@ from pathlib import Path
 # Project root (app/core/config.py -> parent.parent = app -> parent = root)
 _ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv(_ROOT_DIR / ".env")
+
 # TTS engine
 TTS_PROVIDER = (os.environ.get("TTS_PROVIDER", "kani") or "kani").strip().lower()
 AUDIO_CACHE_SIZE = int(os.environ.get("AUDIO_CACHE_SIZE", "10"))

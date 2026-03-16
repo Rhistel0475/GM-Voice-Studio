@@ -22,6 +22,14 @@ export default function LiveBoardPage({
   onSceneTrigger,
   activeSceneTriggerName = "",
   sceneTriggerError = "",
+  sceneSuggestions = [],
+  sceneSuggestionsLoading = false,
+  sceneSuggestionsError = "",
+  onActivateSuggestedScene,
+  activeSuggestedSceneId = "",
+  onLaunchEncounter,
+  isLaunchingEncounter = false,
+  launchEncounterError = "",
   onNarrateScene,
   isNarratingScene = false,
   narrateSceneError = "",
@@ -50,6 +58,14 @@ export default function LiveBoardPage({
               onTriggerScene={onSceneTrigger}
               activeTriggerName={activeSceneTriggerName}
               triggerSceneError={sceneTriggerError}
+              sceneSuggestions={sceneSuggestions}
+              sceneSuggestionsLoading={sceneSuggestionsLoading}
+              sceneSuggestionsError={sceneSuggestionsError}
+              onActivateSuggestedScene={onActivateSuggestedScene}
+              activeSuggestedSceneId={activeSuggestedSceneId}
+              onLaunchEncounter={onLaunchEncounter}
+              isLaunchingEncounter={isLaunchingEncounter}
+              launchEncounterError={launchEncounterError}
             />
           </div>
         </aside>

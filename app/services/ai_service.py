@@ -6,16 +6,33 @@ import json
 import logging
 from typing import Any, Optional
 
-import anthropic
+try:
+    import anthropic
+except ModuleNotFoundError:
+    class _AnthropicImportFallback:
+        Anthropic = None
+
+        class APIConnectionError(Exception):
+            pass
+
+        class AuthenticationError(Exception):
+            pass
+
+        class RateLimitError(Exception):
+            pass
+
+    anthropic = _AnthropicImportFallback()
 
 from app.core.config import AI_MODEL, ANTHROPIC_API_KEY, MAX_ADVENTURE_CHARS
 
-_client: Optional[anthropic.Anthropic] = None
+_client: Optional[Any] = None
 
 
-def _get_client() -> anthropic.Anthropic:
+def _get_client() -> Any:
     global _client
     if _client is None:
+        if getattr(anthropic, "Anthropic", None) is None:
+            raise RuntimeError("Anthropic SDK is not installed. Install the 'anthropic' package in the active environment.")
         if not ANTHROPIC_API_KEY:
             raise RuntimeError("ANTHROPIC_API_KEY is not set. Add it to .env.")
         _client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -27,6 +44,8 @@ def build_npc_system_prompt(
     personality: str,
     faction: str = "",
     situation: str = "",
+    session_context: str = "",
+    npc_memory_summary: str = "",
 ) -> str:
     """
     Build a system prompt that casts Claude as an NPC character.
@@ -34,13 +53,25 @@ def build_npc_system_prompt(
     """
     faction_line = f"\nFaction/Allegiance: {faction.strip()}" if faction.strip() else ""
     situation_line = f"\nCurrent situation: {situation.strip()}" if situation.strip() else ""
+    npc_memory_line = (
+        f"\nNPC memory from this session:\n{npc_memory_summary.strip()}"
+        if npc_memory_summary.strip()
+        else ""
+    )
+    session_context_line = (
+        f"\nRecent session events:\n{session_context.strip()}"
+        if session_context.strip()
+        else ""
+    )
     return (
         f"You are {npc_name.strip()}, a character in a tabletop RPG session. "
-        f"Personality: {personality.strip()}{faction_line}{situation_line}\n\n"
+        f"Personality: {personality.strip()}{faction_line}{situation_line}"
+        f"{npc_memory_line}{session_context_line}\n\n"
         "Speak ONLY as this character. Do NOT break character. Do NOT explain or narrate. "
         "Do NOT say you are an AI. Respond as if you are actually speaking the words out loud "
         "at the game table. Keep every response to 1-3 sentences maximum — this is live "
-        "dialogue, not prose. Use the character's voice, vocabulary, and emotional state."
+        "dialogue, not prose. Use the character's voice, vocabulary, and emotional state. "
+        "Stay consistent with the session history and how the characters have treated each other."
     )
 
 
@@ -50,6 +81,8 @@ def generate_dialogue(
     situation: str,
     conversation_history: list[dict],
     faction: str = "",
+    session_context: str = "",
+    npc_memory_summary: str = "",
 ) -> str:
     """
     Generate a short in-character NPC line using Claude.
@@ -60,6 +93,8 @@ def generate_dialogue(
         situation: What is happening right now (e.g. "Players are demanding to pass the gate")
         conversation_history: list of {"role": "user"|"assistant", "content": "..."}
         faction: Optional allegiance (e.g. "Silver Court Mages")
+        session_context: Important recent session events formatted for the model
+        npc_memory_summary: NPC-specific session memory lines
 
     Returns:
         The NPC's spoken line as a string.
@@ -68,7 +103,14 @@ def generate_dialogue(
         RuntimeError: on API connection, auth, rate limit, or unexpected errors.
     """
     client = _get_client()
-    system_prompt = build_npc_system_prompt(npc_name, personality, faction, situation)
+    system_prompt = build_npc_system_prompt(
+        npc_name,
+        personality,
+        faction,
+        situation,
+        session_context,
+        npc_memory_summary,
+    )
 
     # If no history, inject an opening nudge so Claude has something to respond to.
     messages = list(conversation_history)

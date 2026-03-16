@@ -6,7 +6,18 @@ TODO: Split into app/api/routers/voices.py, clone.py, tts.py, etc.
 import os as _os
 try:
     from dotenv import load_dotenv
-    load_dotenv(_os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".env"))
+    load_dotenv(
+        _os.path.join(
+            _os.path.dirname(
+                _os.path.dirname(
+                    _os.path.dirname(
+                        _os.path.dirname(_os.path.abspath(__file__))
+                    )
+                )
+            ),
+            ".env",
+        )
+    )
 except ImportError:
     pass
 
@@ -644,8 +655,36 @@ def _extract_pdf_text(data: bytes) -> tuple[str, int]:
         raise RuntimeError("PDF parsing requires 'pymupdf4llm'. Install requirements-rag.txt.") from e
     doc = pymupdf.open(stream=data, filetype="pdf")
     page_count = doc.page_count
-    md_text = pymupdf4llm.to_markdown(doc)
+    use_ocr = _has_tesseract_language_data("eng")
+    if not use_ocr:
+        logging.info("PDF OCR unavailable; falling back to embedded PDF text extraction only.")
+    md_text = pymupdf4llm.to_markdown(doc, use_ocr=use_ocr, ocr_language="eng")
     return md_text, page_count
+
+
+def _has_tesseract_language_data(language: str = "eng") -> bool:
+    try:
+        import pymupdf
+    except Exception:
+        return False
+
+    try:
+        tessdata = pymupdf.get_tessdata()
+    except Exception:
+        return False
+
+    if not tessdata:
+        return False
+
+    tessdata_path = Path(str(tessdata))
+    if not tessdata_path.exists():
+        return False
+
+    wanted = [token.strip() for token in re.split(r"[+,]", language or "") if token.strip()]
+    if not wanted:
+        return True
+
+    return all((tessdata_path / f"{token}.traineddata").exists() for token in wanted)
 
 
 async def _read_adventure_upload(upload: UploadFile) -> tuple[str, dict]:
@@ -672,6 +711,14 @@ async def _read_adventure_upload(upload: UploadFile) -> tuple[str, dict]:
 
     text = re.sub(r"\r\n?", "\n", text or "").strip()
     if not text:
+        if suffix == ".pdf" and not _has_tesseract_language_data("eng"):
+            raise HTTPException(
+                400,
+                (
+                    f"{upload.filename} has no extractable text. "
+                    "This PDF may be image-only, and OCR is unavailable because Tesseract English language data is missing."
+                ),
+            )
         raise HTTPException(400, f"{upload.filename} has no extractable text.")
 
     return text, {
@@ -1108,6 +1155,16 @@ class SessionEventBody(BaseModel):
     created_at: Optional[str] = None
 
 
+class SessionMemoryEventBody(BaseModel):
+    event_type: str = Field(..., min_length=1)
+    description: str = Field(..., min_length=1)
+    npc_id: Optional[str] = None
+    campaign_id: Optional[int] = None
+    scene_id: Optional[str] = None
+    session_id: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
 class StartSessionBody(BaseModel):
     campaign_id: int
     scene_id: str
@@ -1151,6 +1208,36 @@ async def get_campaign_events(
     """Return session events for a campaign, optionally filtered by scene_id."""
     events = campaign_repository.get_session_events(campaign_id, scene_id=scene_id, limit=min(limit, 500))
     return {"campaign_id": campaign_id, "events": events}
+
+
+@router.post("/session/event")
+@limiter.limit("180/minute")
+async def record_session_memory_event(
+    body: SessionMemoryEventBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Record an important session-memory event against the active live session."""
+    from app.services.session_memory_service import record_event
+
+    try:
+        memory_event = await run_in_threadpool(
+            record_event,
+            event_type=body.event_type,
+            description=body.description,
+            npc_id=body.npc_id,
+            campaign_id=body.campaign_id,
+            scene_id=body.scene_id,
+            session_id=body.session_id,
+            timestamp=body.timestamp,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        logging.warning("Failed to record session memory event: %s", exc)
+        raise HTTPException(500, "Failed to store session memory event")
+
+    return {"ok": True, "session_memory": memory_event}
 
 
 @router.post("/session/start")
@@ -1438,6 +1525,15 @@ class SceneActivateBody(BaseModel):
     reset_atmosphere_override: bool = False
 
 
+class SceneSuggestionBody(BaseModel):
+    current_scene_id: str
+    player_action: str = ""
+
+
+class EncounterLaunchBody(BaseModel):
+    encounter_id: str
+
+
 @router.post("/ai/dialogue")
 @limiter.limit("20/minute")
 async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depends(verify_api_key)):
@@ -1523,6 +1619,46 @@ async def scene_combat_start(body: SceneActivateBody, request: Request, _auth: N
         raise HTTPException(404, str(exc))
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+
+@router.post("/scene/suggestions")
+@limiter.limit("120/minute")
+async def scene_suggestions(body: SceneSuggestionBody, request: Request, _auth: None = Depends(verify_api_key)):
+    from app.domain.live.scene_control import suggest_next_scenes
+
+    try:
+        payload = await run_in_threadpool(suggest_next_scenes, body.current_scene_id, body.player_action)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+    return {"scenes": payload.get("suggested_scenes", [])}
+
+
+@router.post("/encounter/launch")
+@limiter.limit("30/minute")
+async def encounter_launch(body: EncounterLaunchBody, request: Request, _auth: None = Depends(verify_api_key)):
+    from app.domain.live.encounter_control import launch_encounter
+
+    try:
+        payload = await run_in_threadpool(launch_encounter, body.encounter_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except RuntimeError as exc:
+        logging.exception("Encounter launch failed")
+        raise HTTPException(503, str(exc))
+
+    enemy_voice_id = str(((payload.get("enemy_dialogue_audio") or {}).get("voice_id")) or "").strip()
+    narration_voice_id = str(((payload.get("narration_audio") or {}).get("voice_id")) or "").strip()
+    if enemy_voice_id:
+        request.state.voice_id = enemy_voice_id
+    elif narration_voice_id:
+        request.state.voice_id = narration_voice_id
+
+    return payload
 
 
 # --- TTS: preset or custom voice ---
@@ -1928,6 +2064,13 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
     )
 
     from app.services.ai_service import generate_dialogue
+    from app.services.session_memory_service import get_session_context, record_event
+
+    session_context = await run_in_threadpool(
+        get_session_context,
+        campaign_id=int(npc.get("campaign_id")) if npc.get("campaign_id") is not None else None,
+        npc_id=str(npc.get("id") or "").strip() or None,
+    )
 
     try:
         generated_text = await run_in_threadpool(
@@ -1937,9 +2080,31 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
             situation=player_input,
             conversation_history=[{"role": "user", "content": player_input}],
             faction=str(npc.get("faction") or "").strip(),
+            session_context=str(session_context.get("summary") or "").strip(),
+            npc_memory_summary=str(session_context.get("npc_memory_summary") or "").strip(),
         )
     except RuntimeError as e:
         raise HTTPException(503, str(e))
+
+    try:
+        await run_in_threadpool(
+            record_event,
+            event_type="npc_interaction",
+            description=f"Players addressed {str(npc.get('name') or 'the NPC').strip()}: {player_input}",
+            npc_id=str(npc.get("id") or "").strip() or None,
+            campaign_id=int(npc.get("campaign_id")) if npc.get("campaign_id") is not None else None,
+        )
+        await run_in_threadpool(
+            record_event,
+            event_type="important_dialogue",
+            description=f"{str(npc.get('name') or 'NPC').strip()} replied: {generated_text}",
+            npc_id=str(npc.get("id") or "").strip() or None,
+            campaign_id=int(npc.get("campaign_id")) if npc.get("campaign_id") is not None else None,
+        )
+    except ValueError:
+        pass
+    except Exception as exc:
+        logging.warning("Failed to record NPC dialogue memory for %s: %s", body.npc_id, exc)
 
     try:
         audio, sr = await run_in_threadpool(

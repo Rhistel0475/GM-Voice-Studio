@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, Component } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Component } from "react";
 import { BrowserRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { AppStateProvider, useAppState } from "./context/AppStateContext";
 import { CampaignProvider, useCampaignOptional } from "./context/CampaignContext";
@@ -131,6 +131,14 @@ const resolvePreferredNpc = (campaign, activeScene, selectedNpcName = null) => {
 
   return sceneNpc || allNpcs[0] || null;
 };
+
+const resolveEncounterRef = (scene) => String(
+  scene?.encounter_id
+  || scene?.encounterId
+  || scene?.id
+  || scene?.title
+  || ""
+).trim();
 
 // ─── Shared Components ─────────────────────────────────────────────────────
 
@@ -674,6 +682,12 @@ const LiveBoard = ({
   const [narrateSceneError, setNarrateSceneError] = useState("");
   const [activeSceneTriggerName, setActiveSceneTriggerName] = useState("");
   const [sceneTriggerError, setSceneTriggerError] = useState("");
+  const [sceneSuggestions, setSceneSuggestions] = useState([]);
+  const [sceneSuggestionsLoading, setSceneSuggestionsLoading] = useState(false);
+  const [sceneSuggestionsError, setSceneSuggestionsError] = useState("");
+  const [activeSuggestedSceneId, setActiveSuggestedSceneId] = useState("");
+  const [isLaunchingEncounter, setIsLaunchingEncounter] = useState(false);
+  const [launchEncounterError, setLaunchEncounterError] = useState("");
   const [assistantListening, setAssistantListening] = useState(false);
   const [assistantAnalyzing, setAssistantAnalyzing] = useState(false);
   const [assistantError, setAssistantError] = useState("");
@@ -738,6 +752,13 @@ const LiveBoard = ({
     ? Boolean(activeSessionRecord?.id || campaignActiveSessionId)
     : Boolean(campaignActiveSessionId);
   const actionLog = useSharedCampaign ? campaignCtx.actionLog : actionLogLocal;
+  const lastPlayerAction = useMemo(() => {
+    if (!Array.isArray(actionLog)) return "";
+    const recentPlayerEntry = [...actionLog]
+      .reverse()
+      .find((entry) => String(entry?.role || "").toLowerCase() === "player" && String(entry?.text || "").trim());
+    return recentPlayerEntry ? String(recentPlayerEntry.text).trim() : "";
+  }, [actionLog]);
   const appendActionLogLocal = useCallback((role, text, meta = "") => {
     if (!text) return;
     const entry = {
@@ -952,6 +973,81 @@ const LiveBoard = ({
     stopAmbienceLoop,
     syncActivatedSceneState,
   ]);
+
+  useEffect(() => {
+    const currentSceneId = String(scene?.id || scene?.title || "").trim();
+    if (!currentSceneId) {
+      setSceneSuggestions([]);
+      setSceneSuggestionsError("");
+      setSceneSuggestionsLoading(false);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadSuggestions = async () => {
+      setSceneSuggestionsLoading(true);
+      setSceneSuggestionsError("");
+      try {
+        const response = await authFetch("/scene/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            current_scene_id: currentSceneId,
+            player_action: lastPlayerAction,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload?.detail || payload?.error || "Could not load scene suggestions.");
+        }
+        if (!cancelled) {
+          setSceneSuggestions(Array.isArray(payload?.scenes) ? payload.scenes : []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setSceneSuggestions([]);
+          setSceneSuggestionsError(error?.message || "Could not load scene suggestions.");
+        }
+      } finally {
+        if (!cancelled) {
+          setSceneSuggestionsLoading(false);
+        }
+      }
+    };
+
+    void loadSuggestions();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, lastPlayerAction, scene?.id, scene?.title]);
+
+  const handleActivateSuggestedScene = useCallback(async (suggestedScene) => {
+    if (!suggestedScene) return;
+    const sceneRef = String(suggestedScene?.id || suggestedScene?.title || suggestedScene?.name || "").trim();
+    if (!sceneRef) return;
+
+    setActiveSuggestedSceneId(sceneRef);
+    setSceneSuggestionsError("");
+    try {
+      const nextIndex = scenes.findIndex((candidate) => (
+        String(candidate?.id || "").trim() === sceneRef
+        || String(candidate?.title || "").trim() === String(suggestedScene?.title || "").trim()
+      ));
+      await activateSceneViaBackend(suggestedScene, {
+        sceneIndex: nextIndex >= 0 ? nextIndex : null,
+        force: true,
+      });
+      appendActionLog(
+        "assistant",
+        `Suggested next scene activated: ${suggestedScene?.title || suggestedScene?.name || "Scene"}.`,
+        "Scene Suggestions",
+      );
+    } catch (error) {
+      setSceneSuggestionsError(error?.message || "Could not activate suggested scene.");
+    } finally {
+      setActiveSuggestedSceneId("");
+    }
+  }, [activateSceneViaBackend, appendActionLog, scenes]);
 
   const resolveNarrationVoiceId = useCallback(async () => {
     const response = await authFetch("/voices/list");
@@ -1277,6 +1373,106 @@ const LiveBoard = ({
     playBase64Audio,
     resolveNarrationVoiceId,
     scene,
+  ]);
+
+  const handleLaunchEncounter = useCallback(async () => {
+    const sceneTarget = scene;
+    if (!sceneTarget || isLaunchingEncounter) return;
+
+    const encounterRef = resolveEncounterRef(sceneTarget);
+    if (!encounterRef) {
+      setLaunchEncounterError("Encounter id is missing for the active scene.");
+      return;
+    }
+
+    setIsLaunchingEncounter(true);
+    setLaunchEncounterError("");
+    setAudioStatus("loading");
+
+    try {
+      const response = await authFetch("/encounter/launch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ encounter_id: encounterRef }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || "Encounter launch failed.");
+      }
+
+      const activatedScene = payload?.scene || sceneTarget;
+      const activatedSceneId = String(activatedScene?.id || "").trim();
+      if (activatedSceneId) {
+        lastActivatedSceneIdRef.current = activatedSceneId;
+        const nextIndex = scenes.findIndex((candidate) => (
+          String(candidate?.id || "").trim() === activatedSceneId
+          || String(candidate?.title || "").trim() === String(activatedScene?.title || "").trim()
+        ));
+        syncActivatedSceneState(activatedScene, nextIndex >= 0 ? nextIndex : null);
+      }
+
+      if (payload?.ambience_audio?.url) {
+        await playAmbienceLoop(payload.ambience_audio);
+      }
+
+      const narrationText = String(
+        payload?.narration_audio?.text
+        || payload?.encounter?.intro_text
+        || ""
+      ).trim();
+      if (narrationText) {
+        appendSessionEntry("assistant", "narration", narrationText, payload?.encounter?.name || "Encounter");
+      }
+      if (payload?.narration_audio?.audio_base64) {
+        await playBase64Audio(
+          payload.narration_audio.audio_base64,
+          payload.narration_audio.mime_type || "audio/wav",
+        );
+      }
+
+      const enemyText = String(
+        payload?.enemy_dialogue_audio?.text
+        || payload?.enemy_dialogue_text
+        || ""
+      ).trim();
+      const enemyName = String(
+        payload?.enemy_dialogue_audio?.npc_name
+        || payload?.enemy_npc_name
+        || "Enemy"
+      ).trim();
+      if (enemyText) {
+        appendSessionEntry(
+          "assistant",
+          "npc",
+          enemyName ? `${enemyName}: ${enemyText}` : enemyText,
+          payload?.encounter?.name || "Encounter",
+        );
+      }
+      if (payload?.enemy_dialogue_audio?.audio_base64) {
+        await playBase64Audio(
+          payload.enemy_dialogue_audio.audio_base64,
+          payload.enemy_dialogue_audio.mime_type || "audio/wav",
+        );
+      }
+
+      if (!payload?.narration_audio?.audio_base64 && !payload?.enemy_dialogue_audio?.audio_base64) {
+        setAudioStatus("idle");
+      }
+    } catch (error) {
+      setLaunchEncounterError(error?.message || "Encounter launch failed.");
+      setAudioStatus("idle");
+    } finally {
+      setIsLaunchingEncounter(false);
+    }
+  }, [
+    appendSessionEntry,
+    authFetch,
+    isLaunchingEncounter,
+    playAmbienceLoop,
+    playBase64Audio,
+    scene,
+    scenes,
+    syncActivatedSceneState,
   ]);
 
   const handleSelectScene = useCallback((nextIndex) => {
@@ -2098,6 +2294,14 @@ const LiveBoard = ({
         onSceneTrigger={handleSceneTrigger}
         activeSceneTriggerName={activeSceneTriggerName}
         sceneTriggerError={sceneTriggerError}
+        sceneSuggestions={sceneSuggestions}
+        sceneSuggestionsLoading={sceneSuggestionsLoading}
+        sceneSuggestionsError={sceneSuggestionsError}
+        onActivateSuggestedScene={handleActivateSuggestedScene}
+        activeSuggestedSceneId={activeSuggestedSceneId}
+        onLaunchEncounter={handleLaunchEncounter}
+        isLaunchingEncounter={isLaunchingEncounter}
+        launchEncounterError={launchEncounterError}
         onNarrateScene={handleNarrateScene}
         isNarratingScene={isNarratingScene}
         narrateSceneError={narrateSceneError}

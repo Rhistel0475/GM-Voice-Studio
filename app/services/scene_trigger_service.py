@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 from typing import Any
 
 import soundfile as sf
@@ -16,7 +17,7 @@ from app.domain.live.scene_triggers import (
     resolve_scene_npcs,
 )
 from app.repositories import campaign_repository
-from app.services import tts_service
+from app.services import ai_service, tts_service
 
 
 def _audio_to_wav_base64(audio, sample_rate: int) -> str:
@@ -121,12 +122,16 @@ def _resolve_dialogue_text(trigger: dict[str, Any], bundle: dict[str, Any], npc:
         action_kind = "generate_dialogue"
 
     if action_kind in {"generate_dialogue", "npc_dialogue", "dialogue"}:
-        from app.services import ai_service
+        from app.services.session_memory_service import get_session_context
 
         situation = (
             str(action.get("prompt") or "").strip()
             or str(action.get("situation") or "").strip()
             or _scene_text(bundle.get("scene") or {})
+        )
+        session_context = get_session_context(
+            campaign_id=bundle.get("campaign_id"),
+            npc_id=str(npc.get("id") or "").strip() or None,
         )
         return ai_service.generate_dialogue(
             npc_name=str(npc.get("name") or "NPC"),
@@ -134,6 +139,8 @@ def _resolve_dialogue_text(trigger: dict[str, Any], bundle: dict[str, Any], npc:
             situation=situation,
             conversation_history=[],
             faction=str(npc.get("faction") or "").strip(),
+            session_context=str(session_context.get("summary") or "").strip(),
+            npc_memory_summary=str(session_context.get("npc_memory_summary") or "").strip(),
         )
 
     if action_kind in {"brain_query", "query"}:
@@ -235,6 +242,20 @@ def execute_scene_trigger(scene_id: str, trigger_name: str) -> dict[str, Any]:
             raise ValueError(f"{str(npc.get('name') or 'This NPC').strip()} has no assigned voice.")
         text = _resolve_dialogue_text(trigger, bundle, npc)
         audio, sample_rate = _synthesize_text(text=text, voice_id=voice_id)
+        try:
+            from app.services.session_memory_service import record_event
+
+            record_event(
+                event_type="important_dialogue",
+                description=f"{str(npc.get('name') or 'NPC').strip()}: {text}",
+                npc_id=str(npc.get("id") or "").strip() or None,
+                campaign_id=bundle.get("campaign_id"),
+                scene_id=str(scene.get("id") or scene_id).strip() or None,
+            )
+        except ValueError:
+            pass
+        except Exception as exc:
+            logging.warning("Failed to record scene trigger dialogue memory: %s", exc)
         base_result.update({
             "text": text,
             "display_text": f"{str(npc.get('name') or 'NPC').strip()}: {text}",

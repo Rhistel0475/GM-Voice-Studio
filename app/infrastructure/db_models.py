@@ -92,6 +92,17 @@ class SessionEvent(Base):
     campaign = relationship("Campaign", back_populates="session_events")
 
 
+class SessionMemory(Base):
+    __tablename__ = "session_memory"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(String, nullable=False, index=True)
+    timestamp = Column(String, nullable=False, default="")
+    event_type = Column(String, nullable=False, default="")
+    npc_id = Column(String, nullable=True)
+    description = Column(Text, nullable=False, default="")
+
+
 class CampaignDocument(Base):
     __tablename__ = "campaign_documents"
 
