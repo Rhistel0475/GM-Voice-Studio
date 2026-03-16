@@ -31,6 +31,9 @@ type RawScene = {
   read_aloud?: string;
   act?: string;
   type?: string;
+  atmosphere_type?: string;
+  atmosphereType?: string;
+  atmosphere?: string[] | string;
   location?: string;
   notes?: string;
   npcs?: string[];
@@ -201,6 +204,8 @@ export function importParseResultToStore(
       summary: raw.summary || raw.read_aloud || "",
       act: raw.act || "",
       type: raw.type || "",
+      atmosphereType: raw.atmosphereType || raw.atmosphere_type || (Array.isArray(raw.atmosphere) ? raw.atmosphere[0] : raw.atmosphere) || "",
+      atmosphere_type: raw.atmosphere_type || raw.atmosphereType || (Array.isArray(raw.atmosphere) ? raw.atmosphere[0] : raw.atmosphere) || "",
       npcIds,
       codexEntryIds: [],
       actionLogIds: [],

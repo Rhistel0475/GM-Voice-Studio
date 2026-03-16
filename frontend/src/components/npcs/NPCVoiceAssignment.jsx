@@ -10,25 +10,39 @@ export default function NPCVoiceAssignment({
   suggestion = null,
   onApplySuggestion,
 }) {
+  const suggestedVoiceId = suggestion?.voice_id || "";
+  const suggestionApplied = !!suggestedVoiceId && suggestedVoiceId === selectedVoiceId;
+
   return (
     <div className="flex flex-col gap-2">
-      {suggestion?.presetName && (
-        <div className="npc-voice-suggestion">
-          <Wand2 size={12} className="inline-block mr-1 text-[var(--gold)]" />
-          <span className="npc-voice-suggestion-label">
-            Suggested: <strong>{suggestion.presetName}</strong>
-          </span>
-          <span className="npc-voice-suggestion-reason">{suggestion.reason}</span>
-          {suggestion.candidateVoices.length > 0 && onApplySuggestion && (
-            <button
-              type="button"
-              className="npc-voice-suggestion-apply"
-              onClick={() => onApplySuggestion(suggestion.candidateVoices[0].voice_id || suggestion.candidateVoices[0].id)}
-              title={`Apply: ${suggestion.candidateVoices[0].name}`}
-            >
-              Apply
-            </button>
-          )}
+      {suggestedVoiceId && (
+        <div className="rounded border border-[#7a5a32] bg-[#140d08] px-3 py-2">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-heading uppercase tracking-[0.2em] text-[var(--text-2)]">
+                Suggested Voice
+              </div>
+              <div className="mt-1 flex items-center gap-2 text-sm text-[var(--gold)]">
+                <Wand2 size={13} className="shrink-0" />
+                <span className="truncate">{suggestion.voice_name || suggestedVoiceId}</span>
+              </div>
+              {(suggestion.tone || suggestion.style) && (
+                <p className="mt-1 text-xs text-[var(--text-2)]">
+                  {[suggestion.tone, suggestion.style].filter(Boolean).join(" · ")}
+                </p>
+              )}
+            </div>
+            {onApplySuggestion && (
+              <FantasyButton
+                variant="secondary"
+                className="shrink-0"
+                onClick={() => onApplySuggestion(suggestedVoiceId)}
+                disabled={suggestionApplied}
+              >
+                {suggestionApplied ? "Suggested Voice Applied" : "Apply Suggested Voice"}
+              </FantasyButton>
+            )}
+          </div>
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">

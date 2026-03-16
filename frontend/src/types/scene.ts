@@ -39,6 +39,8 @@ export interface Scene {
   notes?: string;
   readAloud?: string;
   read_aloud?: string;
+  atmosphereType?: string;
+  atmosphere_type?: string;
   narratorVoiceId?: string;
   narrator_voice_id?: string;
   triggers?: SceneTrigger[];

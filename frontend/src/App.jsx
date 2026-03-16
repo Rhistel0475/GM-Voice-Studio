@@ -109,7 +109,7 @@ const DEFAULT_PARTY = [
   { name: "DUNCAN",   hp: "—", ac: "—" },
 ];
 const DEFAULT_SCENES = [
-  { title: "No scenes loaded", act: "Upload docs in Library", type: "exploration", read_aloud: "", npcs: [], location: "", notes: "" },
+  { title: "No scenes loaded", act: "Upload docs in Library", type: "exploration", atmosphere_type: "forest", read_aloud: "", npcs: [], location: "", notes: "" },
 ];
 const DEFAULT_REVEALS = [
   { name: "Upload adventure docs to see plot hooks", when: "", type: "hook" },
@@ -231,6 +231,10 @@ const MiddleColumn = ({
   onToggleAutoQueryOnVoice,
   onAudioStatusChange,
   audioStatus = "idle",
+  ambienceStatus = "idle",
+  ambienceTrack = null,
+  onCombatStart,
+  onResumeAmbience,
 }) => {
   const [sceneTab, setSceneTab] = useState("text");
   const [npcGenre, setNpcGenre] = useState("1930s noir fantasy");
@@ -367,8 +371,43 @@ const MiddleColumn = ({
             <div className="mb-3">
               <h2 className="font-heading text-[var(--gold)] text-base mb-1.5">{scene?.title || "Current scene"}</h2>
               {scene.type && (
-                <div className="text-xs text-[#9b7440] mb-1">{scene.type}{scene.location ? ` · ${scene.location}` : ""}</div>
+                <div className="text-xs text-[#9b7440] mb-1">
+                  {scene.type}
+                  {scene.location ? ` · ${scene.location}` : ""}
+                  {scene.atmosphere_type ? ` · ${scene.atmosphere_type}` : ""}
+                </div>
               )}
+              <div className="mt-2 rounded border border-[#5c3e23] bg-[#1a1008]/80 px-3 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-[0.22em] text-[#9b7440]">Atmosphere Engine</div>
+                    <div className="mt-1 text-xs text-[#e6c785]">
+                      {ambienceTrack?.label || `${scene?.atmosphere_type || "scene"} ambience`}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-[0.18em] text-[#9b7440]">
+                      {ambienceStatus === "loading" ? "Loading" : ambienceStatus === "playing" ? "Looping" : "Idle"}
+                    </span>
+                    <button
+                      type="button"
+                      className="cta-secondary text-xs"
+                      onClick={() => onCombatStart?.(scene)}
+                    >
+                      Combat Mode
+                    </button>
+                    {ambienceTrack?.atmosphere_type === "combat" && (
+                      <button
+                        type="button"
+                        className="cta-secondary text-xs"
+                        onClick={() => onResumeAmbience?.(scene)}
+                      >
+                        Resume Scene Atmosphere
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
               <div className="parchment rounded p-3 text-[15px] leading-relaxed min-h-[80px]">
                 {scene.read_aloud || scene.title
                   ? (scene.read_aloud || `Scene: ${scene.title}`)
@@ -629,6 +668,8 @@ const LiveBoard = ({
   const [autoQueryOnVoice, setAutoQueryOnVoice] = useState(Boolean(defaultAutoQueryOnVoice));
   const [sessionTimer, setSessionTimer] = useState("0:00");
   const [audioStatus, setAudioStatus] = useState("idle");
+  const [ambienceStatus, setAmbienceStatus] = useState("idle");
+  const [ambienceTrack, setAmbienceTrack] = useState(null);
   const [isNarratingScene, setIsNarratingScene] = useState(false);
   const [narrateSceneError, setNarrateSceneError] = useState("");
   const [activeSceneTriggerName, setActiveSceneTriggerName] = useState("");
@@ -669,6 +710,10 @@ const LiveBoard = ({
   const analyserDataRef = useRef(null);
   const isMicActiveRef = useRef(false);
   const isWakeArmedRef = useRef(false);
+  const ambienceAudioRef = useRef(null);
+  const lastActivatedSceneIdRef = useRef("");
+  const sceneActivationRequestRef = useRef("");
+  const pendingAmbienceTrackRef = useRef(null);
   const stopMicCaptureRef = useRef(() => {});
 
   const campaign = campaignCtx?.campaign ?? campaignData;
@@ -759,6 +804,154 @@ const LiveBoard = ({
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     await playAudioBlob(new Blob([bytes], { type: mimeType }));
   }, [playAudioBlob]);
+
+  const stopAmbienceLoop = useCallback(() => {
+    const audio = ambienceAudioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    }
+    pendingAmbienceTrackRef.current = null;
+    setAmbienceTrack(null);
+    setAmbienceStatus("idle");
+  }, []);
+
+  const playAmbienceLoop = useCallback(async (track) => {
+    if (!track?.url) {
+      stopAmbienceLoop();
+      return;
+    }
+
+    let audio = ambienceAudioRef.current;
+    if (!audio) {
+      audio = new Audio();
+      audio.preload = "auto";
+      ambienceAudioRef.current = audio;
+    }
+
+    const resolvedUrl = typeof window !== "undefined"
+      ? new URL(track.url, window.location.origin).toString()
+      : track.url;
+
+    if (audio.src !== resolvedUrl) {
+      audio.src = resolvedUrl;
+      audio.currentTime = 0;
+    }
+
+    audio.loop = track.loop !== false;
+    audio.volume = typeof track.volume === "number" ? track.volume : 0.35;
+    audio.onerror = () => setAmbienceStatus("idle");
+
+    setAmbienceTrack(track);
+    setAmbienceStatus("loading");
+    try {
+      await audio.play();
+    } catch (error) {
+      pendingAmbienceTrackRef.current = track;
+      setAmbienceStatus("idle");
+      if (error?.name !== "NotAllowedError") {
+        throw error;
+      }
+      return;
+    }
+    pendingAmbienceTrackRef.current = null;
+    setAmbienceStatus("playing");
+  }, [stopAmbienceLoop]);
+
+  const syncActivatedSceneState = useCallback((activatedScene, sceneIndex = null) => {
+    const resolvedSceneId = String(activatedScene?.id || "").trim();
+    if (useSharedCampaign) {
+      if (resolvedSceneId) {
+        const store = useCampaignContextStore.getState();
+        store.setActiveScene(resolvedSceneId);
+        const activeStoreSessionId = store.activeSessionId || campaignActiveSessionId;
+        if (activeStoreSessionId) {
+          const session = store.sessions.find((item) => item.id === activeStoreSessionId);
+          if (session) {
+            store.upsertSession({ ...session, activeSceneId: resolvedSceneId });
+          }
+        }
+      }
+      return;
+    }
+
+    if (sceneIndex != null) {
+      setSelectedSceneIdxLocal(sceneIndex);
+    }
+  }, [campaignActiveSessionId, useSharedCampaign]);
+
+  const activateSceneViaBackend = useCallback(async (
+    sceneTarget,
+    { sceneIndex = null, combat = false, force = false, resetAtmosphereOverride = false } = {},
+  ) => {
+    if (!sceneTarget) return null;
+
+    const sceneRef = /^\d+$/.test(String(sceneTarget?.id || ""))
+      ? String(sceneTarget.id)
+      : String(sceneTarget?.title || sceneTarget?.id || "").trim();
+    if (!sceneRef) {
+      throw new Error("Scene id is missing.");
+    }
+
+    if (!hasActiveSession) {
+      if (!combat) {
+        syncActivatedSceneState(sceneTarget, sceneIndex);
+      }
+      return { scene: sceneTarget, ambience_audio: null };
+    }
+
+    if (!force && !combat && lastActivatedSceneIdRef.current === sceneRef) {
+      return { scene: sceneTarget, ambience_audio: ambienceTrack };
+    }
+
+    const requestKey = `${combat ? "combat" : "activate"}:${sceneRef}`;
+    if (sceneActivationRequestRef.current === requestKey) {
+      return null;
+    }
+    sceneActivationRequestRef.current = requestKey;
+
+    try {
+      const response = await authFetch(combat ? "/scene/combat-start" : "/scene/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene_id: sceneRef,
+          reset_atmosphere_override: Boolean(resetAtmosphereOverride),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || "Scene activation failed.");
+      }
+
+      const activatedScene = payload?.scene || sceneTarget;
+      const resolvedSceneId = String(activatedScene?.id || sceneRef).trim();
+      if (resolvedSceneId) {
+        lastActivatedSceneIdRef.current = resolvedSceneId;
+      }
+      syncActivatedSceneState(activatedScene, sceneIndex);
+
+      if (payload?.ambience_audio?.url) {
+        await playAmbienceLoop(payload.ambience_audio);
+      } else if (!combat) {
+        stopAmbienceLoop();
+      }
+
+      return payload;
+    } finally {
+      if (sceneActivationRequestRef.current === requestKey) {
+        sceneActivationRequestRef.current = "";
+      }
+    }
+  }, [
+    ambienceTrack,
+    authFetch,
+    hasActiveSession,
+    playAmbienceLoop,
+    stopAmbienceLoop,
+    syncActivatedSceneState,
+  ]);
 
   const resolveNarrationVoiceId = useCallback(async () => {
     const response = await authFetch("/voices/list");
@@ -1086,10 +1279,106 @@ const LiveBoard = ({
     scene,
   ]);
 
+  const handleSelectScene = useCallback((nextIndex) => {
+    const targetScene = scenes[nextIndex] || null;
+    if (!targetScene) return;
+
+    if (!hasActiveSession) {
+      setSelectedSceneIdx(nextIndex);
+      return;
+    }
+
+    void activateSceneViaBackend(targetScene, { sceneIndex: nextIndex }).catch((error) => {
+      appendActionLog("error", error?.message || "Scene activation failed.", "Atmosphere");
+    });
+  }, [activateSceneViaBackend, appendActionLog, hasActiveSession, scenes, setSelectedSceneIdx]);
+
+  const handleCombatStart = useCallback((targetScene) => {
+    if (!targetScene) return;
+    void activateSceneViaBackend(targetScene, {
+      sceneIndex: selectedSceneIdx,
+      combat: true,
+      force: true,
+    }).then((payload) => {
+      if (payload?.ambience_audio?.label) {
+        appendActionLog("assistant", `${payload.ambience_audio.label} engaged.`, "Atmosphere");
+      }
+    }).catch((error) => {
+      appendActionLog("error", error?.message || "Combat ambience failed.", "Atmosphere");
+    });
+  }, [activateSceneViaBackend, appendActionLog, selectedSceneIdx]);
+
+  const handleResumeSceneAmbience = useCallback((targetScene) => {
+    if (!targetScene) return;
+    void activateSceneViaBackend(targetScene, {
+      sceneIndex: selectedSceneIdx,
+      force: true,
+      resetAtmosphereOverride: true,
+    }).then((payload) => {
+      if (payload?.ambience_audio?.label) {
+        appendActionLog("assistant", `${payload.ambience_audio.label} resumed.`, "Atmosphere");
+      }
+    }).catch((error) => {
+      appendActionLog("error", error?.message || "Scene ambience failed.", "Atmosphere");
+    });
+  }, [activateSceneViaBackend, appendActionLog, selectedSceneIdx]);
+
   useEffect(() => {
     setSceneTriggerError("");
     setActiveSceneTriggerName("");
   }, [scene?.id, scene?.title]);
+
+  useEffect(() => {
+    if (!hasActiveSession || !scene) {
+      lastActivatedSceneIdRef.current = "";
+      stopAmbienceLoop();
+      return;
+    }
+
+    const resolvedSceneId = String(scene?.id || scene?.title || "").trim();
+    if (!resolvedSceneId || lastActivatedSceneIdRef.current === resolvedSceneId) {
+      return;
+    }
+
+    void activateSceneViaBackend(scene, {
+      sceneIndex: selectedSceneIdx,
+      force: true,
+    }).catch((error) => {
+      appendActionLog("error", error?.message || "Scene activation failed.", "Atmosphere");
+    });
+  }, [
+    activateSceneViaBackend,
+    appendActionLog,
+    hasActiveSession,
+    scene,
+    selectedSceneIdx,
+    stopAmbienceLoop,
+  ]);
+
+  useEffect(() => () => {
+    const audio = ambienceAudioRef.current;
+    if (audio) {
+      audio.pause();
+      ambienceAudioRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const resumeAmbience = () => {
+      const pendingTrack = pendingAmbienceTrackRef.current;
+      if (!pendingTrack) return;
+      void playAmbienceLoop(pendingTrack);
+    };
+
+    window.addEventListener("pointerdown", resumeAmbience);
+    window.addEventListener("keydown", resumeAmbience);
+    return () => {
+      window.removeEventListener("pointerdown", resumeAmbience);
+      window.removeEventListener("keydown", resumeAmbience);
+    };
+  }, [playAmbienceLoop]);
 
   const handleNarrateCampaignAnswer = useCallback(async ({ campaignId, answer }) => {
     const text = (answer || "").trim();
@@ -1245,14 +1534,15 @@ const LiveBoard = ({
 
   useEffect(() => {
     if (setBannerState) {
+      const bannerAudioStatus = audioStatus !== "idle" ? audioStatus : ambienceStatus;
       setBannerState((prev) => ({
         ...prev,
         sessionTime: sessionTimer,
         activeScene: scene?.title ?? "—",
-        audioStatus,
+        audioStatus: bannerAudioStatus,
       }));
     }
-  }, [sessionTimer, scene?.title, audioStatus, setBannerState]);
+  }, [ambienceStatus, sessionTimer, scene?.title, audioStatus, setBannerState]);
 
   useEffect(() => {
     isMicActiveRef.current = isMicActive;
@@ -1824,7 +2114,7 @@ const LiveBoard = ({
           <MiddleColumn
             campaignData={campaign}
             selectedSceneIdx={selectedSceneIdx}
-            onSelectScene={setSelectedSceneIdx}
+            onSelectScene={handleSelectScene}
             onSelectNpc={setSelectedNpcName}
             onNarrateScene={handleNarrateScene}
             isNarratingScene={isNarratingScene}
@@ -1864,6 +2154,10 @@ const LiveBoard = ({
             onToggleAutoQueryOnVoice={toggleAutoQueryOnVoice}
             onAudioStatusChange={setAudioStatus}
             audioStatus={audioStatus}
+            ambienceStatus={ambienceStatus}
+            ambienceTrack={ambienceTrack}
+            onCombatStart={handleCombatStart}
+            onResumeAmbience={handleResumeSceneAmbience}
           />
         }
       />
@@ -1901,7 +2195,7 @@ const PrepHeader = ({ view, onNavigate, campaignData }) => (
   </header>
 );
 
-const BLANK_SCENE = { title: "", act: "", type: "exploration", location: "", read_aloud: "", notes: "", npcs: [] };
+const BLANK_SCENE = { title: "", act: "", type: "exploration", atmosphere_type: "forest", location: "", read_aloud: "", notes: "", npcs: [] };
 
 const PrepLeftColumn = ({ campaignData, selectedIdx, onSelectScene, onUpdateCampaign }) => {
   const scenes = campaignData?.scenes?.length ? campaignData.scenes : DEFAULT_SCENES;
@@ -1927,7 +2221,16 @@ const PrepLeftColumn = ({ campaignData, selectedIdx, onSelectScene, onUpdateCamp
 
   const openEdit = (e, scene, idx) => {
     e.stopPropagation();
-    setForm({ title: scene.title||"", act: scene.act||"", type: scene.type||"exploration", location: scene.location||"", read_aloud: scene.read_aloud||"", notes: scene.notes||"", npcs: scene.npcs||[] });
+    setForm({
+      title: scene.title || "",
+      act: scene.act || "",
+      type: scene.type || "exploration",
+      atmosphere_type: scene.atmosphere_type || "forest",
+      location: scene.location || "",
+      read_aloud: scene.read_aloud || "",
+      notes: scene.notes || "",
+      npcs: scene.npcs || [],
+    });
     setEditIdx(idx);
     setShowForm(true);
   };
@@ -2018,6 +2321,13 @@ const PrepLeftColumn = ({ campaignData, selectedIdx, onSelectScene, onUpdateCamp
                 onChange={e => setForm(f => ({...f, location: e.target.value}))}
               />
             </div>
+            <select
+              className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1"
+              value={form.atmosphere_type || "forest"}
+              onChange={e => setForm(f => ({ ...f, atmosphere_type: e.target.value }))}
+            >
+              {["forest", "tavern", "town", "dungeon", "combat"].map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
             <textarea
               className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f] resize-none"
               placeholder="Read-aloud text..."
@@ -2072,6 +2382,7 @@ const PrepMiddleColumn = ({ campaignData, selectedIdx, onUpdateCampaign }) => {
         {(scene.difficulty || scene.rewards || scene.location) && (
           <div className="flex gap-2 flex-wrap text-xs mb-2">
             {scene.location && <span className="text-[#7a5a30]">📍 {scene.location}</span>}
+            {scene.atmosphere_type && <span className="text-[#9b7440]">Atmosphere: {scene.atmosphere_type}</span>}
             {scene.difficulty && scene.difficulty !== "none" && (
               <span className={`border rounded px-2 py-0.5 ${scene.difficulty === "deadly" ? "border-red-900 text-red-400" : scene.difficulty === "hard" ? "border-orange-900 text-orange-400" : "border-[#4f341f] text-[#9b7440]"}`}>{scene.difficulty}</span>
             )}

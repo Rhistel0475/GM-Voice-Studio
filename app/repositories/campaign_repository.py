@@ -22,6 +22,108 @@ from app.infrastructure.db_models import (
 )
 
 
+_ATMOSPHERE_SCENE_TYPE_FALLBACKS = {
+    "combat": "combat",
+    "social": "tavern",
+    "exploration": "forest",
+    "mystery": "dungeon",
+    "travel": "town",
+}
+
+_ATMOSPHERE_ALIASES = {
+    "forest": ("forest", "woods", "grove", "wild", "jungle"),
+    "tavern": ("tavern", "inn", "alehouse", "pub", "meadhall"),
+    "town": ("town", "city", "street", "market", "village", "plaza"),
+    "dungeon": ("dungeon", "crypt", "cavern", "cave", "catacomb", "ruin", "underground"),
+    "combat": ("combat", "battle", "fight", "skirmish", "ambush", "war"),
+}
+
+
+def _normalize_atmosphere_type(value: Any) -> Optional[str]:
+    raw = str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if not raw:
+        return None
+    for atmosphere_type, aliases in _ATMOSPHERE_ALIASES.items():
+        if raw == atmosphere_type or any(alias in raw for alias in aliases):
+            return atmosphere_type
+    return None
+
+
+def _resolve_scene_atmosphere_type(
+    scene_payload: Optional[dict[str, Any]],
+    *,
+    relation_scene: Optional[Scene] = None,
+) -> str:
+    if isinstance(scene_payload, dict):
+        direct = _normalize_atmosphere_type(scene_payload.get("atmosphere_type") or scene_payload.get("atmosphereType"))
+        if direct:
+            return direct
+
+        raw_atmosphere = scene_payload.get("atmosphere")
+        if isinstance(raw_atmosphere, (list, tuple)):
+            for item in raw_atmosphere:
+                candidate = _normalize_atmosphere_type(item)
+                if candidate:
+                    return candidate
+        else:
+            candidate = _normalize_atmosphere_type(raw_atmosphere)
+            if candidate:
+                return candidate
+
+        for candidate_source in (
+            scene_payload.get("type"),
+            scene_payload.get("location"),
+            scene_payload.get("title"),
+        ):
+            candidate = _normalize_atmosphere_type(candidate_source)
+            if candidate:
+                return candidate
+
+        scene_type = str(scene_payload.get("type") or "").strip().lower()
+        if scene_type in _ATMOSPHERE_SCENE_TYPE_FALLBACKS:
+            return _ATMOSPHERE_SCENE_TYPE_FALLBACKS[scene_type]
+
+    if relation_scene is not None:
+        scene_type = str(relation_scene.type or "").strip().lower()
+        if scene_type in _ATMOSPHERE_SCENE_TYPE_FALLBACKS:
+            return _ATMOSPHERE_SCENE_TYPE_FALLBACKS[scene_type]
+
+    return "town"
+
+
+def _normalize_session_payload(session: Any, campaign_id: int) -> Optional[dict[str, Any]]:
+    if not isinstance(session, dict):
+        return None
+
+    normalized_session = {
+        "id": str(session.get("id") or session.get("session_id") or "").strip() or str(uuid.uuid4()),
+        "campaign_id": campaign_id,
+        "title": str(session.get("title") or "Session").strip() or "Session",
+        "active_scene_id": str(
+            session.get("active_scene_id")
+            or session.get("activeSceneId")
+            or session.get("scene_id")
+            or ""
+        ).strip()
+        or None,
+        "started_at": str(session.get("started_at") or session.get("startedAt") or "").strip() or None,
+        "status": str(session.get("status") or "prep").strip() or "prep",
+        "narrator_voice": str(
+            session.get("narrator_voice")
+            or session.get("narratorVoice")
+            or session.get("narrator_voice_id")
+            or ""
+        ).strip()
+        or None,
+    }
+    override = _normalize_atmosphere_type(
+        session.get("atmosphere_override_type") or session.get("atmosphereOverrideType")
+    )
+    if override:
+        normalized_session["atmosphere_override_type"] = override
+    return normalized_session
+
+
 def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str, Any]]:
     """
     Parse and normalize Campaign.data_json payload.
@@ -51,35 +153,15 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
         or ""
     ).strip() or None
     for scene in payload.get("scenes", []):
-        if isinstance(scene, dict) and not isinstance(scene.get("triggers"), list):
-            scene["triggers"] = []
+        if isinstance(scene, dict):
+            if not isinstance(scene.get("triggers"), list):
+                scene["triggers"] = []
+            scene["atmosphere_type"] = _resolve_scene_atmosphere_type(scene)
     normalized_sessions: list[dict[str, Any]] = []
     for session in payload.get("sessions", []):
-        if not isinstance(session, dict):
-            continue
-        normalized_sessions.append(
-            {
-                "id": str(session.get("id") or session.get("session_id") or "").strip() or str(uuid.uuid4()),
-                "campaign_id": campaign.id,
-                "title": str(session.get("title") or "Session").strip() or "Session",
-                "active_scene_id": str(
-                    session.get("active_scene_id")
-                    or session.get("activeSceneId")
-                    or session.get("scene_id")
-                    or ""
-                ).strip()
-                or None,
-                "started_at": str(session.get("started_at") or session.get("startedAt") or "").strip() or None,
-                "status": str(session.get("status") or "prep").strip() or "prep",
-                "narrator_voice": str(
-                    session.get("narrator_voice")
-                    or session.get("narratorVoice")
-                    or session.get("narrator_voice_id")
-                    or ""
-                ).strip()
-                or None,
-            }
-        )
+        normalized_session = _normalize_session_payload(session, campaign.id)
+        if normalized_session is not None:
+            normalized_sessions.append(normalized_session)
     payload["sessions"] = normalized_sessions
     for key in ("codex_entries", "relationships"):
         if not isinstance(payload.get(key), list):
@@ -121,6 +203,7 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
                 "title": s.title,
                 "act": s.act,
                 "type": s.type,
+                "atmosphere_type": _resolve_scene_atmosphere_type(None, relation_scene=s),
                 "read_aloud": s.read_aloud,
                 "difficulty": s.difficulty,
                 "rewards": s.rewards,
@@ -241,6 +324,7 @@ def _build_scene_record(
         "read_aloud": str(payload_scene.get("read_aloud") or (relation_scene.read_aloud if relation_scene is not None else "") or "").strip(),
         "notes": str(payload_scene.get("notes") or (relation_scene.notes if relation_scene is not None else "") or "").strip(),
         "type": str(payload_scene.get("type") or (relation_scene.type if relation_scene is not None else "") or "").strip(),
+        "atmosphere_type": _resolve_scene_atmosphere_type(payload_scene, relation_scene=relation_scene),
         "location": str(payload_scene.get("location") or "").strip(),
         "npcs": [item for item in npcs if item],
         "triggers": [item for item in triggers if isinstance(item, dict)],
@@ -305,6 +389,7 @@ def _enrich_campaign_payload(campaign: Campaign, payload: dict[str, Any]) -> dic
         for key in ("npcs", "reveals", "items"):
             if not isinstance(scene_entry.get(key), list):
                 scene_entry[key] = []
+        scene_entry["atmosphere_type"] = _resolve_scene_atmosphere_type(scene_entry, relation_scene=relation_scene)
         scene_entry["triggers"] = normalize_scene_triggers(scene_entry, npcs=payload_npcs)
 
     return payload
@@ -402,6 +487,7 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
             scene_payload = dict(scene_source)
             scene_payload["id"] = str(scene_row.id)
             scene_payload["title"] = str(scene_payload.get("title") or scene_row.title or "").strip()
+            scene_payload["atmosphere_type"] = _resolve_scene_atmosphere_type(scene_payload, relation_scene=scene_row)
             scene_payload["triggers"] = normalize_scene_triggers(scene_payload, npcs=npcs_payload)
             scenes_payload.append(scene_payload)
 
@@ -726,31 +812,12 @@ def start_session(campaign_id: int, scene_id: str, narrator_voice: str) -> dict[
         existing_sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
         normalized_sessions: list[dict[str, Any]] = []
         for session in existing_sessions:
-            if not isinstance(session, dict):
+            normalized_session = _normalize_session_payload(session, campaign_id)
+            if normalized_session is None:
                 continue
-            normalized_session = {
-                "id": str(session.get("id") or session.get("session_id") or "").strip() or str(uuid.uuid4()),
-                "campaign_id": campaign_id,
-                "title": str(session.get("title") or "Session").strip() or "Session",
-                "active_scene_id": str(
-                    session.get("active_scene_id")
-                    or session.get("activeSceneId")
-                    or session.get("scene_id")
-                    or ""
-                ).strip()
-                or None,
-                "started_at": str(session.get("started_at") or session.get("startedAt") or "").strip() or None,
-                "status": str(session.get("status") or "prep").strip() or "prep",
-                "narrator_voice": str(
-                    session.get("narrator_voice")
-                    or session.get("narratorVoice")
-                    or session.get("narrator_voice_id")
-                    or ""
-                ).strip()
-                or None,
-            }
             if normalized_session["status"] == "active":
                 normalized_session["status"] = "closed"
+            normalized_session.pop("atmosphere_override_type", None)
             normalized_sessions.append(normalized_session)
 
         session_id = str(uuid.uuid4())
@@ -801,6 +868,108 @@ def start_session(campaign_id: int, scene_id: str, narrator_voice: str) -> dict[
         "session": session_record,
         "campaign": refreshed_campaign,
     }
+
+
+def activate_scene(
+    scene_id: str,
+    *,
+    atmosphere_override_type: Optional[str] = None,
+    reset_atmosphere_override: bool = False,
+) -> Optional[dict[str, Any]]:
+    """
+    Activate a scene for the current active session when available.
+    Returns the normalized scene record.
+    """
+    db = SessionLocal()
+    try:
+        scene_ref = str(scene_id or "").strip()
+        if not scene_ref:
+            return None
+
+        relation_scene = None
+        if scene_ref.isdigit():
+            relation_scene = db.query(Scene).filter(Scene.id == int(scene_ref)).first()
+        if relation_scene is None:
+            relation_scene = db.query(Scene).filter(Scene.title == scene_ref).first()
+
+        campaign: Optional[Campaign] = None
+        payload: Optional[dict[str, Any]] = None
+        scene_payload: Optional[dict[str, Any]] = None
+
+        if relation_scene is not None:
+            campaign = db.query(Campaign).filter(Campaign.id == relation_scene.campaign_id).first()
+            if campaign is None:
+                return None
+            payload = _enrich_campaign_payload(
+                campaign,
+                _campaign_payload_from_json_record(campaign) or _campaign_payload_from_relations(campaign),
+            )
+            scene_payload = _find_scene_payload(payload, scene_ref, relation_scene=relation_scene)
+        else:
+            for candidate_campaign in db.query(Campaign).all():
+                candidate_payload = _campaign_payload_from_json_record(candidate_campaign)
+                candidate_scene = _find_scene_payload(candidate_payload, scene_ref)
+                if candidate_scene is None:
+                    continue
+                campaign = candidate_campaign
+                payload = _enrich_campaign_payload(
+                    candidate_campaign,
+                    candidate_payload or _campaign_payload_from_relations(candidate_campaign),
+                )
+                scene_payload = _find_scene_payload(payload, scene_ref)
+                break
+
+        if campaign is None or payload is None:
+            return None
+
+        scene_record = _build_scene_record(
+            campaign=campaign,
+            scene_ref=scene_ref,
+            relation_scene=relation_scene,
+            scene_payload=scene_payload,
+            payload=payload,
+        )
+        resolved_scene_id = str(scene_record.get("id") or scene_ref).strip() or scene_ref
+
+        active_session_id = str(payload.get("active_session_id") or "").strip()
+        existing_sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
+
+        target_session_id = active_session_id
+        if not target_session_id:
+            for session in existing_sessions:
+                normalized_session = _normalize_session_payload(session, campaign.id)
+                if normalized_session and str(normalized_session.get("status") or "").lower() == "active":
+                    target_session_id = normalized_session["id"]
+                    break
+
+        normalized_sessions: list[dict[str, Any]] = []
+        updated_session: Optional[dict[str, Any]] = None
+        override = _normalize_atmosphere_type(atmosphere_override_type)
+
+        for session in existing_sessions:
+            normalized_session = _normalize_session_payload(session, campaign.id)
+            if normalized_session is None:
+                continue
+            if target_session_id and normalized_session["id"] == target_session_id:
+                previous_scene_id = str(normalized_session.get("active_scene_id") or "").strip()
+                normalized_session["active_scene_id"] = resolved_scene_id
+                if override:
+                    normalized_session["atmosphere_override_type"] = override
+                elif reset_atmosphere_override or previous_scene_id != resolved_scene_id:
+                    normalized_session.pop("atmosphere_override_type", None)
+                updated_session = normalized_session
+            normalized_sessions.append(normalized_session)
+
+        payload["sessions"] = normalized_sessions
+        payload["active_session_id"] = updated_session["id"] if updated_session is not None else (target_session_id or None)
+        campaign.data_json = json.dumps(payload, ensure_ascii=False)
+        db.commit()
+
+        if updated_session and updated_session.get("atmosphere_override_type"):
+            scene_record["atmosphere_override_type"] = updated_session["atmosphere_override_type"]
+        return scene_record
+    finally:
+        db.close()
 
 
 def get_session_events(

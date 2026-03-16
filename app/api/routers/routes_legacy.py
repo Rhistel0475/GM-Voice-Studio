@@ -72,6 +72,7 @@ from app.services.tts_service import (
     list_hume_voices,
     normalize_stored_voice,
 )
+from app.services.voice_assignment_service import suggest_voice_for_npc
 from app.services.voice_clone_service import clone_voice
 from app.services.voice_store_service import (
     delete_voice,
@@ -1010,6 +1011,10 @@ class AssignVoiceBody(BaseModel):
     voice_id: str
 
 
+class SuggestNpcVoiceBody(BaseModel):
+    npc_id: str = Field(..., min_length=1)
+
+
 @router.post("/api/campaigns/{campaign_id}/documents")
 @limiter.limit("20/minute")
 async def upload_campaign_documents(
@@ -1076,6 +1081,22 @@ async def assign_npc_voice(
         # Campaign may not be in DB yet; return 200 so frontend doesn't treat as hard error
         return {"ok": False, "reason": "campaign or npc not found in db"}
     return {"ok": True, "campaign_id": campaign_id, "npc_name": npc_name, "voice_id": body.voice_id}
+
+
+@router.post("/npc/suggest-voice")
+@limiter.limit("120/minute")
+async def suggest_npc_voice(
+    body: SuggestNpcVoiceBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+    owner_id: Optional[str] = Depends(get_owner_id),
+):
+    npc = campaign_repository.get_npc_record(body.npc_id)
+    if npc is None:
+        raise HTTPException(404, "NPC not found")
+
+    suggested_voice = await run_in_threadpool(suggest_voice_for_npc, npc, owner_id)
+    return {"suggested_voice": suggested_voice}
 
 
 class SessionEventBody(BaseModel):
@@ -1412,6 +1433,11 @@ class SceneTriggerBody(BaseModel):
     trigger_name: str
 
 
+class SceneActivateBody(BaseModel):
+    scene_id: str
+    reset_atmosphere_override: bool = False
+
+
 @router.post("/ai/dialogue")
 @limiter.limit("20/minute")
 async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depends(verify_api_key)):
@@ -1471,6 +1497,32 @@ async def scene_trigger(body: SceneTriggerBody, request: Request, _auth: None = 
         increment("tts_requests_total")
 
     return payload
+
+
+@router.post("/scene/activate")
+@limiter.limit("60/minute")
+async def activate_scene_route(body: SceneActivateBody, request: Request, _auth: None = Depends(verify_api_key)):
+    from app.domain.live.scene_control import activate_scene
+
+    try:
+        return await run_in_threadpool(activate_scene, body.scene_id, bool(body.reset_atmosphere_override))
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.post("/scene/combat-start")
+@limiter.limit("60/minute")
+async def scene_combat_start(body: SceneActivateBody, request: Request, _auth: None = Depends(verify_api_key)):
+    from app.domain.live.scene_control import start_scene_combat
+
+    try:
+        return await run_in_threadpool(start_scene_combat, body.scene_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 # --- TTS: preset or custom voice ---

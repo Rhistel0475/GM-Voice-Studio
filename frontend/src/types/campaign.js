@@ -23,6 +23,7 @@
  * @property {string} title
  * @property {string} [act]
  * @property {string} [type] - e.g. "combat" | "social" | "exploration" | "mystery" | "travel"
+ * @property {string} [atmosphere_type] - e.g. "forest" | "tavern" | "town" | "dungeon" | "combat"
  * @property {string} [location]
  * @property {string} [read_aloud]
  * @property {string} [notes]

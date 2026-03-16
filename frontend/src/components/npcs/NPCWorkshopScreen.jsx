@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { defaultNpcFilterState, defaultNpcDraft } from "../../types/npc";
 import { getNPCs } from "../../lib/api/npcs";
-import { saveNPC, pushToLiveBoard } from "../../lib/api/npcs";
+import { saveNPC, pushToLiveBoard, suggestNpcVoice } from "../../lib/api/npcs";
 import { useCampaignOptional } from "../../context/CampaignContext";
 import { useNpcsForActiveCampaign } from "../../store/selectors";
 import { suggestVoiceForNpc } from "../../lib/voiceSuggestions";
@@ -34,6 +34,10 @@ function filterNpcs(npcs, filterState) {
   return out;
 }
 
+function isBackendNpcId(value) {
+  return /^\d+$/.test(String(value || "").trim());
+}
+
 function profileToDraft(profile) {
   if (!profile) return defaultNpcDraft();
   return {
@@ -47,6 +51,32 @@ function profileToDraft(profile) {
     quirks: Array.isArray(profile.quirks) ? [...profile.quirks] : [],
     notes: profile.notes || "",
     preferredVoice: profile.voiceId || profile.voice_id || "",
+  };
+}
+
+function normalizeBackendSuggestion(suggestion, voices) {
+  const voiceId = String(suggestion?.voice_id || suggestion?.voiceId || "").trim();
+  if (!voiceId) return null;
+  const matchedVoice = (voices || []).find((voice) => (voice.voice_id || voice.id) === voiceId) || null;
+  return {
+    provider: suggestion?.provider || matchedVoice?.provider || "",
+    voice_id: voiceId,
+    voice_name: suggestion?.voice_name || suggestion?.name || matchedVoice?.name || voiceId,
+    tone: suggestion?.tone || "",
+    style: suggestion?.style || "",
+  };
+}
+
+function normalizeLocalSuggestion(suggestion) {
+  const candidate = suggestion?.candidateVoices?.[0];
+  const voiceId = String(candidate?.voice_id || candidate?.id || "").trim();
+  if (!voiceId) return null;
+  return {
+    provider: candidate?.provider || "",
+    voice_id: voiceId,
+    voice_name: candidate?.name || voiceId,
+    tone: suggestion?.presetName || "",
+    style: suggestion?.reason || "",
   };
 }
 
@@ -95,6 +125,7 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
   const [saving, setSaving] = useState(false);
   const [voices, setVoices] = useState([]);
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
+  const [backendSuggestedVoice, setBackendSuggestedVoice] = useState(null);
   const [npcs, setNpcs] = useState([]);
 
   const playAudioBlob = useCallback(async (blob) => {
@@ -149,6 +180,7 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
     setDraft(profileToDraft(npc));
     setNpcName(npc?.name || "");
     setPersonalityText(npc?.summary || npc?.personality || "");
+    setSelectedVoiceId(String(npc?.voiceId || npc?.voice_id || "").trim());
   }, []);
 
   const resolveVoiceId = useCallback(async () => {
@@ -333,10 +365,69 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
     [selectedNpc, draft, npcName, personalityText]
   );
 
-  const voiceSuggestion = useMemo(
-    () => (previewProfile?.name || previewProfile?.role ? suggestVoiceForNpc(previewProfile, voices) : null),
+  useEffect(() => {
+    let cancelled = false;
+    const npcId = String(selectedNpc?.id || "").trim();
+    if (!isBackendNpcId(npcId)) {
+      setBackendSuggestedVoice(null);
+      return () => { cancelled = true; };
+    }
+
+    setBackendSuggestedVoice(null);
+    suggestNpcVoice(npcId, authFetch)
+      .then((suggestion) => {
+        if (!cancelled) setBackendSuggestedVoice(suggestion);
+      })
+      .catch(() => {
+        if (!cancelled) setBackendSuggestedVoice(null);
+      });
+
+    return () => { cancelled = true; };
+  }, [authFetch, selectedNpc?.id]);
+
+  const localVoiceSuggestion = useMemo(
+    () => normalizeLocalSuggestion(
+      previewProfile?.name || previewProfile?.role ? suggestVoiceForNpc(previewProfile, voices) : null
+    ),
     [previewProfile, voices]
   );
+
+  const voiceSuggestion = useMemo(
+    () => normalizeBackendSuggestion(backendSuggestedVoice, voices) || localVoiceSuggestion,
+    [backendSuggestedVoice, voices, localVoiceSuggestion]
+  );
+
+  const handleApplySuggestedVoice = useCallback((voiceId) => {
+    const resolvedVoiceId = String(voiceId || "").trim();
+    if (!resolvedVoiceId) return;
+
+    setSelectedVoiceId(resolvedVoiceId);
+
+    if (selectedNpc?.id != null) {
+      setSelectedNpc((current) => (current ? { ...current, voiceId: resolvedVoiceId, voice_id: resolvedVoiceId } : current));
+      setNpcs((prev) => prev.map((npc) => (
+        String(npc.id) === String(selectedNpc.id)
+          ? { ...npc, voiceId: resolvedVoiceId, voice_id: resolvedVoiceId }
+          : npc
+      )));
+    }
+
+    const targetNpc = selectedNpc || previewProfile;
+    if (campaignCtx?.assignVoiceToNpc && (targetNpc?.id || targetNpc?.name)) {
+      campaignCtx.assignVoiceToNpc(targetNpc.id || targetNpc.name, resolvedVoiceId);
+    }
+    if (selectedNpc?.name) {
+      persistNpcVoice(authFetch, selectedNpc.name, resolvedVoiceId);
+    }
+
+    if (typeof window !== "undefined") {
+      const message = selectedNpc?.name
+        ? "Suggested voice applied."
+        : "Suggested voice selected. Save the NPC to keep it.";
+      if (window.toast) window.toast(message);
+      else console.log(message);
+    }
+  }, [selectedNpc, previewProfile, campaignCtx, authFetch]);
 
   return (
     <section className="npc-workshop-screen min-h-0 flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 p-2 md:p-3 bg-[var(--wood-2)]/80">
@@ -398,7 +489,7 @@ export default function NPCWorkshopScreen({ campaignData, authFetch }) {
           generating={npcGenStreaming}
           saving={saving}
           suggestion={voiceSuggestion}
-          onApplySuggestion={setSelectedVoiceId}
+          onApplySuggestion={handleApplySuggestedVoice}
         />
       </div>
     </section>

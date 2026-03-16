@@ -76,6 +76,29 @@ export async function saveNPC(profile, authFetch) {
 }
 
 /**
+ * Ask the backend for a provider-aware voice suggestion for an NPC already known to the campaign DB.
+ * Returns null when the backend cannot suggest a voice yet.
+ * @param {string} npcId
+ * @param {Function} authFetch
+ * @returns {Promise<Object|null>}
+ */
+export async function suggestNpcVoice(npcId, authFetch) {
+  if (!npcId) return null;
+  try {
+    const res = await authFetch("/npc/suggest-voice", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ npc_id: npcId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.suggested_voice ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Push NPC to Live Board. Stub: toast "Coming soon" until backend supports it.
  * @param {string} profileId
  * @param {Function} authFetch
