@@ -545,6 +545,50 @@ button.tracker-row:hover:not(.is-active) {
   box-shadow: 0 0 12px rgba(200, 160, 80, 0.4);
 }
 
+.scene-trigger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.scene-trigger-btn {
+  width: 100%;
+  border: 1px solid #7b562d;
+  background:
+    linear-gradient(180deg, rgba(54, 35, 19, 0.95), rgba(25, 16, 8, 0.98)),
+    radial-gradient(circle at 18% 10%, rgba(232, 193, 118, 0.12), transparent 32%);
+  color: #f0cb88;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+}
+
+.scene-trigger-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow: 0 0 14px rgba(202, 167, 75, 0.22);
+}
+
+.scene-trigger-btn:disabled {
+  opacity: 0.72;
+  cursor: wait;
+}
+
+.scene-trigger-type {
+  flex-shrink: 0;
+  border: 1px solid rgba(212, 175, 111, 0.28);
+  padding: 2px 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c89f5f;
+  background: rgba(17, 10, 4, 0.75);
+}
+
 .chat-input {
   border: 1px solid #6e4926;
   background: #16100a;

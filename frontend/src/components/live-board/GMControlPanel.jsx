@@ -1,5 +1,6 @@
 import { useState } from "react";
 import QuickToolGrid from "./QuickToolGrid";
+import SceneControlPanel from "./SceneControlPanel";
 import { QUICK_TOOLS } from "./constants";
 import { ModalShell } from "../shared";
 import { getPartyPlaceholder } from "../../lib/placeholders";
@@ -16,9 +17,9 @@ export default function GMControlPanel({
   scene,
   selectedNpcName,
   onSelectNpc,
-  onNarrateScene,
-  isNarratingScene = false,
-  narrateSceneError = "",
+  onTriggerScene,
+  activeTriggerName = "",
+  triggerSceneError = "",
 }) {
   const [activeTool, setActiveTool] = useState(null);
   const party = campaignData?.party?.length ? campaignData.party : DEFAULT_PARTY;
@@ -40,24 +41,18 @@ export default function GMControlPanel({
         </div>
       </section>
 
+      <SceneControlPanel
+        scene={scene}
+        onTrigger={onTriggerScene}
+        busyTriggerName={activeTriggerName}
+        triggerError={triggerSceneError}
+      />
+
       <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">
         <div className="panel-head">
           <div className="plaque">Active Scene</div>
         </div>
         <div className="panel-body space-y-2 overflow-y-auto min-h-[120px] max-h-[220px]">
-          {(scene?.id || scene?.read_aloud || scene?.notes) && onNarrateScene ? (
-            <div className="space-y-1">
-              <button
-                type="button"
-                className="cta-secondary w-full text-center transition-all hover:brightness-110"
-                onClick={() => onNarrateScene(scene)}
-                disabled={isNarratingScene}
-              >
-                {isNarratingScene ? "Narrating..." : "Narrate Scene"}
-              </button>
-              {narrateSceneError ? <div className="text-xs text-red-400">{narrateSceneError}</div> : null}
-            </div>
-          ) : null}
           {sceneNpcs.map((npc) => (
             <button
               key={npc.name}

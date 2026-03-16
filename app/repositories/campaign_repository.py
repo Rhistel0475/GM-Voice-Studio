@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from app.domain.live.scene_triggers import normalize_scene_triggers, resolve_scene_npcs
 from app.infrastructure.database import SessionLocal
 from app.infrastructure.db_models import (
     Campaign,
@@ -42,13 +43,15 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
+    for scene in payload.get("scenes", []):
+        if isinstance(scene, dict) and not isinstance(scene.get("triggers"), list):
+            scene["triggers"] = []
     for key in ("codex_entries", "relationships"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
     if not isinstance(payload.get("documents"), list):
         payload["documents"] = []
     return payload
-
 
 def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
     """Legacy fallback payload built from normalized relational tables."""
@@ -90,6 +93,7 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
                 "npcs": [],
                 "reveals": [],
                 "items": [],
+                "triggers": [],
             }
             for s in campaign.scenes
         ],
@@ -137,6 +141,138 @@ def _campaign_documents_payload(db, campaign_id: int) -> list[dict[str, Any]]:
     return payload
 
 
+def _find_scene_payload(
+    payload: Optional[dict[str, Any]],
+    scene_ref: str,
+    relation_scene: Optional[Scene] = None,
+) -> Optional[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+
+    wanted: list[str] = []
+    raw_ref = str(scene_ref or "").strip()
+    if raw_ref:
+        wanted.append(raw_ref)
+    if relation_scene is not None:
+        wanted.append(str(relation_scene.id))
+        if relation_scene.title:
+            wanted.append(str(relation_scene.title).strip())
+
+    wanted = [candidate for candidate in wanted if candidate]
+    if not wanted:
+        return None
+
+    for scene_payload in payload.get("scenes", []):
+        if not isinstance(scene_payload, dict):
+            continue
+        payload_id = str(scene_payload.get("id") or "").strip()
+        payload_title = str(scene_payload.get("title") or "").strip()
+        if any(candidate in {payload_id, payload_title} for candidate in wanted):
+            return scene_payload
+    return None
+
+
+def _build_scene_record(
+    *,
+    campaign: Campaign,
+    scene_ref: str,
+    relation_scene: Optional[Scene] = None,
+    scene_payload: Optional[dict[str, Any]] = None,
+    payload: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    payload = payload or _enrich_campaign_payload(campaign, _campaign_payload_from_json_record(campaign) or _campaign_payload_from_relations(campaign))
+    payload_scene = scene_payload or _find_scene_payload(payload, scene_ref, relation_scene=relation_scene) or {}
+
+    narrator_voice_id = (
+        str(payload_scene.get("narrator_voice_id") or "").strip()
+        or str(payload_scene.get("voice_id") or "").strip()
+        or str(payload.get("narrator_voice_id") or payload.get("narrator_voice") or "").strip()
+        or None
+    )
+
+    triggers = payload_scene.get("triggers") if isinstance(payload_scene.get("triggers"), list) else []
+    npcs = payload_scene.get("npcs") if isinstance(payload_scene.get("npcs"), list) else []
+
+    return {
+        "id": str(
+            payload_scene.get("id")
+            or (relation_scene.id if relation_scene is not None else "")
+            or scene_ref
+        ),
+        "campaign_id": campaign.id,
+        "title": str(payload_scene.get("title") or (relation_scene.title if relation_scene is not None else "") or "").strip(),
+        "read_aloud": str(payload_scene.get("read_aloud") or (relation_scene.read_aloud if relation_scene is not None else "") or "").strip(),
+        "notes": str(payload_scene.get("notes") or (relation_scene.notes if relation_scene is not None else "") or "").strip(),
+        "type": str(payload_scene.get("type") or (relation_scene.type if relation_scene is not None else "") or "").strip(),
+        "location": str(payload_scene.get("location") or "").strip(),
+        "npcs": [item for item in npcs if item],
+        "triggers": [item for item in triggers if isinstance(item, dict)],
+        "narrator_voice_id": narrator_voice_id,
+    }
+
+
+def _enrich_campaign_payload(campaign: Campaign, payload: dict[str, Any]) -> dict[str, Any]:
+    scenes = payload.get("scenes")
+    if not isinstance(scenes, list):
+        payload["scenes"] = []
+        scenes = payload["scenes"]
+
+    relation_scenes = list(campaign.scenes or [])
+    by_title: dict[str, list[Scene]] = {}
+    by_id: dict[str, Scene] = {}
+    for relation_scene in relation_scenes:
+        by_id[str(relation_scene.id)] = relation_scene
+        title_key = str(relation_scene.title or "").strip().casefold()
+        if title_key:
+            by_title.setdefault(title_key, []).append(relation_scene)
+
+    used_relation_ids: set[int] = set()
+    payload_npcs = payload.get("npcs") if isinstance(payload.get("npcs"), list) else []
+
+    for index, scene_entry in enumerate(scenes):
+        if not isinstance(scene_entry, dict):
+            continue
+
+        relation_scene: Optional[Scene] = None
+        raw_id = str(scene_entry.get("id") or "").strip()
+        if raw_id and raw_id in by_id:
+            relation_scene = by_id[raw_id]
+
+        if relation_scene is None:
+            title_key = str(scene_entry.get("title") or "").strip().casefold()
+            for candidate in by_title.get(title_key, []):
+                if candidate.id not in used_relation_ids:
+                    relation_scene = candidate
+                    break
+
+        if relation_scene is None and index < len(relation_scenes):
+            candidate = relation_scenes[index]
+            if candidate.id not in used_relation_ids:
+                relation_scene = candidate
+
+        if relation_scene is not None:
+            used_relation_ids.add(relation_scene.id)
+            scene_entry["id"] = str(scene_entry.get("id") or relation_scene.id)
+            scene_entry["title"] = str(scene_entry.get("title") or relation_scene.title or "").strip()
+            scene_entry["act"] = str(scene_entry.get("act") or relation_scene.act or "").strip()
+            scene_entry["type"] = str(scene_entry.get("type") or relation_scene.type or "").strip()
+            scene_entry["read_aloud"] = str(scene_entry.get("read_aloud") or relation_scene.read_aloud or "").strip()
+            scene_entry["difficulty"] = str(scene_entry.get("difficulty") or relation_scene.difficulty or "").strip()
+            scene_entry["rewards"] = str(scene_entry.get("rewards") or relation_scene.rewards or "").strip()
+            scene_entry["notes"] = str(scene_entry.get("notes") or relation_scene.notes or "").strip()
+            if relation_scene.image_url and not scene_entry.get("image_url"):
+                scene_entry["image_url"] = relation_scene.image_url
+        elif raw_id:
+            scene_entry["id"] = raw_id
+
+        for key in ("npcs", "reveals", "items"):
+            if not isinstance(scene_entry.get(key), list):
+                scene_entry[key] = []
+        scene_entry["triggers"] = normalize_scene_triggers(scene_entry, npcs=payload_npcs)
+
+    return payload
+
+
 def list_all() -> list[dict[str, Any]]:
     """Return all campaigns (id, title, summary) newest first."""
     db = SessionLocal()
@@ -157,6 +293,7 @@ def get_by_id(campaign_id: int) -> Optional[dict[str, Any]]:
         payload = _campaign_payload_from_json_record(c)
         if payload is None:
             payload = _campaign_payload_from_relations(c)
+        payload = _enrich_campaign_payload(c, payload)
         payload["documents"] = _campaign_documents_payload(db, campaign_id)
         return payload
     finally:
@@ -184,30 +321,14 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
     """
     db = SessionLocal()
     try:
-        campaign = Campaign(
-            title=result.get("title", ""),
-            summary=result.get("summary", ""),
-            data_json=json.dumps(
-                {
-                    "title": result.get("title", ""),
-                    "summary": result.get("summary", ""),
-                    "npcs": result.get("npcs", []),
-                    "party": result.get("party", []),
-                    "scenes": result.get("scenes", []),
-                    "locations": result.get("locations", []),
-                    "reveals": result.get("reveals", []),
-                    "items": result.get("items", []),
-                    "images": result.get("images", []),
-                    "codex_entries": result.get("codex_entries", []),
-                    "relationships": result.get("relationships", []),
-                },
-                ensure_ascii=False,
-            ),
-        )
+        campaign = Campaign(title=result.get("title", ""), summary=result.get("summary", ""), data_json="{}")
         db.add(campaign)
         db.flush()
 
-        for n in result.get("npcs", []):
+        npcs_payload = result.get("npcs", []) if isinstance(result.get("npcs"), list) else []
+        scenes_payload: list[dict[str, Any]] = []
+
+        for n in npcs_payload:
             db.add(
                 NPC(
                     campaign_id=campaign.id,
@@ -226,19 +347,27 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
                 )
             )
         for s in result.get("scenes", []):
-            db.add(
-                Scene(
-                    campaign_id=campaign.id,
-                    title=s.get("title", ""),
-                    act=s.get("act", ""),
-                    type=s.get("type", ""),
-                    read_aloud=s.get("read_aloud", ""),
-                    difficulty=s.get("difficulty", ""),
-                    rewards=s.get("rewards", ""),
-                    notes=s.get("notes", ""),
-                    image_url=s.get("image_url"),
-                )
+            scene_source = s if isinstance(s, dict) else {"title": str(s or "").strip()}
+            scene_row = Scene(
+                campaign_id=campaign.id,
+                title=scene_source.get("title", ""),
+                act=scene_source.get("act", ""),
+                type=scene_source.get("type", ""),
+                read_aloud=scene_source.get("read_aloud", ""),
+                difficulty=scene_source.get("difficulty", ""),
+                rewards=scene_source.get("rewards", ""),
+                notes=scene_source.get("notes", ""),
+                image_url=scene_source.get("image_url"),
             )
+            db.add(scene_row)
+            db.flush()
+
+            scene_payload = dict(scene_source)
+            scene_payload["id"] = str(scene_row.id)
+            scene_payload["title"] = str(scene_payload.get("title") or scene_row.title or "").strip()
+            scene_payload["triggers"] = normalize_scene_triggers(scene_payload, npcs=npcs_payload)
+            scenes_payload.append(scene_payload)
+
         for loc in result.get("locations", []):
             db.add(
                 Location(
@@ -248,6 +377,24 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
                     image_url=loc.get("image_url"),
                 )
             )
+
+        canonical_payload = {
+            "title": result.get("title", ""),
+            "summary": result.get("summary", ""),
+            "npcs": npcs_payload,
+            "party": result.get("party", []),
+            "scenes": scenes_payload,
+            "locations": result.get("locations", []),
+            "reveals": result.get("reveals", []),
+            "items": result.get("items", []),
+            "images": result.get("images", []),
+            "codex_entries": result.get("codex_entries", []),
+            "relationships": result.get("relationships", []),
+        }
+        campaign.data_json = json.dumps(canonical_payload, ensure_ascii=False)
+        result["id"] = campaign.id
+        result["scenes"] = scenes_payload
+
         db.commit()
         return campaign.id
     finally:
@@ -294,15 +441,18 @@ def assign_npc_voice(campaign_id: int, npc_name: str, voice_id: str) -> bool:
         db.close()
 
 
-def get_npc_record(npc_id: str) -> Optional[dict[str, Any]]:
+def get_npc_record(npc_id: str, campaign_id: Optional[int] = None) -> Optional[dict[str, Any]]:
     """Return a normalized NPC record by id, with name fallback for legacy callers."""
     db = SessionLocal()
     try:
         npc = None
+        query = db.query(NPC)
+        if campaign_id is not None:
+            query = query.filter(NPC.campaign_id == campaign_id)
         if str(npc_id).isdigit():
-            npc = db.query(NPC).filter(NPC.id == int(npc_id)).first()
+            npc = query.filter(NPC.id == int(npc_id)).first()
         if npc is None:
-            npc = db.query(NPC).filter(NPC.name == str(npc_id)).first()
+            npc = query.filter(NPC.name == str(npc_id)).first()
         if npc is None:
             return None
         return {
@@ -325,40 +475,106 @@ def get_scene_record(scene_id: str) -> Optional[dict[str, Any]]:
     """Return a normalized scene record by id, with title fallback for legacy callers."""
     db = SessionLocal()
     try:
+        scene_ref = str(scene_id).strip()
         scene = None
-        if str(scene_id).isdigit():
-            scene = db.query(Scene).filter(Scene.id == int(scene_id)).first()
+        if scene_ref.isdigit():
+            scene = db.query(Scene).filter(Scene.id == int(scene_ref)).first()
         if scene is None:
-            scene = db.query(Scene).filter(Scene.title == str(scene_id)).first()
-        if scene is None:
+            scene = db.query(Scene).filter(Scene.title == scene_ref).first()
+
+        if scene is not None:
+            campaign = db.query(Campaign).filter(Campaign.id == scene.campaign_id).first()
+            if campaign is None:
+                return None
+            payload = _enrich_campaign_payload(campaign, _campaign_payload_from_json_record(campaign) or _campaign_payload_from_relations(campaign))
+            return _build_scene_record(campaign=campaign, scene_ref=scene_ref, relation_scene=scene, payload=payload)
+
+        for campaign in db.query(Campaign).all():
+            payload = _campaign_payload_from_json_record(campaign)
+            scene_payload = _find_scene_payload(payload, scene_ref)
+            if scene_payload is not None:
+                payload = _enrich_campaign_payload(campaign, payload)
+                return _build_scene_record(
+                    campaign=campaign,
+                    scene_ref=scene_ref,
+                    relation_scene=None,
+                    scene_payload=_find_scene_payload(payload, scene_ref),
+                    payload=payload,
+                )
+        return None
+    finally:
+        db.close()
+
+
+def get_scene_bundle(scene_id: str) -> Optional[dict[str, Any]]:
+    """Return a scene plus campaign/NPC context for scene control execution."""
+    db = SessionLocal()
+    try:
+        scene_ref = str(scene_id).strip()
+        relation_scene = None
+        if scene_ref.isdigit():
+            relation_scene = db.query(Scene).filter(Scene.id == int(scene_ref)).first()
+        if relation_scene is None:
+            relation_scene = db.query(Scene).filter(Scene.title == scene_ref).first()
+
+        campaign: Optional[Campaign] = None
+        payload: Optional[dict[str, Any]] = None
+        scene_payload: Optional[dict[str, Any]] = None
+
+        if relation_scene is not None:
+            campaign = db.query(Campaign).filter(Campaign.id == relation_scene.campaign_id).first()
+            if campaign is None:
+                return None
+            payload = _enrich_campaign_payload(campaign, _campaign_payload_from_json_record(campaign) or _campaign_payload_from_relations(campaign))
+            scene_payload = _find_scene_payload(payload, scene_ref, relation_scene=relation_scene)
+        else:
+            for candidate_campaign in db.query(Campaign).all():
+                candidate_payload = _campaign_payload_from_json_record(candidate_campaign)
+                candidate_scene = _find_scene_payload(candidate_payload, scene_ref)
+                if candidate_scene is None:
+                    continue
+                campaign = candidate_campaign
+                payload = _enrich_campaign_payload(candidate_campaign, candidate_payload or _campaign_payload_from_relations(candidate_campaign))
+                scene_payload = _find_scene_payload(payload, scene_ref)
+                break
+
+        if campaign is None or payload is None:
             return None
 
-        narrator_voice_id = None
-        campaign = db.query(Campaign).filter(Campaign.id == scene.campaign_id).first()
-        raw = (getattr(campaign, "data_json", "") or "").strip() if campaign is not None else ""
-        if raw:
-            try:
-                payload = json.loads(raw)
-                if isinstance(payload, dict):
-                    narrator_voice_id = (
-                        payload.get("narrator_voice_id")
-                        or payload.get("narrator_voice")
-                        or None
-                    )
-            except (json.JSONDecodeError, TypeError):
-                logging.warning("Campaign %s data_json invalid during scene lookup", scene.campaign_id)
-
+        scene_record = _build_scene_record(
+            campaign=campaign,
+            scene_ref=scene_ref,
+            relation_scene=relation_scene,
+            scene_payload=scene_payload,
+            payload=payload,
+        )
+        payload_npcs = payload.get("npcs") if isinstance(payload.get("npcs"), list) else []
         return {
-            "id": str(scene.id),
-            "campaign_id": scene.campaign_id,
-            "title": scene.title,
-            "read_aloud": scene.read_aloud,
-            "notes": scene.notes,
-            "type": scene.type,
-            "narrator_voice_id": narrator_voice_id,
+            "campaign_id": campaign.id,
+            "scene": scene_record,
+            "npcs": payload_npcs,
+            "scene_npcs": resolve_scene_npcs(scene_record, npcs=payload_npcs),
         }
     finally:
         db.close()
+
+
+def get_scene_trigger_record(scene_id: str, trigger_name: str) -> Optional[dict[str, Any]]:
+    """Return a scene + trigger bundle for the requested trigger name."""
+    scene = get_scene_record(scene_id)
+    if scene is None:
+        return None
+
+    wanted = str(trigger_name or "").strip().casefold()
+    if not wanted:
+        return {"scene": scene, "trigger": None}
+
+    for trigger in scene.get("triggers") or []:
+        if not isinstance(trigger, dict):
+            continue
+        if str(trigger.get("name") or "").strip().casefold() == wanted:
+            return {"scene": scene, "trigger": trigger}
+    return {"scene": scene, "trigger": None}
 
 
 def get_narrator_voice_id(campaign_id: int) -> Optional[str]:

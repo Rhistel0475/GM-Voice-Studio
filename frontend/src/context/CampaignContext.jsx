@@ -44,12 +44,29 @@ function deriveLegacyCampaign(state) {
       id: s.id,
       title: s.title,
       summary: s.summary,
+      act: s.act || "",
+      type: s.type || "",
+      read_aloud: s.readAloud || s.read_aloud || s.summary || "",
+      notes: s.notes || "",
+      location: s.location || "",
+      narrator_voice_id: s.narratorVoiceId || s.narrator_voice_id,
       npcs: s.npcIds
         .map((id) => campaignNpcs.find((n) => n.id === id)?.name)
         .filter(Boolean),
       codexRefs: s.codexEntryIds ?? [],
       items: [],
       reveals: [],
+      triggers: Array.isArray(s.triggers)
+        ? s.triggers.map((trigger) => ({
+            name: trigger.name,
+            type: trigger.type,
+            text: trigger.text,
+            action: trigger.action,
+            npc_name: trigger.npcName,
+            npc_id: trigger.npcId,
+            voice_id: trigger.voiceId,
+          }))
+        : [],
     })),
     npcs: campaignNpcs.map((n) => ({
       id: n.id,
@@ -76,10 +93,27 @@ function deriveLegacyActiveScene(state) {
     id: scene.id,
     title: scene.title,
     summary: scene.summary,
+    act: scene.act || "",
+    type: scene.type || "",
+    read_aloud: scene.readAloud || scene.read_aloud || scene.summary || "",
+    notes: scene.notes || "",
+    location: scene.location || "",
+    narrator_voice_id: scene.narratorVoiceId || scene.narrator_voice_id,
     npcs: scene.npcIds.map((id) => campaignNpcs.find((n) => n.id === id)?.name).filter(Boolean),
     codexRefs: scene.codexEntryIds ?? [],
     items: [],
     reveals: [],
+    triggers: Array.isArray(scene.triggers)
+      ? scene.triggers.map((trigger) => ({
+          name: trigger.name,
+          type: trigger.type,
+          text: trigger.text,
+          action: trigger.action,
+          npc_name: trigger.npcName,
+          npc_id: trigger.npcId,
+          voice_id: trigger.voiceId,
+        }))
+      : [],
   };
 }
 

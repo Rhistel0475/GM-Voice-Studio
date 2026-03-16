@@ -8,6 +8,4 @@ Subpackages define ownership of capabilities:
 - ai: LLM orchestration, RAG, NPC generation, dialogue
 """
 
-from app.domain import ai, campaign, live, voice
-
 __all__ = ["ai", "campaign", "live", "voice"]

@@ -10,7 +10,7 @@
  */
 import { useCampaignContextStore } from "../store/campaignContext";
 import { createId } from "./utils/ids";
-import type { Campaign, Npc, Scene, CodexEntry } from "../types";
+import type { Campaign, Npc, Scene, SceneTrigger, CodexEntry } from "../types";
 
 export interface CampaignImportResult {
   campaignId: string;
@@ -30,8 +30,21 @@ type RawScene = {
   summary?: string;
   read_aloud?: string;
   act?: string;
+  type?: string;
+  location?: string;
+  notes?: string;
   npcs?: string[];
   tags?: string[];
+  triggers?: Array<{
+    name?: string;
+    type?: string;
+    text?: string;
+    action?: string | Record<string, unknown>;
+    npc_id?: string;
+    npc_name?: string;
+    voice_id?: string;
+  }>;
+  narrator_voice_id?: string;
   id?: string;
 };
 
@@ -71,7 +84,10 @@ export function importParseResultToStore(
   const store = useCampaignContextStore.getState();
 
   // ── Campaign ───────────────────────────────────────────────────────────────
-  const campaignId: string = (parseResult.id as string) || createId("campaign");
+  const campaignId: string =
+    parseResult.id != null && parseResult.id !== ""
+      ? String(parseResult.id)
+      : createId("campaign");
   const campaign: Campaign = {
     id: campaignId,
     name: (parseResult.title as string) || "Imported Campaign",
@@ -94,7 +110,7 @@ export function importParseResultToStore(
     const name = (isNpcObj(raw) ? raw.name : String(raw)).trim();
     if (!name) continue;
 
-    const npcId = (isNpcObj(raw) && raw.id) ? raw.id : createId("npc");
+    const npcId = (isNpcObj(raw) && raw.id != null && raw.id !== "") ? String(raw.id) : createId("npc");
     const npc: Npc = {
       id: npcId,
       campaignId,
@@ -114,21 +130,42 @@ export function importParseResultToStore(
   for (const raw of rawScenes) {
     if (!raw?.title?.trim()) continue;
 
-    const sceneId = raw.id || createId("scene");
+    const sceneId = raw.id != null && raw.id !== "" ? String(raw.id) : raw.title.trim();
     const npcIds: string[] = (Array.isArray(raw.npcs) ? raw.npcs : [])
       .map((n: string) => npcIdByName.get(n.trim()))
       .filter((id): id is string => Boolean(id));
+    const triggers: SceneTrigger[] = (Array.isArray(raw.triggers) ? raw.triggers : [])
+      .filter((trigger): trigger is NonNullable<typeof trigger> => Boolean(trigger?.name))
+      .map((trigger) => ({
+        name: String(trigger.name).trim(),
+        type: String(trigger.type || "text").trim(),
+        text: typeof trigger.text === "string" ? trigger.text : undefined,
+        action: typeof trigger.action === "string" || (trigger.action && typeof trigger.action === "object")
+          ? trigger.action
+          : undefined,
+        npcId: typeof trigger.npc_id === "string" ? trigger.npc_id : undefined,
+        npcName: typeof trigger.npc_name === "string" ? trigger.npc_name : undefined,
+        voiceId: typeof trigger.voice_id === "string" ? trigger.voice_id : undefined,
+      }));
 
     const scene: Scene = {
       id: sceneId,
       campaignId,
       title: raw.title.trim(),
       summary: raw.summary || raw.read_aloud || "",
+      act: raw.act || "",
+      type: raw.type || "",
       npcIds,
       codexEntryIds: [],
       actionLogIds: [],
       narrationClipIds: [],
       tags: Array.isArray(raw.tags) ? raw.tags : (raw.act ? [raw.act] : []),
+      location: raw.location || "",
+      notes: raw.notes || "",
+      readAloud: raw.read_aloud || "",
+      read_aloud: raw.read_aloud || "",
+      narrator_voice_id: raw.narrator_voice_id,
+      triggers,
     };
     store.upsertScene(scene);
     sceneCount++;
@@ -141,7 +178,7 @@ export function importParseResultToStore(
     if (!title) continue;
 
     const entry: CodexEntry = {
-      id: (isLocObj(raw) && raw.id) ? raw.id : createId("loc"),
+      id: (isLocObj(raw) && raw.id != null && raw.id !== "") ? String(raw.id) : createId("loc"),
       campaignId,
       type: "location",
       title,
@@ -158,7 +195,7 @@ export function importParseResultToStore(
     if (!raw?.title?.trim()) continue;
 
     const entry: CodexEntry = {
-      id: raw.id || createId("codex"),
+      id: raw.id != null && raw.id !== "" ? String(raw.id) : createId("codex"),
       campaignId,
       type: "lore",
       title: raw.title.trim(),

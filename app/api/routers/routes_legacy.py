@@ -1379,6 +1379,11 @@ class DialogueRequest(BaseModel):
     faction: str = ""
 
 
+class SceneTriggerBody(BaseModel):
+    scene_id: str
+    trigger_name: str
+
+
 @router.post("/ai/dialogue")
 @limiter.limit("20/minute")
 async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depends(verify_api_key)):
@@ -1399,6 +1404,45 @@ async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depe
     except RuntimeError as e:
         raise HTTPException(503, str(e))
     return {"dialogue": line}
+
+
+@router.post("/scene/trigger")
+@limiter.limit("30/minute")
+async def scene_trigger(body: SceneTriggerBody, request: Request, _auth: None = Depends(verify_api_key)):
+    """
+    Execute a scene trigger through the live domain and return text plus optional WAV audio.
+    """
+    from app.domain.live.scene_control import execute_scene_trigger
+
+    try:
+        payload = await run_in_threadpool(execute_scene_trigger, body.scene_id, body.trigger_name)
+    except LookupError as exc:
+        raise HTTPException(404, str(exc))
+    except ValueError as exc:
+        increment("errors_total")
+        raise HTTPException(400, str(exc))
+    except FileNotFoundError as exc:
+        increment("errors_total")
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        increment("errors_total")
+        logging.exception("Scene trigger execution failed")
+        raise HTTPException(503, str(exc))
+
+    voice_id = str(payload.get("voice_id") or "").strip()
+    if voice_id:
+        request.state.voice_id = voice_id
+
+    audio = payload.pop("audio", None)
+    sample_rate = payload.pop("sample_rate", None)
+    if audio is not None and sample_rate:
+        increment("tts_requests_total")
+        payload["audio_base64"] = _audio_to_wav_base64(audio, int(sample_rate))
+        payload["mime_type"] = payload.get("mime_type") or "audio/wav"
+    elif payload.get("audio_base64"):
+        increment("tts_requests_total")
+
+    return payload
 
 
 # --- TTS: preset or custom voice ---

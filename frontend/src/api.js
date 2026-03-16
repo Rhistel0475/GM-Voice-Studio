@@ -63,6 +63,8 @@ export function createClient(apiKey = "") {
       request("/npc/generate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
     postAiDialogue: (body) =>
       request("/ai/dialogue", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    postSceneTrigger: (body) =>
+      request("/scene/trigger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
 
     getCampaigns: () => request("/api/campaigns").then((r) => r.json()),
     getCampaign: (id) => request(`/api/campaigns/${id}`).then((r) => r.json()),

@@ -6,7 +6,20 @@
 
 /**
  * A single scene in a campaign (read-aloud, NPCs, items, reveals).
+ * @typedef {Object} SceneTrigger
+ * @property {string} name
+ * @property {string} type
+ * @property {string} [text]
+ * @property {string|Object<string, unknown>} [action]
+ * @property {string} [npc_name]
+ * @property {string} [npc_id]
+ * @property {string} [voice_id]
+ */
+
+/**
+ * A single scene in a campaign (read-aloud, NPCs, items, reveals).
  * @typedef {Object} Scene
+ * @property {string} [id]
  * @property {string} title
  * @property {string} [act]
  * @property {string} [type] - e.g. "combat" | "social" | "exploration" | "mystery" | "travel"
@@ -17,6 +30,7 @@
  * @property {string[]} [items]
  * @property {string[]} [reveals]
  * @property {string[]} [codexRefs] - Optional codex entry IDs referenced by this scene. Backend: scene codex refs.
+ * @property {SceneTrigger[]} [triggers]
  */
 
 /**

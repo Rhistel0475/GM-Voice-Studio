@@ -3,10 +3,9 @@ Live domain: WebSocket session, Co-DM live board, streaming transcription and TT
 
 Ownership:
 - Service: app.services.live_board_service (WebSocket handler, session state, brain/tts integration)
-- Routes (in routes_legacy): WebSocket /ws/audio
+- Service: app.services.scene_trigger_service (scene control trigger execution)
+- Routes: WebSocket /ws/audio, POST /scene/trigger
 - Depends on: voice domain (TTS, voice list), AI domain (handle_query, generate_dialogue)
 """
 
-from app.services import live_board_service
-
-__all__ = ["live_board_service"]
+__all__ = ["scene_control", "scene_triggers"]

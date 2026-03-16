@@ -19,6 +19,9 @@ export default function LiveBoardPage({
   onInsertIntoNarration,
   authFetch,
   onNarrateCampaignAnswer,
+  onSceneTrigger,
+  activeSceneTriggerName = "",
+  sceneTriggerError = "",
   onNarrateScene,
   isNarratingScene = false,
   narrateSceneError = "",
@@ -43,9 +46,9 @@ export default function LiveBoardPage({
               scene={scene}
               selectedNpcName={selectedNpcName}
               onSelectNpc={onSelectNpc}
-              onNarrateScene={onNarrateScene}
-              isNarratingScene={isNarratingScene}
-              narrateSceneError={narrateSceneError}
+              onTriggerScene={onSceneTrigger}
+              activeTriggerName={activeSceneTriggerName}
+              triggerSceneError={sceneTriggerError}
             />
           </div>
         </aside>

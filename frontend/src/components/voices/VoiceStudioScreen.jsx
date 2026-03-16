@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, Library, List, Mic2, ScrollText, Wand2 } from "lucide-react";
 import { defaultVoiceFilterState } from "../../types/voice";
 import { VOICE_PRESETS } from "../../lib/voicePresets";
 import { deleteVoice, getVoices, getGeneratedAudio, submitClone, getCloneJobStatus } from "../../lib/api/voices";
 import { getNPCs } from "../../lib/api/npcs";
 import { useCampaignOptional } from "../../context/CampaignContext";
 import { useVoices as useVoicesFromStore, useNpcsForVoice } from "../../store/selectors";
-import { FantasyButton } from "../shared";
+import { FantasyButton, ModalShell } from "../shared";
+import VoiceActionCard from "./VoiceActionCard";
 import VoiceSearchInput from "./VoiceSearchInput";
 import VoiceLibraryFilters from "./VoiceLibraryFilters";
 import VoiceLibraryGrid from "./VoiceLibraryGrid";
@@ -50,9 +51,8 @@ function filterVoices(voices, filterState, selectedPreset) {
 }
 
 /**
- * Voice Studio main screen: 2-column layout.
- * Left: library (search, filters, voice grid, generated audio list).
- * Right: detail panel (selected voice, sample player, metadata, assignment) and clone wizard.
+ * Voice Studio main screen: fantasy tool deck.
+ * Action cards launch the existing library, narration, NPC voice, and AI dialogue tools in modals.
  */
 export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const campaignCtx = useCampaignOptional();
@@ -64,14 +64,18 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const [viewMode, setViewMode] = useState("grid");
   const [selectedPreset, setSelectedPreset] = useState("");
   const [selectedVoiceId, setSelectedVoiceId] = useState("");
+  const [activeTool, setActiveTool] = useState("");
   const assignedNpcsForSelectedVoice = useNpcsForVoice(selectedVoiceId);
   const [isPlayingSample, setIsPlayingSample] = useState(false);
   const [playingClipId, setPlayingClipId] = useState("");
   const [npcOptions, setNpcOptions] = useState([]);
-  const [npcDialogueNpcId, setNpcDialogueNpcId] = useState("");
-  const [npcDialogueText, setNpcDialogueText] = useState("");
-  const [npcDialogueGeneratedText, setNpcDialogueGeneratedText] = useState("");
-  const [npcDialogueBusy, setNpcDialogueBusy] = useState(false);
+  const [npcVoiceNpcId, setNpcVoiceNpcId] = useState("");
+  const [npcVoiceText, setNpcVoiceText] = useState("");
+  const [npcVoiceBusy, setNpcVoiceBusy] = useState(false);
+  const [aiDialogueNpcId, setAiDialogueNpcId] = useState("");
+  const [aiDialoguePrompt, setAiDialoguePrompt] = useState("");
+  const [aiDialogueGeneratedText, setAiDialogueGeneratedText] = useState("");
+  const [aiDialogueBusy, setAiDialogueBusy] = useState(false);
 
   // Clone wizard state
   const [cloneStep, setCloneStep] = useState(1);
@@ -96,6 +100,9 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   const sampleAudioRef = useRef(null);
   const sampleAudioUrlRef = useRef("");
 
+  // Narration state
+  const [narrationText, setNarrationText] = useState("");
+
   const stopSampleAudio = useCallback(() => {
     const audio = sampleAudioRef.current;
     if (audio) {
@@ -112,9 +119,6 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   }, []);
 
   useEffect(() => stopSampleAudio, [stopSampleAudio]);
-
-  // Narration panel (right column, below detail)
-  const [narrationText, setNarrationText] = useState("");
 
   const playAudioBlob = useCallback(async (blob) => {
     if (!blob) return;
@@ -153,7 +157,9 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
       .catch(() => {
         if (!cancelled) setTtsProvider("kani");
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [authFetch]);
 
   const loadGeneratedAudio = useCallback(async () => {
@@ -181,10 +187,13 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   }, [npcList]);
 
   useEffect(() => {
-    if (!npcDialogueNpcId && npcList[0]?.id) {
-      setNpcDialogueNpcId(String(npcList[0].id));
+    if (!npcVoiceNpcId && npcList[0]?.id) {
+      setNpcVoiceNpcId(String(npcList[0].id));
     }
-  }, [npcDialogueNpcId, npcList]);
+    if (!aiDialogueNpcId && npcList[0]?.id) {
+      setAiDialogueNpcId(String(npcList[0].id));
+    }
+  }, [aiDialogueNpcId, npcList, npcVoiceNpcId]);
 
   const allVoices = useMemo(() => {
     const api = voices;
@@ -327,6 +336,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
 
   const handleReuseForNarration = useCallback((voice) => {
     setSelectedVoiceId(voice?.voice_id || voice?.id);
+    setActiveTool("narration");
     if (typeof window !== "undefined" && window.toast) window.toast("Voice selected for narration.");
   }, []);
 
@@ -392,7 +402,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
       }
       if (result.job_id) {
         setCloneStatus(`Queued: ${result.job_id}. Polling…`);
-        for (let i = 0; i < 45; i++) {
+        for (let i = 0; i < 45; i += 1) {
           await new Promise((r) => setTimeout(r, 2000));
           setCloneProgress(30 + (i / 45) * 70);
           const job = await getCloneJobStatus(result.job_id, authFetch);
@@ -469,53 +479,71 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
   }, [narrationText, selectedVoiceId, authFetch, loadGeneratedAudio, playAudioBlob]);
 
   const handleSpeakAsNpc = useCallback(async () => {
-    if (!npcDialogueNpcId || !npcDialogueText.trim() || !authFetch || npcDialogueBusy) return;
-    setNpcDialogueBusy(true);
-    setNpcDialogueGeneratedText("");
+    if (!npcVoiceNpcId || !npcVoiceText.trim() || !authFetch || npcVoiceBusy) return;
+    setNpcVoiceBusy(true);
     try {
       const res = await authFetch("/tts/npc-dialogue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ npc_id: npcDialogueNpcId, text: npcDialogueText.trim() }),
+        body: JSON.stringify({ npc_id: npcVoiceNpcId, text: npcVoiceText.trim() }),
       });
       if (!res.ok) throw new Error((await res.text()) || "NPC dialogue failed.");
       const blob = await res.blob();
       await playAudioBlob(blob);
+      loadGeneratedAudio();
     } catch (e) {
       if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "NPC dialogue failed.");
     } finally {
-      setNpcDialogueBusy(false);
+      setNpcVoiceBusy(false);
     }
-  }, [authFetch, npcDialogueBusy, npcDialogueNpcId, npcDialogueText, playAudioBlob]);
+  }, [authFetch, loadGeneratedAudio, npcVoiceBusy, npcVoiceNpcId, npcVoiceText, playAudioBlob]);
 
   const handleGenerateNpcResponse = useCallback(async () => {
-    if (!npcDialogueNpcId || !npcDialogueText.trim() || !authFetch || npcDialogueBusy) return;
-    setNpcDialogueBusy(true);
+    if (!aiDialogueNpcId || !aiDialoguePrompt.trim() || !authFetch || aiDialogueBusy) return;
+    setAiDialogueBusy(true);
     try {
       const res = await authFetch("/npc/generate-dialogue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ npc_id: npcDialogueNpcId, player_input: npcDialogueText.trim() }),
+        body: JSON.stringify({ npc_id: aiDialogueNpcId, player_input: aiDialoguePrompt.trim() }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(payload?.detail || payload?.error || "NPC response generation failed.");
       }
-      setNpcDialogueGeneratedText(payload.generated_text || "");
+      setAiDialogueGeneratedText(payload.generated_text || "");
       if (payload.audio_base64) {
         await playBase64Audio(payload.audio_base64, payload.mime_type || "audio/wav");
       }
+      loadGeneratedAudio();
     } catch (e) {
       if (typeof window !== "undefined" && window.toast) window.toast(e?.message || "NPC response generation failed.");
     } finally {
-      setNpcDialogueBusy(false);
+      setAiDialogueBusy(false);
     }
-  }, [authFetch, npcDialogueBusy, npcDialogueNpcId, npcDialogueText, playBase64Audio]);
+  }, [aiDialogueBusy, aiDialogueNpcId, aiDialoguePrompt, authFetch, loadGeneratedAudio, playBase64Audio]);
 
-  return (
-    <section className="voice-studio-screen min-h-0 flex-1 grid grid-cols-1 md:grid-cols-12 gap-3 p-2 md:p-3 bg-[var(--wood-2)]/50">
-      {/* Left: library */}
-      <div className="md:col-span-5 min-h-0 flex flex-col panel-ornate rounded border border-[#734f2c] p-2 overflow-hidden min-w-0">
+  useEffect(() => {
+    setAiDialogueGeneratedText("");
+  }, [aiDialogueNpcId, aiDialoguePrompt]);
+
+  const closeTool = useCallback(() => setActiveTool(""), []);
+
+  const voiceOptions = useMemo(() => (voices.length ? voices : allVoices), [voices, allVoices]);
+  const selectedVoiceLabel = selectedVoice?.name?.trim()
+    || voiceOptions.find((voice) => (voice.voice_id || voice.id) === selectedVoiceId)?.name?.trim()
+    || selectedVoiceId
+    || "Choose a voice in the library";
+  const selectedNpcVoiceName = npcOptions.find((npc) => String(npc.id) === npcVoiceNpcId)?.name || "No NPC selected";
+  const selectedAiNpcName = npcOptions.find((npc) => String(npc.id) === aiDialogueNpcId)?.name || "No NPC selected";
+  const campaignTitle = campaignCtx?.campaign?.title || campaignData?.title || "No campaign loaded";
+  const cloneSummary = cloneAvailable
+    ? "Clone, edit, and assign local voices from the library workbench."
+    : "Hosted Hume voices are available in the library; local cloning is disabled in this mode.";
+
+  const renderLibraryWorkbench = () => (
+    <div className="grid min-h-[72vh] grid-cols-1 gap-3 xl:grid-cols-12">
+      <div className="xl:col-span-5 min-h-0 flex flex-col panel-ornate rounded border border-[#734f2c] p-2 overflow-hidden min-w-0">
         <div className="plaque mb-2 shrink-0">Voice library</div>
         <div className="flex flex-col gap-2 shrink-0">
           <label className="text-xs font-heading text-[var(--text-2)] uppercase tracking-wider">
@@ -584,7 +612,6 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
             voices={filteredVoices}
             selectedVoiceId={selectedVoiceId}
             onPlaySample={playSample}
-            onAssign={(v) => handleAssignToNpc(v?.voice_id || v?.id, null)}
             onSelectVoice={(v) => setSelectedVoiceId(v?.voice_id || v?.id || "")}
             viewMode={viewMode}
           />
@@ -601,8 +628,7 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
         </div>
       </div>
 
-      {/* Right: detail + clone wizard + narration */}
-      <div className="md:col-span-7 min-h-0 flex flex-col gap-3 min-w-0">
+      <div className="xl:col-span-7 min-h-0 flex flex-col gap-3 min-w-0">
         <div className="panel-ornate rounded border border-[#734f2c] p-2 flex-1 min-h-0 flex flex-col overflow-hidden">
           <div className="plaque mb-2 shrink-0">Voice detail</div>
           <div className="panel-body min-h-0 overflow-auto">
@@ -657,93 +683,232 @@ export default function VoiceStudioScreen({ campaignData, authFetch }) {
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
 
-        <div className="panel-ornate rounded border border-[#734f2c] p-2 shrink-0">
-          <div className="plaque mb-2">Narration</div>
-          <p className="text-xs text-[var(--text-2)] mb-2">Long-form text with selected voice.</p>
-          <textarea
-            className="chat-input w-full min-h-[80px] resize-y"
-            placeholder="Enter narration text…"
-            value={narrationText}
-            onChange={(e) => setNarrationText(e.target.value)}
-          />
-          <div className="flex flex-wrap gap-2 mt-2">
-            <select
-              className="chat-input flex-1 min-w-[120px]"
-              value={selectedVoiceId}
-              onChange={(e) => setSelectedVoiceId(e.target.value)}
-            >
-              <option value="">Select voice</option>
-              {voices.map((v) => (
-                <option key={v.voice_id || v.id} value={v.voice_id || v.id}>
-                  {v.name?.trim() || v.voice_id || v.id}
-                </option>
-              ))}
-            </select>
-            <FantasyButton
-              variant="primary"
-              onClick={handleNarrate}
-              disabled={!narrationText.trim() || !selectedVoiceId}
-            >
-              Generate & play
-            </FantasyButton>
+  return (
+    <>
+      <section className="voice-studio-screen min-h-0 flex-1 flex flex-col gap-4 p-3 md:p-4 bg-[var(--wood-2)]/50">
+        <div className="panel-ornate overflow-hidden rounded-xl border border-[#7e5630]">
+          <div className="panel-body relative gap-4 bg-[radial-gradient(circle_at_top_right,rgba(224,182,111,0.16),transparent_32%),linear-gradient(135deg,rgba(46,30,18,0.9),rgba(23,14,8,0.96))]">
+            <div className="space-y-2">
+              <p className="text-xs font-heading uppercase tracking-[0.32em] text-[#c8a050]">
+                Voice Studio
+              </p>
+              <h1 className="font-heading text-3xl text-[var(--gold)]">
+                Tool Deck
+              </h1>
+              <p className="max-w-3xl text-sm leading-relaxed text-[var(--text-2)]">
+                Open the desk you need, run the voice action, then return to the deck. Narration, live NPC performance,
+                AI-generated replies, and the full voice library all live behind dedicated action cards now.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 text-xs text-[var(--text-2)] md:grid-cols-3">
+              <div className="rounded-lg border border-[#5c3e23] bg-[#120a05]/80 px-3 py-2">
+                <span className="font-heading uppercase tracking-wider text-[#d7b77d]">Campaign</span>
+                <p className="mt-1 text-sm text-[var(--text-1)]">{campaignTitle}</p>
+              </div>
+              <div className="rounded-lg border border-[#5c3e23] bg-[#120a05]/80 px-3 py-2">
+                <span className="font-heading uppercase tracking-wider text-[#d7b77d]">Selected Voice</span>
+                <p className="mt-1 text-sm text-[var(--text-1)]">{selectedVoiceLabel}</p>
+              </div>
+              <div className="rounded-lg border border-[#5c3e23] bg-[#120a05]/80 px-3 py-2">
+                <span className="font-heading uppercase tracking-wider text-[#d7b77d]">Prepared Assets</span>
+                <p className="mt-1 text-sm text-[var(--text-1)]">{allVoices.length} voices · {generatedAudio.length} recent clips</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="panel-ornate rounded border border-[#734f2c] p-2 shrink-0">
-          <div className="plaque mb-2">NPC Dialogue</div>
-          <p className="text-xs text-[var(--text-2)] mb-2">Speak directly as an NPC or generate a short in-character reply.</p>
-          <div className="flex flex-col gap-2">
-            <select
-              className="chat-input w-full"
-              value={npcDialogueNpcId}
-              onChange={(e) => setNpcDialogueNpcId(e.target.value)}
-            >
-              <option value="">Select NPC</option>
-              {npcOptions.map((npc) => (
-                <option key={npc.id} value={npc.id}>
-                  {npc.name || npc.id}
-                </option>
-              ))}
-            </select>
-            <textarea
-              className="chat-input w-full min-h-[88px] resize-y"
-              placeholder="Enter dialogue to speak, or player input for AI response..."
-              value={npcDialogueText}
-              onChange={(e) => setNpcDialogueText(e.target.value)}
-            />
-            <div className="flex flex-wrap gap-2">
-              <FantasyButton
-                variant="secondary"
-                onClick={handleSpeakAsNpc}
-                disabled={!npcDialogueNpcId || !npcDialogueText.trim() || npcDialogueBusy}
-              >
-                {npcDialogueBusy ? "Working..." : "Speak as NPC"}
-              </FantasyButton>
-              <FantasyButton
-                variant="primary"
-                onClick={handleGenerateNpcResponse}
-                disabled={!npcDialogueNpcId || !npcDialogueText.trim() || npcDialogueBusy}
-              >
-                {npcDialogueBusy ? "Working..." : "Generate NPC Response"}
-              </FantasyButton>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <VoiceActionCard
+            icon={ScrollText}
+            title="Narration"
+            description="Write boxed text, choose a voice, and send long-form narration straight to playback."
+            launchLabel="Open Narration"
+            tone="gold"
+            meta={`Current voice: ${selectedVoiceLabel}\nRecent clips: ${generatedAudio.length}`}
+            onLaunch={() => setActiveTool("narration")}
+          />
+          <VoiceActionCard
+            icon={Mic2}
+            title="NPC Voice"
+            description="Speak a prepared line as an NPC using their assigned voice for immediate table playback."
+            launchLabel="Open NPC Voice"
+            tone="sage"
+            meta={npcOptions.length ? `Ready NPC: ${selectedNpcVoiceName}\nNPCs available: ${npcOptions.length}` : "Load a campaign with NPCs to unlock direct NPC voice playback."}
+            onLaunch={() => setActiveTool("npc-voice")}
+            disabled={!npcOptions.length}
+          />
+          <VoiceActionCard
+            icon={Wand2}
+            title="AI Dialogue"
+            description="Feed an NPC a player prompt and let the AI produce a short in-character response."
+            launchLabel="Open AI Dialogue"
+            tone="ember"
+            meta={npcOptions.length ? `Focused NPC: ${selectedAiNpcName}\nLast result: ${aiDialogueGeneratedText ? "generated" : "waiting"}` : "Load a campaign with NPCs to generate AI dialogue."}
+            onLaunch={() => setActiveTool("ai-dialogue")}
+            disabled={!npcOptions.length}
+          />
+          <VoiceActionCard
+            icon={Library}
+            title="Voice Library"
+            description="Browse voices, preview samples, assign them to NPCs, and open the clone workbench."
+            launchLabel="Open Library"
+            tone="arcane"
+            meta={`Voices loaded: ${filteredVoices.length}\n${cloneSummary}`}
+            onLaunch={() => setActiveTool("voice-library")}
+          />
+        </div>
+      </section>
+
+      {activeTool === "voice-library" && (
+        <ModalShell title="Voice Library" onClose={closeTool} className="max-w-7xl">
+          {renderLibraryWorkbench()}
+        </ModalShell>
+      )}
+
+      {activeTool === "narration" && (
+        <ModalShell title="Narration" onClose={closeTool} className="max-w-4xl">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-[#5c3e23] bg-[#120a05]/80 px-3 py-3 text-sm text-[var(--text-2)]">
+              <div className="font-heading uppercase tracking-wider text-[#d7b77d] text-xs">Narration Desk</div>
+              <p className="mt-1">Compose long-form table narration and send it through the currently selected voice.</p>
             </div>
-            {npcDialogueGeneratedText ? (
-              <div className="rounded border border-[#5c3e23] bg-[#1a1008]/70 p-3 text-sm text-[var(--text-1)]">
-                <div className="text-xs font-heading uppercase tracking-wider text-[var(--text-2)] mb-1">
-                  Generated Dialogue
+            <div className="parchment rounded border border-[#a17a42] p-4 space-y-3">
+              <select
+                className="chat-input w-full"
+                value={selectedVoiceId}
+                onChange={(e) => setSelectedVoiceId(e.target.value)}
+              >
+                <option value="">Select voice</option>
+                {voiceOptions.map((v) => (
+                  <option key={v.voice_id || v.id} value={v.voice_id || v.id}>
+                    {v.name?.trim() || v.voice_id || v.id}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                className="chat-input w-full min-h-[180px] resize-y"
+                placeholder="Enter narration text..."
+                value={narrationText}
+                onChange={(e) => setNarrationText(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-[#6b3e10]">Selected voice: {selectedVoiceLabel}</p>
+                <FantasyButton
+                  variant="primary"
+                  onClick={handleNarrate}
+                  disabled={!narrationText.trim() || !selectedVoiceId}
+                >
+                  Generate &amp; Play
+                </FantasyButton>
+              </div>
+            </div>
+            <div className="panel-ornate rounded border border-[#734f2c] p-2">
+              <div className="plaque mb-2">Recent generated</div>
+              <GeneratedAudioList
+                clips={generatedAudio}
+                onPlayClip={handlePlayClip}
+                playingClipId={playingClipId}
+              />
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
+      {activeTool === "npc-voice" && (
+        <ModalShell title="NPC Voice" onClose={closeTool} className="max-w-3xl">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-[#5c3e23] bg-[#120a05]/80 px-3 py-3 text-sm text-[var(--text-2)]">
+              <div className="font-heading uppercase tracking-wider text-[#d7b77d] text-xs">NPC Performance</div>
+              <p className="mt-1">Choose an NPC, type the exact line, and perform it with that NPC's assigned voice.</p>
+            </div>
+            <div className="parchment rounded border border-[#a17a42] p-4 space-y-3">
+              <select
+                className="chat-input w-full"
+                value={npcVoiceNpcId}
+                onChange={(e) => setNpcVoiceNpcId(e.target.value)}
+              >
+                <option value="">Select NPC</option>
+                {npcOptions.map((npc) => (
+                  <option key={npc.id} value={npc.id}>
+                    {npc.name || npc.id}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                className="chat-input w-full min-h-[180px] resize-y"
+                placeholder="Enter the exact line you want this NPC to speak..."
+                value={npcVoiceText}
+                onChange={(e) => setNpcVoiceText(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-[#6b3e10]">Selected NPC: {selectedNpcVoiceName}</p>
+                <FantasyButton
+                  variant="primary"
+                  onClick={handleSpeakAsNpc}
+                  disabled={!npcVoiceNpcId || !npcVoiceText.trim() || npcVoiceBusy}
+                >
+                  {npcVoiceBusy ? "Working..." : "Speak as NPC"}
+                </FantasyButton>
+              </div>
+            </div>
+          </div>
+        </ModalShell>
+      )}
+
+      {activeTool === "ai-dialogue" && (
+        <ModalShell title="AI Dialogue" onClose={closeTool} className="max-w-4xl">
+          <div className="space-y-4">
+            <div className="rounded-lg border border-[#5c3e23] bg-[#120a05]/80 px-3 py-3 text-sm text-[var(--text-2)]">
+              <div className="font-heading uppercase tracking-wider text-[#d7b77d] text-xs">Improvisation Desk</div>
+              <p className="mt-1">Provide player input or scene pressure, then generate and play a short in-character NPC response.</p>
+            </div>
+            <div className="parchment rounded border border-[#a17a42] p-4 space-y-3">
+              <select
+                className="chat-input w-full"
+                value={aiDialogueNpcId}
+                onChange={(e) => setAiDialogueNpcId(e.target.value)}
+              >
+                <option value="">Select NPC</option>
+                {npcOptions.map((npc) => (
+                  <option key={npc.id} value={npc.id}>
+                    {npc.name || npc.id}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                className="chat-input w-full min-h-[180px] resize-y"
+                placeholder="Enter player dialogue, pressure, or scene context for the AI..."
+                value={aiDialoguePrompt}
+                onChange={(e) => setAiDialoguePrompt(e.target.value)}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-[#6b3e10]">Selected NPC: {selectedAiNpcName}</p>
+                <FantasyButton
+                  variant="primary"
+                  onClick={handleGenerateNpcResponse}
+                  disabled={!aiDialogueNpcId || !aiDialoguePrompt.trim() || aiDialogueBusy}
+                >
+                  {aiDialogueBusy ? "Working..." : "Generate Dialogue"}
+                </FantasyButton>
+              </div>
+            </div>
+            {aiDialogueGeneratedText ? (
+              <div className="panel-ornate rounded border border-[#734f2c] p-2">
+                <div className="plaque mb-2">Generated dialogue</div>
+                <div className="panel-body">
+                  <div className="rounded border border-[#5c3e23] bg-[#1a1008]/70 p-3 text-sm text-[var(--text-1)]">
+                    <p>{aiDialogueGeneratedText}</p>
+                  </div>
                 </div>
-                <p>{npcDialogueGeneratedText}</p>
               </div>
             ) : null}
-            {!npcOptions.length ? (
-              <p className="text-xs text-[var(--text-2)]">
-                Load a campaign with NPCs to use NPC dialogue tools.
-              </p>
-            ) : null}
           </div>
-        </div>
-      </div>
-    </section>
+        </ModalShell>
+      )}
+    </>
   );
 }

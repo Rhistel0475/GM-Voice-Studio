@@ -94,6 +94,25 @@ def _is_preset_voice(voice_id: str) -> bool:
     return _provider_module().is_preset_voice(voice_id)
 
 
+def resolve_voice_target(voice_id: str) -> str:
+    raw_voice_id = (voice_id or "").strip()
+    if not raw_voice_id:
+        raise ValueError("Voice not found")
+    if _is_preset_voice(raw_voice_id):
+        return raw_voice_id
+    if is_hume_provider():
+        resolved = resolve_hume_voice_id(raw_voice_id)
+        if not resolved:
+            raise FileNotFoundError("Voice not found")
+        return resolved
+    from app.services.voice_store_service import load_embedding_path
+
+    speaker_emb_path = load_embedding_path(raw_voice_id)
+    if not speaker_emb_path:
+        raise FileNotFoundError("Voice not found")
+    return speaker_emb_path
+
+
 def generate(
     text: str,
     language_tag: Optional[str] = DEFAULT_LANGUAGE_TAG,

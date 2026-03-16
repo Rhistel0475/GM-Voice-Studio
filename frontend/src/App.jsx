@@ -6,7 +6,7 @@ import { useCampaignContextStore } from "./store/campaignContext";
 import { useExtractionReviewQueueStore } from "./store/extractionReview";
 import { parseResultToExtractionBatch } from "./lib/parseResultToExtractionBatch";
 import { importParseResultToStore } from "./lib/campaignImport";
-import { setBackendCampaignId, persistSessionEvent } from "./lib/campaignPersistence";
+import { getBackendCampaignId, setBackendCampaignId, persistSessionEvent } from "./lib/campaignPersistence";
 import ExtractionReviewQueue from "./components/intake/ExtractionReviewQueue";
 import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
@@ -597,6 +597,8 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
   const [audioStatus, setAudioStatus] = useState("idle");
   const [isNarratingScene, setIsNarratingScene] = useState(false);
   const [narrateSceneError, setNarrateSceneError] = useState("");
+  const [activeSceneTriggerName, setActiveSceneTriggerName] = useState("");
+  const [sceneTriggerError, setSceneTriggerError] = useState("");
   const [assistantListening, setAssistantListening] = useState(false);
   const [assistantAnalyzing, setAssistantAnalyzing] = useState(false);
   const [assistantError, setAssistantError] = useState("");
@@ -893,11 +895,15 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
 
     try {
       let response;
-      if (sceneTarget.id) {
+      const backendCampaignId = getBackendCampaignId();
+      const sceneRef = /^\d+$/.test(String(sceneTarget?.id || ""))
+        ? String(sceneTarget.id)
+        : String(sceneTarget?.title || sceneTarget?.id || "").trim();
+      if (backendCampaignId && sceneRef) {
         response = await authFetch("/tts/narrate-scene", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scene_id: String(sceneTarget.id) }),
+          body: JSON.stringify({ scene_id: sceneRef }),
         });
       } else {
         const voiceId = await resolveNarrationVoiceId();
@@ -930,6 +936,110 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
       setIsNarratingScene(false);
     }
   }, [appendSessionEntry, authFetch, playAudioUrl, resolveNarrationVoiceId, scene]);
+
+  const handleSceneTrigger = useCallback(async (trigger) => {
+    const sceneTarget = scene;
+    if (!sceneTarget || !trigger?.name || activeSceneTriggerName) return;
+
+    setActiveSceneTriggerName(trigger.name);
+    setSceneTriggerError("");
+    setAudioStatus("loading");
+
+    try {
+      const backendCampaignId = getBackendCampaignId();
+      if (!backendCampaignId) {
+        if (String(trigger.type || "").toLowerCase() === "narration") {
+          const narrationText = String(trigger.text || sceneTarget?.read_aloud || sceneTarget?.notes || "").trim();
+          if (!narrationText) {
+            await handleNarrateScene(sceneTarget);
+            return;
+          }
+
+          const voiceId = sceneTarget?.narrator_voice_id || await resolveNarrationVoiceId();
+          const response = await authFetch("/tts/narrate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: narrationText, voice_id: voiceId }),
+          });
+          if (!response.ok) {
+            throw new Error((await response.text()) || "Narration failed.");
+          }
+
+          const blob = await response.blob();
+          appendSessionEntry("assistant", "narration", narrationText, trigger.name);
+          await playAudioBlob(blob);
+          return;
+        }
+        throw new Error("Scene control requires a campaign loaded from the backend.");
+      }
+
+      const sceneRef = /^\d+$/.test(String(sceneTarget?.id || ""))
+        ? String(sceneTarget.id)
+        : String(sceneTarget?.title || sceneTarget?.id || "").trim();
+      if (!sceneRef) {
+        throw new Error("Scene id is missing for this trigger.");
+      }
+
+      const response = await authFetch("/scene/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scene_id: sceneRef,
+          trigger_name: String(trigger.name),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || "Scene trigger failed.");
+      }
+
+      const triggerText = String(payload?.text || "").trim();
+      const eventType = payload?.event_type || (
+        payload?.log_type === "narration"
+          ? "narration"
+          : payload?.log_type === "npc"
+            ? "npc"
+            : "system"
+      );
+      const displayText = String(payload?.display_text || "").trim()
+        || (eventType === "npc" && payload?.npc_name ? `${payload.npc_name}: ${triggerText}` : triggerText);
+
+      if (displayText) {
+        appendSessionEntry(
+          "assistant",
+          eventType,
+          displayText,
+          payload?.trigger_name || trigger.name
+        );
+      }
+
+      if (payload.audio_base64) {
+        await playBase64Audio(payload.audio_base64, payload.mime_type || "audio/wav");
+      }
+      if (!payload.audio_base64) {
+        setAudioStatus("idle");
+      }
+    } catch (error) {
+      setSceneTriggerError(error?.message || "Scene trigger failed.");
+      setAudioStatus("idle");
+    } finally {
+      setActiveSceneTriggerName("");
+    }
+  }, [
+    activeSceneTriggerName,
+    appendSessionEntry,
+    authFetch,
+    handleNarrateScene,
+    playAudioBlob,
+    playBase64Audio,
+    resolveNarrationVoiceId,
+    scene,
+  ]);
+
+  useEffect(() => {
+    setSceneTriggerError("");
+    setActiveSceneTriggerName("");
+  }, [scene?.id, scene?.title]);
 
   const handleNarrateCampaignAnswer = useCallback(async ({ campaignId, answer }) => {
     const text = (answer || "").trim();
@@ -1607,6 +1717,9 @@ const LiveBoard = ({ view: _view, onNavigate: _onNavigate, campaignData, authFet
         onInsertIntoNarration={(text) => setCoDmQuery((prev) => (prev ? prev + "\n" + text : text))}
         authFetch={authFetch}
         onNarrateCampaignAnswer={handleNarrateCampaignAnswer}
+        onSceneTrigger={handleSceneTrigger}
+        activeSceneTriggerName={activeSceneTriggerName}
+        sceneTriggerError={sceneTriggerError}
         onNarrateScene={handleNarrateScene}
         isNarratingScene={isNarratingScene}
         narrateSceneError={narrateSceneError}
