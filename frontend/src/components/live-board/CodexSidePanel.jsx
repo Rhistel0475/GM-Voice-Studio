@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import CodexTabs from "./CodexTabs";
 import CodexQuickView from "./CodexQuickView";
 import CampaignBrainPanel from "./CampaignBrainPanel";
+import { buildCodexIntelligence } from "../../lib/codexIntelligence";
 
 /**
  * Right panel: tabs (Documents, NPCs, Locations, Rules) and quick preview cards.
@@ -10,10 +11,11 @@ import CampaignBrainPanel from "./CampaignBrainPanel";
 export default function CodexSidePanel({
   campaignData,
   onInsertIntoNarration,
+  onSpeakNpc,
   authFetch,
   onNarrateAnswer,
 }) {
-  const [codexTab, setCodexTab] = useState("documents");
+  const [codexTab, setCodexTab] = useState("npcs");
   const [codexSelection, setCodexSelection] = useState(null);
   const [brainDocuments, setBrainDocuments] = useState(() => campaignData?.documents || []);
 
@@ -21,25 +23,8 @@ export default function CodexSidePanel({
     setBrainDocuments(campaignData?.documents || []);
   }, [campaignData?.documents, campaignData?.id]);
 
-  const scenes = campaignData?.scenes?.length ? campaignData.scenes : [];
-  const npcs = campaignData?.npcs?.length ? campaignData.npcs : [];
-  const locationsRaw = campaignData?.locations?.length ? campaignData.locations : [];
-  const locations = locationsRaw.length ? locationsRaw : [...new Set(scenes.map((s) => s.location).filter(Boolean))];
-  const documents = useMemo(
-    () => {
-      const uploadedDocs = Array.isArray(brainDocuments)
-        ? brainDocuments.map((doc) => ({
-            id: doc.id || doc.filename || doc.title,
-            title: doc.title || doc.filename || "Campaign Document",
-            summary: doc.summary || `${doc.chunk_count || 0} indexed chunks`,
-          }))
-        : [];
-      return uploadedDocs.length > 0
-        ? uploadedDocs
-        : [{ id: "campaign", title: campaignData?.title || "No campaign", summary: `${scenes.length} scenes` }];
-    },
-    [brainDocuments, campaignData?.title, scenes.length]
-  );
+  const intelligence = useMemo(() => buildCodexIntelligence(campaignData), [campaignData]);
+  const entries = intelligence[codexTab] || [];
 
   const handleTabChange = (tab) => {
     setCodexTab(tab);
@@ -63,18 +48,17 @@ export default function CodexSidePanel({
           <CodexTabs selectedKey={codexTab} onChange={handleTabChange} />
           <CodexQuickView
             codexTab={codexTab}
-            documents={documents}
-            npcs={npcs}
-            locations={locations}
+            entries={entries}
             codexSelection={codexSelection}
             onSelect={setCodexSelection}
             onInsertIntoNarration={onInsertIntoNarration}
+            onSpeakNpc={onSpeakNpc}
           />
         </div>
       </section>
-      {codexTab === "documents" && scenes.length > 0 && (
+      {entries.length > 0 && (
         <p className="text-xs text-[var(--text-2)] mt-2 px-1">
-          Scenes: {scenes.map((s) => s.title).filter(Boolean).join(", ") || "—"}
+          {entries.length} campaign knowledge entr{entries.length !== 1 ? "ies" : "y"} in this view.
         </p>
       )}
     </div>

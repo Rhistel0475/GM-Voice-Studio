@@ -62,8 +62,8 @@ function normalizeBackendSuggestion(suggestion, voices) {
     provider: suggestion?.provider || matchedVoice?.provider || "",
     voice_id: voiceId,
     voice_name: suggestion?.voice_name || suggestion?.name || matchedVoice?.name || voiceId,
-    tone: suggestion?.tone || "",
-    style: suggestion?.style || "",
+    confidence: typeof suggestion?.confidence === "number" ? suggestion.confidence : null,
+    matched_tags: Array.isArray(suggestion?.matched_tags) ? suggestion.matched_tags : [],
   };
 }
 
@@ -75,8 +75,8 @@ function normalizeLocalSuggestion(suggestion) {
     provider: candidate?.provider || "",
     voice_id: voiceId,
     voice_name: candidate?.name || voiceId,
-    tone: suggestion?.presetName || "",
-    style: suggestion?.reason || "",
+    confidence: typeof suggestion?.confidence === "number" ? suggestion.confidence : null,
+    matched_tags: Array.isArray(candidate?.matchedTags) ? candidate.matchedTags : [],
   };
 }
 

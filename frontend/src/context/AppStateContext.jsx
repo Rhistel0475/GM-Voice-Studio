@@ -1,6 +1,19 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { setBackendCampaignId } from "../lib/campaignPersistence";
+import { useCampaignContextStore } from "../store/campaignContext";
+import { useExtractionReviewQueueStore } from "../store/extractionReview";
 
 const AppStateContext = createContext(null);
+const DEFAULT_BANNER_STATE = {
+  sessionTime: "0:00",
+  activeScene: "—",
+  audioStatus: "idle",
+};
+const CAMPAIGN_STORAGE_KEYS = [
+  "gm_campaign_data",
+  "gm_parse_result",
+  "gm_parse_images",
+];
 
 export function AppStateProvider({ children }) {
   const [campaignData, setCampaignDataState] = useState(() => {
@@ -13,11 +26,7 @@ export function AppStateProvider({ children }) {
   });
   const [requireApiKey, setRequireApiKey] = useState(false);
   const [apiKey, setApiKey] = useState("");
-  const [bannerState, setBannerState] = useState({
-    sessionTime: "0:00",
-    activeScene: "—",
-    audioStatus: "idle",
-  });
+  const [bannerState, setBannerState] = useState(DEFAULT_BANNER_STATE);
 
   const setCampaignData = useCallback((data) => {
     setCampaignDataState(data);
@@ -59,9 +68,41 @@ export function AppStateProvider({ children }) {
     [getAuthHeaders]
   );
 
+  const clearCampaignData = useCallback(async ({ deleteBackendCampaigns = false } = {}) => {
+    if (deleteBackendCampaigns) {
+      try {
+        const listResponse = await authFetch("/api/campaigns");
+        const campaigns = listResponse.ok ? await listResponse.json() : [];
+        if (Array.isArray(campaigns)) {
+          for (const campaign of campaigns) {
+            if (campaign?.id == null || campaign.id === "") continue;
+            await authFetch(`/api/campaigns/${campaign.id}`, { method: "DELETE" });
+          }
+        }
+      } catch {
+        /* ignore backend cleanup errors during local reset */
+      }
+    }
+
+    CAMPAIGN_STORAGE_KEYS.forEach((key) => {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+    });
+    setBackendCampaignId(null);
+
+    useCampaignContextStore.getState().resetCampaignContext();
+    useExtractionReviewQueueStore.getState().clearQueue();
+    setCampaignDataState(null);
+    setBannerState(DEFAULT_BANNER_STATE);
+  }, [authFetch]);
+
   const value = {
     campaignData,
     setCampaignData,
+    clearCampaignData,
     requireApiKey,
     apiKey,
     setApiKey,

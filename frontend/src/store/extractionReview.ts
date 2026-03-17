@@ -31,7 +31,7 @@ export interface ExtractionReviewQueueActions {
 
 const initialState: ExtractionReviewQueueState = {
   items: [],
-  autoApproveHighConfidence: false,
+  autoApproveHighConfidence: true,
 };
 
 function deriveInitialStatus(
@@ -121,4 +121,3 @@ export const useExtractionReviewQueueStore = create<
     set({ autoApproveHighConfidence: value });
   },
 }));
-

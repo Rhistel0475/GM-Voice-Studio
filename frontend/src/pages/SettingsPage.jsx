@@ -1,24 +1,24 @@
 import { useState } from "react";
 import { useAppState } from "../context/AppStateContext";
-import { useCampaignContextStore } from "../store/campaignContext";
 import SectionHeader from "../components/layout/SectionHeader";
 import { ParchmentCard } from "../components/shared";
 
 export default function SettingsPage() {
-  const { apiKey, setApiKey, requireApiKey, setCampaignData } = useAppState();
-  const resetCampaignContext = useCampaignContextStore((s) => s.resetCampaignContext);
+  const { apiKey, setApiKey, requireApiKey, clearCampaignData } = useAppState();
   const [cleared, setCleared] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
-  const handleClearCampaign = () => {
-    // Clear localStorage FIRST so CampaignProvider effect does not re-import on reset
-    ["gm_campaign_data", "gm_parse_result", "gm_parse_images", "gm_campaign_backend_id"].forEach(
-      (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } }
-    );
-    // Then reset stores
-    resetCampaignContext();
-    setCampaignData(null);
-    setCleared(true);
-    setTimeout(() => setCleared(false), 3000);
+  const handleClearCampaign = async () => {
+    if (isClearing) return;
+    if (!window.confirm("Clear all campaign data? This will remove your current parse, any loaded campaign, and delete all saved campaigns from the server. This cannot be undone.")) return;
+    setIsClearing(true);
+    try {
+      await clearCampaignData({ deleteBackendCampaigns: true });
+      setCleared(true);
+      setTimeout(() => setCleared(false), 3000);
+    } finally {
+      setIsClearing(false);
+    }
   };
 
   return (
@@ -45,14 +45,15 @@ export default function SettingsPage() {
 
       <ParchmentCard title="Campaign Data">
         <p className="text-sm text-[var(--text-2)] mb-3">
-          Clear all loaded campaign data from memory and local storage. Use this to start fresh or load a new adventure.
+          Clear the active parse, shared campaign state, local storage caches, and saved backend campaigns so every page returns to a fresh state.
         </p>
         <button
           type="button"
           className="cta-secondary"
           onClick={handleClearCampaign}
+          disabled={isClearing}
         >
-          {cleared ? "Cleared!" : "Clear Campaign Data"}
+          {isClearing ? "Clearing..." : cleared ? "Cleared!" : "Clear Campaign Data"}
         </button>
       </ParchmentCard>
 

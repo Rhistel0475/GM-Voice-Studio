@@ -93,6 +93,12 @@ from app.services.voice_store_service import (
     update_metadata,
 )
 from app.repositories import campaign_repository
+from app.domain.campaign.systems import (
+    DEFAULT_CAMPAIGN_SYSTEM_ID,
+    get_campaign_system_preset,
+    list_campaign_system_presets,
+    normalize_campaign_system,
+)
 from app.domain.live.session_control import start_session as start_live_session
 
 from fastapi import APIRouter
@@ -881,6 +887,10 @@ def _parse_adventure_text(text: str) -> dict:
         "npcs": npcs,
         "locations": locations,
         "reveals": reveals,
+        "items": [],
+        "quests": [],
+        "factions": [],
+        "lore": [],
         "total_characters": len(clipped),
     }
 
@@ -890,6 +900,7 @@ def _parse_adventure_text(text: str) -> dict:
 async def parse_adventure_docs(
     request: Request,
     files: list[UploadFile] = File(...),
+    campaign_system: str = Form(DEFAULT_CAMPAIGN_SYSTEM_ID),
     _auth: None = Depends(verify_api_key),
 ):
     """Upload adventure docs (.txt/.md/.pdf) and return a parsed prep summary payload."""
@@ -907,6 +918,10 @@ async def parse_adventure_docs(
 
     merged = "\n\n".join(all_text_parts)
     parsed = _parse_adventure_text(merged)
+    system_id = normalize_campaign_system(campaign_system)
+    parsed["system_id"] = system_id
+    parsed["systemId"] = system_id
+    parsed["system"] = get_campaign_system_preset(system_id)
     return {"files": uploaded_files, **parsed}
 
 
@@ -964,6 +979,7 @@ def _extract_embedded_images(raw_pdf: bytes, embedded_dir: Path, start_counter: 
 async def ai_parse_adventure_docs(
     request: Request,
     files: list[UploadFile] = File(...),
+    campaign_system: str = Form(DEFAULT_CAMPAIGN_SYSTEM_ID),
     _auth: None = Depends(verify_api_key),
 ):
     """Upload adventure docs and use Claude to extract a full structured campaign object."""
@@ -989,10 +1005,14 @@ async def ai_parse_adventure_docs(
 
     merged = "\n\n".join(all_text_parts)
     from app.services.ai_service import ai_full_parse, assign_images_to_entities
+    system_id = normalize_campaign_system(campaign_system)
     try:
         result = await run_in_threadpool(ai_full_parse, merged)
     except RuntimeError as e:
         raise HTTPException(503, str(e))
+    result["system_id"] = system_id
+    result["systemId"] = system_id
+    result["system"] = get_campaign_system_preset(system_id)
 
     # --- Auto-extract meaningful images and assign them to campaign entities ---
     _cleanup_old_sessions(_ASSETS_DIR)
@@ -1033,6 +1053,16 @@ async def ai_parse_adventure_docs(
 async def list_campaigns(request: Request, _auth: None = Depends(verify_api_key)):
     """Return all saved campaigns (id, title, summary) ordered newest first."""
     return campaign_repository.list_all()
+
+
+@router.get("/api/campaign-systems")
+@limiter.limit("60/minute")
+async def list_campaign_systems(request: Request, _auth: None = Depends(verify_api_key)):
+    """Return supported campaign-system presets for campaign creation and later flavor layers."""
+    return {
+        "default_system_id": DEFAULT_CAMPAIGN_SYSTEM_ID,
+        "systems": list_campaign_system_presets(),
+    }
 
 
 @router.get("/api/campaigns/{campaign_id}")
@@ -1159,6 +1189,7 @@ class SessionMemoryEventBody(BaseModel):
     event_type: str = Field(..., min_length=1)
     description: str = Field(..., min_length=1)
     npc_id: Optional[str] = None
+    tags: Optional[list[str]] = None
     campaign_id: Optional[int] = None
     scene_id: Optional[str] = None
     session_id: Optional[str] = None
@@ -1226,6 +1257,7 @@ async def record_session_memory_event(
             event_type=body.event_type,
             description=body.description,
             npc_id=body.npc_id,
+            tags=body.tags,
             campaign_id=body.campaign_id,
             scene_id=body.scene_id,
             session_id=body.session_id,
@@ -1513,6 +1545,13 @@ class DialogueRequest(BaseModel):
     situation: str
     conversation_history: list[dict]
     faction: str = ""
+    scene_id: Optional[str] = None
+    scene_summary: str = ""
+    location_name: str = ""
+    recent_events: list[str] = Field(default_factory=list)
+    scene_npcs: list[str] = Field(default_factory=list)
+    related_quests: list[str] = Field(default_factory=list)
+    codex_titles: list[str] = Field(default_factory=list)
 
 
 class SceneTriggerBody(BaseModel):
@@ -1542,6 +1581,28 @@ async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depe
     Returns: {"dialogue": "<spoken line>"}
     """
     from app.services.ai_service import generate_dialogue
+    from app.services.live_context_service import build_scene_live_context
+    live_context_lines: list[str] = []
+    if req.scene_id:
+        try:
+            live_context = await run_in_threadpool(build_scene_live_context, scene_id=req.scene_id)
+        except Exception:
+            live_context = {}
+        summary = str((live_context or {}).get("summary") or "").strip()
+        if summary:
+            live_context_lines.append(summary)
+    if req.scene_summary.strip():
+        live_context_lines.append(f"Scene summary: {req.scene_summary.strip()}")
+    if req.location_name.strip():
+        live_context_lines.append(f"Location: {req.location_name.strip()}")
+    if req.scene_npcs:
+        live_context_lines.append("NPCs in scene: " + ", ".join(item for item in req.scene_npcs if str(item).strip()))
+    if req.related_quests:
+        live_context_lines.append("Related quests: " + ", ".join(item for item in req.related_quests if str(item).strip()))
+    if req.codex_titles:
+        live_context_lines.append("Relevant codex: " + ", ".join(item for item in req.codex_titles if str(item).strip()))
+    if req.recent_events:
+        live_context_lines.append("Recent events: " + " | ".join(item for item in req.recent_events if str(item).strip()))
     try:
         line = await run_in_threadpool(
             generate_dialogue,
@@ -1550,6 +1611,7 @@ async def ai_dialogue(req: DialogueRequest, request: Request, _auth: None = Depe
             situation=req.situation,
             conversation_history=req.conversation_history,
             faction=req.faction,
+            live_context_summary="\n".join(line for line in live_context_lines if line),
         )
     except RuntimeError as e:
         raise HTTPException(503, str(e))
@@ -1786,6 +1848,7 @@ class NarrateSceneBody(BaseModel):
 class GenerateNpcDialogueBody(BaseModel):
     npc_id: str
     player_input: str
+    scene_id: Optional[str] = None
 
 
 class NarrateAnswerBody(BaseModel):
@@ -2064,6 +2127,7 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
     )
 
     from app.services.ai_service import generate_dialogue
+    from app.services.live_context_service import build_scene_live_context
     from app.services.session_memory_service import get_session_context, record_event
 
     session_context = await run_in_threadpool(
@@ -2071,6 +2135,13 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
         campaign_id=int(npc.get("campaign_id")) if npc.get("campaign_id") is not None else None,
         npc_id=str(npc.get("id") or "").strip() or None,
     )
+    live_context_summary = ""
+    if body.scene_id:
+        try:
+            live_context = await run_in_threadpool(build_scene_live_context, scene_id=body.scene_id)
+            live_context_summary = str((live_context or {}).get("summary") or "").strip()
+        except Exception:
+            live_context_summary = ""
 
     try:
         generated_text = await run_in_threadpool(
@@ -2080,6 +2151,7 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
             situation=player_input,
             conversation_history=[{"role": "user", "content": player_input}],
             faction=str(npc.get("faction") or "").strip(),
+            live_context_summary=live_context_summary,
             session_context=str(session_context.get("summary") or "").strip(),
             npc_memory_summary=str(session_context.get("npc_memory_summary") or "").strip(),
         )
@@ -2092,6 +2164,7 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
             event_type="npc_interaction",
             description=f"Players addressed {str(npc.get('name') or 'the NPC').strip()}: {player_input}",
             npc_id=str(npc.get("id") or "").strip() or None,
+            tags=["npc_interaction", "player_input"],
             campaign_id=int(npc.get("campaign_id")) if npc.get("campaign_id") is not None else None,
         )
         await run_in_threadpool(
@@ -2099,6 +2172,7 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
             event_type="important_dialogue",
             description=f"{str(npc.get('name') or 'NPC').strip()} replied: {generated_text}",
             npc_id=str(npc.get("id") or "").strip() or None,
+            tags=["important_dialogue", "npc_response"],
             campaign_id=int(npc.get("campaign_id")) if npc.get("campaign_id") is not None else None,
         )
     except ValueError:

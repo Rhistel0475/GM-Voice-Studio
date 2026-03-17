@@ -57,6 +57,7 @@ def test_get_session_context_builds_general_and_npc_specific_summaries(monkeypat
             event_type="important_dialogue",
             npc_id="oleg",
             description="Oleg warned the party not to light a torch in the ruins.",
+            tags='["warning","ruins"]',
         ),
         SimpleNamespace(
             id=2,
@@ -65,6 +66,7 @@ def test_get_session_context_builds_general_and_npc_specific_summaries(monkeypat
             event_type="player_decision",
             npc_id=None,
             description="The party agreed to spare the captured scout.",
+            tags='["mercy"]',
         ),
     ]
     monkeypatch.setattr(
@@ -80,6 +82,34 @@ def test_get_session_context_builds_general_and_npc_specific_summaries(monkeypat
     assert "Player Decision" in context["summary"]
     assert "Important Dialogue (oleg)" in context["npc_memory_summary"]
     assert "light a torch" in context["npc_memory_summary"]
+    assert context["events"][0]["tags"] == ["mercy"]
+    assert "[tags: warning, ruins]" in context["npc_memory_summary"]
+
+
+def test_get_session_summary_alias_returns_same_summary_shape(monkeypatch):
+    rows = [
+        SimpleNamespace(
+            id=1,
+            session_id="sess-7",
+            timestamp="2026-03-16T11:00:00+00:00",
+            event_type="combat_outcome",
+            npc_id=None,
+            description="The bandits fled after losing their captain.",
+            tags='["combat","bandits"]',
+        ),
+    ]
+    monkeypatch.setattr(
+        session_memory_service,
+        "_resolve_session_reference",
+        lambda **kwargs: {"id": "sess-7", "campaign_id": 99},
+    )
+    monkeypatch.setattr(session_memory_service, "SessionLocal", lambda: _FakeReadSession(rows))
+
+    summary = session_memory_service.get_session_summary(campaign_id=99)
+
+    assert summary["session_id"] == "sess-7"
+    assert "Combat Outcome" in summary["summary"]
+    assert summary["events"][0]["tags"] == ["combat", "bandits"]
 
 
 def test_record_event_uses_resolved_active_session(monkeypatch):
@@ -99,6 +129,7 @@ def test_record_event_uses_resolved_active_session(monkeypatch):
         event_type="npc_interaction",
         description="Players insulted Oleg.",
         npc_id="oleg",
+        tags=["hostile", "insult"],
         campaign_id=12,
     )
 
@@ -108,6 +139,8 @@ def test_record_event_uses_resolved_active_session(monkeypatch):
     assert payload["scene_id"] == "scene-9"
     assert fake_db.records[0].event_type == "npc_interaction"
     assert fake_db.records[0].description == "Players insulted Oleg."
+    assert payload["tags"] == ["hostile", "insult"]
+    assert fake_db.records[0].tags == '["hostile", "insult"]'
 
 
 def test_build_npc_system_prompt_includes_session_memory_sections():
@@ -121,5 +154,5 @@ def test_build_npc_system_prompt_includes_session_memory_sections():
     )
 
     assert "NPC memory from this session" in prompt
-    assert "Recent session events" in prompt
+    assert "Session memory from this session" in prompt
     assert "Stay consistent with the session history" in prompt

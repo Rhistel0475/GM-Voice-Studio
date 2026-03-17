@@ -25,6 +25,7 @@ export async function askCampaignAssistant(
     scene: context.scene,
     npcs: context.npcs,
     location: context.location,
+    relatedQuests: context.relatedQuests,
     recentEvents: context.recentEvents,
     codexReferences: context.codexReferences,
   };
@@ -41,4 +42,3 @@ export async function askCampaignAssistant(
     sources: data.sources ?? [],
   };
 }
-

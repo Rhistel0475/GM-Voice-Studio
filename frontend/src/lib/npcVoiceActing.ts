@@ -47,9 +47,13 @@ export async function generateNpcDialogueWithVoice(
     situation: situationOrPrompt,
     conversation_history: [] as string[],
     tone_hint: npc.tags?.join(", ") ?? npc.role ?? undefined,
+    scene_id: context.scene?.id,
     scene_summary: context.scene?.summary,
     location_name: context.location?.name,
     recent_events: context.recentEvents?.slice(-5).map((e) => e.text),
+    scene_npcs: context.npcs?.map((entry) => entry.name),
+    related_quests: context.relatedQuests?.map((quest) => String(quest.name || quest.title || "").trim()).filter(Boolean),
+    codex_titles: context.codexReferences?.map((entry) => entry.title).filter(Boolean),
   };
 
   const res = await (client as { postAiDialogue: (body: unknown) => Promise<Response> }).postAiDialogue(payload);

@@ -1,6 +1,7 @@
 import type { CampaignContextState } from "../store/campaignContext";
 import type {
   Campaign,
+  CampaignKnowledgeRecord,
   Session,
   Scene,
   Npc,
@@ -34,6 +35,7 @@ export interface AiContext {
   scene: Scene | null;
   npcs: Npc[];
   location: AiContextLocation | null;
+  relatedQuests: CampaignKnowledgeRecord[];
   recentEvents: ActionLogEvent[];
   codexReferences: CodexEntry[];
 }
@@ -65,9 +67,14 @@ export function buildAiContext(
   const codexReferences = scene ? getSceneCodexEntries(state, scene.id) : [];
   const actionLogForScene = getActionLogForActiveScene(state);
   const recentEvents = actionLogForScene.slice(-maxRecentEvents);
+  const campaignQuests = Array.isArray(campaign?.quests) ? campaign.quests : [];
+  const sceneNpcNames = new Set(npcs.map((npc) => npc.name));
+  const sceneQuestNames = new Set(scene?.relatedQuestNames ?? []);
+  const sceneLocationName = String(scene?.location || "").trim();
 
   let location: AiContextLocation | null = null;
   if (scene) {
+    const explicitLocationName = String(scene.location || "").trim();
     if (scene.locationId) {
       const locationEntry = state.codexEntries.find(
         (e) => e.id === scene.locationId && e.type === "location"
@@ -85,6 +92,23 @@ export function buildAiContext(
           summary: scene.summary,
         };
       }
+    } else if (explicitLocationName) {
+      const locationEntry = state.codexEntries.find(
+        (e) => e.type === "location" && e.title.trim().toLowerCase() === explicitLocationName.toLowerCase()
+      );
+      if (locationEntry) {
+        location = {
+          id: locationEntry.id,
+          name: locationEntry.title,
+          summary: locationEntry.summary,
+        };
+      } else {
+        location = {
+          id: explicitLocationName,
+          name: explicitLocationName,
+          summary: scene.locationSummary || scene.summary,
+        };
+      }
     } else {
       location = {
         id: scene.id,
@@ -94,12 +118,26 @@ export function buildAiContext(
     }
   }
 
+  const relatedQuests = campaignQuests.filter((quest) => {
+    const questName = String(quest?.name || quest?.title || "").trim();
+    const relatedNpcs = Array.isArray(quest?.related_npcs) ? quest.related_npcs.map((item) => String(item)) : [];
+    const relatedLocations = Array.isArray(quest?.related_locations) ? quest.related_locations.map((item) => String(item)) : [];
+    const relatedScenes = Array.isArray(quest?.related_scenes) ? quest.related_scenes.map((item) => String(item)) : [];
+    return (
+      (questName && sceneQuestNames.has(questName)) ||
+      relatedNpcs.some((name) => sceneNpcNames.has(name)) ||
+      relatedLocations.some((name) => sceneLocationName && name.trim().toLowerCase() === sceneLocationName.toLowerCase()) ||
+      relatedScenes.some((name) => scene?.title && name.trim().toLowerCase() === scene.title.toLowerCase())
+    );
+  });
+
   return {
     campaign,
     session,
     scene,
     npcs,
     location,
+    relatedQuests,
     recentEvents,
     codexReferences,
   };

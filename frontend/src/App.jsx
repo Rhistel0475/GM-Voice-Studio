@@ -7,6 +7,13 @@ import { useExtractionReviewQueueStore } from "./store/extractionReview";
 import { parseResultToExtractionBatch } from "./lib/parseResultToExtractionBatch";
 import { importParseResultToStore } from "./lib/campaignImport";
 import { getBackendCampaignId, setBackendCampaignId, persistSessionEvent } from "./lib/campaignPersistence";
+import {
+  DEFAULT_GAME_SYSTEM_ID,
+  listGameSystemPlugins,
+  normalizeGameSystemId,
+  normalizeGameSystemPlugin,
+  resolveGameSystemPlugin,
+} from "./lib/gameSystemPlugins";
 import ExtractionReviewQueue from "./components/intake/ExtractionReviewQueue";
 import { getPartyPlaceholder, getScenePlaceholder } from "./lib/placeholders";
 import AppShell from "./layout/AppShell";
@@ -41,6 +48,9 @@ class ErrorBoundary extends Component {
               localStorage.removeItem("gm_parse_result");
               localStorage.removeItem("gm_parse_images");
               localStorage.removeItem("gm_campaign_data");
+              setBackendCampaignId(null);
+              useCampaignContextStore.getState().resetCampaignContext();
+              useExtractionReviewQueueStore.getState().clearQueue();
               window.location.reload();
             }}
           >Clear saved data &amp; reload</button>
@@ -241,6 +251,8 @@ const MiddleColumn = ({
   audioStatus = "idle",
   ambienceStatus = "idle",
   ambienceTrack = null,
+  ambienceVolume = 35,
+  onAmbienceVolumeChange,
   onCombatStart,
   onResumeAmbience,
 }) => {
@@ -414,6 +426,24 @@ const MiddleColumn = ({
                       </button>
                     )}
                   </div>
+                </div>
+                <div className="mt-3 flex items-center gap-3">
+                  <label className="text-[10px] uppercase tracking-[0.18em] text-[#9b7440] whitespace-nowrap">
+                    Volume
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={ambienceVolume}
+                    onChange={(e) => onAmbienceVolumeChange?.(Number(e.target.value))}
+                    className="flex-1 accent-[#c8a050]"
+                    aria-label="Scene ambience volume"
+                  />
+                  <span className="text-[10px] uppercase tracking-[0.18em] text-[#9b7440] w-10 text-right">
+                    {ambienceVolume}%
+                  </span>
                 </div>
               </div>
               <div className="parchment rounded p-3 text-[15px] leading-relaxed min-h-[80px]">
@@ -678,6 +708,7 @@ const LiveBoard = ({
   const [audioStatus, setAudioStatus] = useState("idle");
   const [ambienceStatus, setAmbienceStatus] = useState("idle");
   const [ambienceTrack, setAmbienceTrack] = useState(null);
+  const [ambienceVolume, setAmbienceVolume] = useState(35);
   const [isNarratingScene, setIsNarratingScene] = useState(false);
   const [narrateSceneError, setNarrateSceneError] = useState("");
   const [activeSceneTriggerName, setActiveSceneTriggerName] = useState("");
@@ -725,6 +756,8 @@ const LiveBoard = ({
   const isMicActiveRef = useRef(false);
   const isWakeArmedRef = useRef(false);
   const ambienceAudioRef = useRef(null);
+  const ambienceVolumeRef = useRef(0.35);
+  const ambienceVolumeTouchedRef = useRef(false);
   const lastActivatedSceneIdRef = useRef("");
   const sceneActivationRequestRef = useRef("");
   const pendingAmbienceTrackRef = useRef(null);
@@ -838,6 +871,17 @@ const LiveBoard = ({
     setAmbienceStatus("idle");
   }, []);
 
+  const handleAmbienceVolumeChange = useCallback((value) => {
+    const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 35));
+    ambienceVolumeTouchedRef.current = true;
+    ambienceVolumeRef.current = clamped / 100;
+    setAmbienceVolume(clamped);
+    const audio = ambienceAudioRef.current;
+    if (audio) {
+      audio.volume = ambienceVolumeRef.current;
+    }
+  }, []);
+
   const playAmbienceLoop = useCallback(async (track) => {
     if (!track?.url) {
       stopAmbienceLoop();
@@ -861,7 +905,16 @@ const LiveBoard = ({
     }
 
     audio.loop = track.loop !== false;
-    audio.volume = typeof track.volume === "number" ? track.volume : 0.35;
+    const nextVolume = ambienceVolumeTouchedRef.current
+      ? ambienceVolumeRef.current
+      : typeof track.volume === "number"
+        ? track.volume
+        : ambienceVolumeRef.current;
+    if (!ambienceVolumeTouchedRef.current) {
+      ambienceVolumeRef.current = nextVolume;
+      setAmbienceVolume(Math.round(nextVolume * 100));
+    }
+    audio.volume = nextVolume;
     audio.onerror = () => setAmbienceStatus("idle");
 
     setAmbienceTrack(track);
@@ -880,11 +933,37 @@ const LiveBoard = ({
     setAmbienceStatus("playing");
   }, [stopAmbienceLoop]);
 
+  useEffect(() => {
+    const audio = ambienceAudioRef.current;
+    if (audio) {
+      audio.volume = ambienceVolumeRef.current;
+    }
+  }, [ambienceVolume]);
+
   const syncActivatedSceneState = useCallback((activatedScene, sceneIndex = null) => {
     const resolvedSceneId = String(activatedScene?.id || "").trim();
     if (useSharedCampaign) {
+      const store = useCampaignContextStore.getState();
       if (resolvedSceneId) {
-        const store = useCampaignContextStore.getState();
+        const existingScene = store.scenes.find((item) => item.id === resolvedSceneId) || null;
+        if (existingScene) {
+          store.upsertScene({
+            ...existingScene,
+            title: activatedScene?.title || existingScene.title,
+            name: activatedScene?.name || existingScene.name,
+            summary: activatedScene?.summary || activatedScene?.description || activatedScene?.read_aloud || existingScene.summary,
+            description: activatedScene?.description || activatedScene?.read_aloud || activatedScene?.notes || existingScene.description,
+            type: activatedScene?.type || existingScene.type,
+            location: activatedScene?.location || existingScene.location,
+            notes: activatedScene?.notes || existingScene.notes,
+            readAloud: activatedScene?.read_aloud || existingScene.readAloud,
+            read_aloud: activatedScene?.read_aloud || existingScene.read_aloud,
+            atmosphereType: activatedScene?.atmosphere_type || existingScene.atmosphereType,
+            atmosphere_type: activatedScene?.atmosphere_type || existingScene.atmosphere_type,
+            ambienceTrack: activatedScene?.ambience_track ?? existingScene.ambienceTrack ?? null,
+            ambience_track: activatedScene?.ambience_track ?? existingScene.ambience_track ?? null,
+          });
+        }
         store.setActiveScene(resolvedSceneId);
         const activeStoreSessionId = store.activeSessionId || campaignActiveSessionId;
         if (activeStoreSessionId) {
@@ -2360,6 +2439,8 @@ const LiveBoard = ({
             audioStatus={audioStatus}
             ambienceStatus={ambienceStatus}
             ambienceTrack={ambienceTrack}
+            ambienceVolume={ambienceVolume}
+            onAmbienceVolumeChange={handleAmbienceVolumeChange}
             onCombatStart={handleCombatStart}
             onResumeAmbience={handleResumeSceneAmbience}
           />
@@ -2530,7 +2611,7 @@ const PrepLeftColumn = ({ campaignData, selectedIdx, onSelectScene, onUpdateCamp
               value={form.atmosphere_type || "forest"}
               onChange={e => setForm(f => ({ ...f, atmosphere_type: e.target.value }))}
             >
-              {["forest", "tavern", "town", "dungeon", "combat"].map((t) => <option key={t} value={t}>{t}</option>)}
+              {["forest", "tavern", "town", "dungeon", "combat", "mystery"].map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
             <textarea
               className="w-full bg-[#1a0f06] border border-[#4f341f] text-[#c8a050] text-xs rounded px-2 py-1 placeholder-[#4f341f] resize-none"
@@ -2883,6 +2964,7 @@ const ReviewTabButton = ({ activePanel, setActivePanel }) => {
 };
 
 const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authFetch }) => {
+  const { clearCampaignData } = useAppState();
   const { enqueueBatch } = useExtractionReviewQueueStore();
   const [files, setFiles] = useState([]);
   const [isParsing, setIsParsing] = useState(false);
@@ -2913,6 +2995,12 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
   const [lightbox, setLightbox] = useState(null); // URL of enlarged image
   const [detailItem, setDetailItem] = useState(null); // {type, data} for detail drawer
   const [expandedActs, setExpandedActs] = useState(new Set()); // which chapter headers are open
+  const [campaignSystems, setCampaignSystems] = useState(() => listGameSystemPlugins());
+  const [selectedSystemId, setSelectedSystemId] = useState(DEFAULT_GAME_SYSTEM_ID);
+  const selectedSystem = useMemo(
+    () => resolveGameSystemPlugin(selectedSystemId, campaignSystems),
+    [selectedSystemId, campaignSystems]
+  );
 
   const deleteAssignedImage = (idx) =>
     setParseResult(r => ({ ...r, images: r.images.filter(img => img.idx !== idx) }));
@@ -2993,6 +3081,34 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       .finally(() => setLoadingCampaigns(false));
   }, [authFetch]);
 
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/campaign-systems")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        const nextSystems = Array.isArray(payload.systems)
+          ? payload.systems
+            .map((system) => normalizeGameSystemPlugin(system))
+            .filter(Boolean)
+          : [];
+        if (nextSystems.length > 0) {
+          setCampaignSystems(nextSystems);
+        }
+        const defaultSystemId = normalizeGameSystemId(payload.default_system_id);
+        setSelectedSystemId((current) => normalizeGameSystemId(current || defaultSystemId));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [authFetch]);
+
+  useEffect(() => {
+    const parsedSystemId = parseResult?.system_id ?? parseResult?.systemId;
+    if (parsedSystemId) {
+      setSelectedSystemId(normalizeGameSystemId(parsedSystemId));
+    }
+  }, [parseResult?.system_id, parseResult?.systemId]);
+
   const onFileChange = (e) => {
     setFiles(Array.from(e.target.files || []));
     setParseError("");
@@ -3010,6 +3126,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
     try {
       const formData = new FormData();
       files.forEach((f) => formData.append("files", f));
+      formData.append("campaign_system", selectedSystemId);
       const res = await authFetch(endpoint, { method: "POST", body: formData });
       const raw = await res.text();
       let payload = null;
@@ -3115,18 +3232,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
 
   const clearAllCampaignData = async () => {
     if (!window.confirm("Clear all campaign data? This will remove your current parse, any loaded campaign, and delete all saved campaigns from the server. You can then upload new documents. This cannot be undone.")) return;
-    try {
-      const listRes = await authFetch("/api/campaigns");
-      const list = listRes.ok ? await listRes.json() : [];
-      if (Array.isArray(list)) {
-        for (const c of list) {
-          if (c?.id) await authFetch(`/api/campaigns/${c.id}`, { method: "DELETE" });
-        }
-      }
-    } catch { /* ignore */ }
-    localStorage.removeItem("gm_parse_result");
-    localStorage.removeItem("gm_parse_images");
-    localStorage.removeItem("gm_campaign_data");
+    await clearCampaignData({ deleteBackendCampaigns: true });
     setParseResult(null);
     setSaved(false);
     setFiles([]);
@@ -3137,8 +3243,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
     setDetailItem(null);
     setLightbox(null);
     setExpandedActs(new Set());
-    onSaveCampaign(null);
-    useCampaignContextStore.getState().resetCampaignContext();
+    setSelectedSystemId(DEFAULT_GAME_SYSTEM_ID);
   };
 
   const npcs = parseResult?.npcs?.length ? parseResult.npcs : [];
@@ -3186,7 +3291,9 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
                     >
                       <option value="" style={{ color:"#6b5230" }}>— Select Campaign —</option>
                       {savedCampaigns.map(c => (
-                        <option key={c.id} value={c.id}>{c.title || `Campaign #${c.id}`}</option>
+                        <option key={c.id} value={c.id}>
+                          {c.title || `Campaign #${c.id}`}{c.system_label ? ` · ${c.system_label}` : ""}
+                        </option>
                       ))}
                     </select>
                     {parseResult?.id && (
@@ -3227,6 +3334,49 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
             <p className="intake-hint">
               Drop in session notes, module PDFs, or campaign text. AI Parse uses Claude to extract full campaign data.
             </p>
+
+            <div style={{ marginBottom: "0.9rem" }}>
+              <h3 style={{ color: "#e7c27a", fontFamily: "Cinzel, serif", fontSize: "0.85rem",
+                letterSpacing: "0.05em", marginBottom: "0.5rem", borderBottom: "1px solid #5a3e1b",
+                paddingBottom: "0.35rem" }}>
+                Campaign System
+              </h3>
+              <label style={{ display:"block", color:"#9c7a3a", fontSize:"0.72rem",
+                fontFamily:"Cinzel,serif", letterSpacing:"0.04em", marginBottom:"0.3rem" }}>
+                Rules Preset:
+              </label>
+              <select
+                value={selectedSystemId}
+                onChange={(e) => setSelectedSystemId(normalizeGameSystemId(e.target.value))}
+                style={{ width:"100%", background:"#1a0f06", color:"#e7c27a",
+                  border:"1px solid #5a3e1b", borderRadius:"4px", padding:"0.45rem 0.55rem",
+                  fontFamily:"Cinzel,serif", fontSize:"0.82rem", cursor:"pointer" }}
+              >
+                {campaignSystems.map((system) => (
+                  <option key={system.id} value={system.id}>{system.label}</option>
+                ))}
+              </select>
+              {selectedSystem && (
+                <div style={{ marginTop: "0.55rem", border: "1px solid #4f341f", borderRadius: "6px",
+                  background: "rgba(32, 18, 8, 0.72)", padding: "0.65rem 0.75rem" }}>
+                  <div style={{ color: "#e7c27a", fontFamily: "Cinzel, serif", fontSize: "0.84rem", marginBottom: "0.35rem" }}>
+                    {selectedSystem.label}
+                  </div>
+                  <p style={{ color: "#b89a62", fontSize: "0.74rem", lineHeight: 1.5, marginBottom: "0.35rem" }}>
+                    {selectedSystem.rules_flavor}
+                  </p>
+                  <p style={{ color: "#9c7a3a", fontSize: "0.72rem", lineHeight: 1.45, marginBottom: "0.25rem" }}>
+                    Terms: {selectedSystem.skill_check_terminology.skill_term}, {selectedSystem.skill_check_terminology.check_term}, {selectedSystem.skill_check_terminology.difficulty_term}
+                  </p>
+                  <p style={{ color: "#9c7a3a", fontSize: "0.72rem", lineHeight: 1.45, marginBottom: "0.25rem" }}>
+                    Encounters: {selectedSystem.encounter_assumptions}
+                  </p>
+                  <p style={{ color: "#9c7a3a", fontSize: "0.72rem", lineHeight: 1.45 }}>
+                    Tone: {selectedSystem.thematic_guidance}
+                  </p>
+                </div>
+              )}
+            </div>
 
             <div
               style={{ border:"2px dashed #4f341f", borderRadius:"6px",

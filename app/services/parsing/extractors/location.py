@@ -2,10 +2,10 @@
 Structured extraction for location sections.
 Returns list of location dicts compatible with db_models.Location.
 """
-import json
 import logging
 from typing import Any, List
 
+from app.services.llm_json import parse_llm_json_array
 from app.services.parsing.models import SectionChunk
 
 
@@ -24,10 +24,11 @@ def extract_locations(chunk: SectionChunk, model: str | None = None) -> List[dic
     effective_model = model or AI_MODEL
 
     prompt = (
-        "Extract location/place data from this RPG section. Return ONLY a JSON array of objects. "
+        "Extract location/place data from this RPG chunk. Return ONLY a JSON array of objects. "
         "Each object must have: name, description (brief, ≤30 words), confidence (0.0-1.0). "
+        "Use heading and subheading context to separate the named place from nearby scene action. "
         "If no distinct location is described, return [].\n\n"
-        f"Section:\n---\n{chunk.full_text()}\n---"
+        f"Chunk:\n---\n{chunk.llm_context()}\n---"
     )
 
     try:
@@ -37,12 +38,7 @@ def extract_locations(chunk: SectionChunk, model: str | None = None) -> List[dic
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        items = json.loads(raw)
+        items = parse_llm_json_array(raw)
     except Exception as e:
         logging.warning("extract_locations failed: %s", e)
         return []

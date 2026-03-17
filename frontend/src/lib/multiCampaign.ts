@@ -6,10 +6,12 @@
 import { useCampaignContextStore } from "../store/campaignContext";
 import type { Campaign } from "../types";
 import { createId } from "./utils/ids";
+import { loadGameSystemPlugin, normalizeGameSystemId } from "./gameSystemPlugins";
 
 export interface CreateCampaignOptions {
   name: string;
   setting?: string;
+  systemId?: string;
 }
 
 /**
@@ -23,6 +25,8 @@ export function createCampaign(
     id: createId("campaign"),
     name: options.name,
     setting: options.setting,
+    systemId: normalizeGameSystemId(options.systemId),
+    system: loadGameSystemPlugin(options.systemId),
   };
 
   useCampaignContextStore.setState((state) => ({

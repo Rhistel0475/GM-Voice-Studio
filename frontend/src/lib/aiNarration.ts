@@ -30,6 +30,16 @@ function buildNarrationQuery(context: AiContext): string {
   const npcNames = context.npcs.map((n) => n.name).join(", ");
   const recent = context.recentEvents.slice(-3).map((e) => e.text).join(" · ");
   const sceneSummary = context.scene?.summary;
+  const questSummary = context.relatedQuests
+    .map((quest) => String(quest.name || quest.title || "").trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(", ");
+  const codexHints = context.codexReferences
+    .map((entry) => entry.title)
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(", ");
 
   const parts = [
     `Write a short, vivid 2–4 sentence scene narration for the GM to read aloud.`,
@@ -37,6 +47,8 @@ function buildNarrationQuery(context: AiContext): string {
     locationName ? `Location: ${locationName}.` : null,
     sceneSummary ? `Context: ${sceneSummary.slice(0, 150)}.` : null,
     npcNames ? `NPCs present: ${npcNames}.` : null,
+    questSummary ? `Related quests: ${questSummary}.` : null,
+    codexHints ? `Relevant campaign knowledge: ${codexHints}.` : null,
     recent ? `Recent events: ${recent}.` : null,
     `Return only the narration text with no preamble or commentary.`,
   ];

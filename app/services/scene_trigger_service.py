@@ -18,6 +18,7 @@ from app.domain.live.scene_triggers import (
 )
 from app.repositories import campaign_repository
 from app.services import ai_service, tts_service
+from app.services.live_context_service import build_scene_live_context
 
 
 def _audio_to_wav_base64(audio, sample_rate: int) -> str:
@@ -93,7 +94,7 @@ def _resolve_brain_text(action: dict[str, Any], *, fallback: str = "") -> str:
     return str(result.get("content") or result.get("text") or "").strip()
 
 
-def _resolve_narration_text(trigger: dict[str, Any], scene: dict[str, Any]) -> str:
+def _resolve_narration_text(trigger: dict[str, Any], scene: dict[str, Any], live_context_summary: str = "") -> str:
     text = str(trigger.get("text") or "").strip()
     if text:
         return text
@@ -101,11 +102,12 @@ def _resolve_narration_text(trigger: dict[str, Any], scene: dict[str, Any]) -> s
     action = trigger.get("action") or {}
     action_kind = str(action.get("kind") or "").strip().lower().replace("-", "_").replace(" ", "_")
     if action_kind in {"brain_query", "query", "generate_narration", ""}:
-        generated = _resolve_brain_text(action, fallback=_scene_text(scene))
+        fallback = "\n".join(part for part in (live_context_summary, _scene_text(scene)) if str(part).strip())
+        generated = _resolve_brain_text(action, fallback=fallback)
         if generated:
             return generated
 
-    fallback = _scene_text(scene)
+    fallback = "\n".join(part for part in (live_context_summary, _scene_text(scene)) if str(part).strip())
     if fallback:
         return fallback
     raise ValueError("This narration trigger does not have any text to speak.")
@@ -139,6 +141,7 @@ def _resolve_dialogue_text(trigger: dict[str, Any], bundle: dict[str, Any], npc:
             situation=situation,
             conversation_history=[],
             faction=str(npc.get("faction") or "").strip(),
+            live_context_summary=str(((bundle.get("live_context") or {}).get("summary")) or "").strip(),
             session_context=str(session_context.get("summary") or "").strip(),
             npc_memory_summary=str(session_context.get("npc_memory_summary") or "").strip(),
         )
@@ -185,6 +188,9 @@ def execute_scene_trigger(scene_id: str, trigger_name: str) -> dict[str, Any]:
         raise FileNotFoundError("Scene not found")
 
     scene = bundle.get("scene") or {}
+    live_context = build_scene_live_context(bundle=bundle)
+    if live_context:
+        bundle = {**bundle, "live_context": live_context}
     triggers = normalize_scene_triggers(scene, npcs=bundle.get("scene_npcs") or bundle.get("npcs") or [])
     trigger = _find_trigger(triggers, trigger_name)
     if trigger is None:
@@ -209,10 +215,11 @@ def execute_scene_trigger(scene_id: str, trigger_name: str) -> dict[str, Any]:
         "log_type": "system",
         "event_type": "system",
         "ai_response": None,
+        "live_context": live_context,
     }
 
     if trigger_type == TRIGGER_TYPE_NARRATION:
-        text = _resolve_narration_text(trigger, scene)
+        text = _resolve_narration_text(trigger, scene, str(live_context.get("summary") or "").strip())
         voice_id = (
             str((trigger.get("action") or {}).get("voice_id") or "").strip()
             or str(scene.get("narrator_voice_id") or "").strip()
@@ -249,6 +256,7 @@ def execute_scene_trigger(scene_id: str, trigger_name: str) -> dict[str, Any]:
                 event_type="important_dialogue",
                 description=f"{str(npc.get('name') or 'NPC').strip()}: {text}",
                 npc_id=str(npc.get("id") or "").strip() or None,
+                tags=["important_dialogue", "scene_trigger"],
                 campaign_id=bundle.get("campaign_id"),
                 scene_id=str(scene.get("id") or scene_id).strip() or None,
             )

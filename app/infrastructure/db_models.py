@@ -101,6 +101,7 @@ class SessionMemory(Base):
     event_type = Column(String, nullable=False, default="")
     npc_id = Column(String, nullable=True)
     description = Column(Text, nullable=False, default="")
+    tags = Column(Text, nullable=False, default="[]")
 
 
 class CampaignDocument(Base):

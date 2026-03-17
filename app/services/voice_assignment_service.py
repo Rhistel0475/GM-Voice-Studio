@@ -1,127 +1,43 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from app.services import tts_service
 from app.services.voice_store_service import list_voices, load_embedding_path
 
-_ARCHETYPES: tuple[dict[str, Any], ...] = (
-    {
-        "id": "villain",
-        "keywords": (
-            "villain",
-            "tyrant",
-            "warlord",
-            "cultist",
-            "assassin",
-            "crime lord",
-            "cruel",
-            "ruthless",
-            "menacing",
-        ),
-        "voice_keywords": ("villain", "dark", "grim", "cold", "sinister", "menacing", "ominous", "raspy"),
-        "tone": "menacing",
-        "style": "controlled and intimidating",
-    },
-    {
-        "id": "guard",
-        "keywords": (
-            "guard",
-            "soldier",
-            "captain",
-            "watch",
-            "warden",
-            "knight",
-            "mercenary",
-            "commander",
-            "veteran",
-        ),
-        "voice_keywords": ("guard", "soldier", "captain", "marshal", "steady", "authoritative", "veteran"),
-        "tone": "authoritative",
-        "style": "crisp and disciplined",
-    },
-    {
-        "id": "noble",
-        "keywords": (
-            "noble",
-            "lord",
-            "lady",
-            "duke",
-            "duchess",
-            "baron",
-            "queen",
-            "king",
-            "aristocrat",
-            "courtier",
-            "ambassador",
-            "scholar",
-        ),
-        "voice_keywords": ("noble", "court", "refined", "regal", "elegant", "scholar", "measured"),
-        "tone": "refined",
-        "style": "formal and poised",
-    },
-    {
-        "id": "merchant",
-        "keywords": (
-            "merchant",
-            "trader",
-            "vendor",
-            "shopkeeper",
-            "innkeeper",
-            "barkeep",
-            "bartender",
-            "apothecary",
-            "artisan",
-        ),
-        "voice_keywords": ("merchant", "trader", "innkeeper", "barkeep", "shop", "warm", "friendly", "welcoming"),
-        "tone": "warm",
-        "style": "chatty and inviting",
-    },
-    {
-        "id": "mystic",
-        "keywords": (
-            "oracle",
-            "seer",
-            "prophet",
-            "witch",
-            "wizard",
-            "mage",
-            "cleric",
-            "priest",
-            "mystic",
-            "sage",
-            "spirit",
-            "ancient",
-        ),
-        "voice_keywords": ("oracle", "seer", "whisper", "mystic", "sage", "echo", "ancient", "ethereal"),
-        "tone": "mysterious",
-        "style": "measured and otherworldly",
-    },
-    {
-        "id": "rogue",
-        "keywords": (
-            "rogue",
-            "smuggler",
-            "thief",
-            "spy",
-            "bandit",
-            "pirate",
-            "scoundrel",
-            "outlaw",
-            "raider",
-        ),
-        "voice_keywords": ("rogue", "bandit", "smuggler", "sly", "quick", "rascal", "street", "mocking"),
-        "tone": "wry",
-        "style": "quick and sly",
-    },
-    {
-        "id": "default",
-        "keywords": (),
-        "voice_keywords": ("clear", "versatile", "neutral", "storyteller", "companion"),
-        "tone": "grounded",
-        "style": "conversational and adaptable",
-    },
+_SUPPORTED_TAGS: tuple[str, ...] = (
+    "male",
+    "female",
+    "old",
+    "young",
+    "rough",
+    "noble",
+    "merchant",
+    "villain",
+    "guard",
+    "scholar",
 )
+
+_TAG_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "male": ("male", "man", "boy", "he", "him", "his", "gentleman", "sir"),
+    "female": ("female", "woman", "girl", "she", "her", "hers", "lady", "madam"),
+    "old": ("old", "elder", "elderly", "aged", "ancient", "grandfather", "grandmother", "veteran"),
+    "young": ("young", "youth", "teen", "child", "boy", "girl", "apprentice"),
+    "rough": ("rough", "gruff", "raspy", "harsh", "scarred", "hard-bitten", "gravelly"),
+    "noble": ("noble", "lord", "lady", "duke", "duchess", "regal", "refined", "aristocrat", "courtier"),
+    "merchant": ("merchant", "trader", "vendor", "shopkeeper", "innkeeper", "barkeep", "apothecary"),
+    "villain": ("villain", "tyrant", "cruel", "evil", "menacing", "bandit", "assassin", "cultist", "warlord"),
+    "guard": ("guard", "captain", "soldier", "watch", "warden", "marshal", "knight", "mercenary"),
+    "scholar": ("scholar", "sage", "professor", "academic", "librarian", "scribe", "researcher", "wizard"),
+}
+
+_NPC_FIELD_WEIGHTS: dict[str, int] = {
+    "role": 5,
+    "description": 3,
+    "personality": 3,
+    "name": 1,
+}
 
 
 def _normalize_text(value: Any) -> str:
@@ -129,27 +45,16 @@ def _normalize_text(value: Any) -> str:
         return ""
     if isinstance(value, (list, tuple, set)):
         return " ".join(_normalize_text(item) for item in value)
-    return str(value).strip().lower()
+    text = str(value).strip().lower()
+    return re.sub(r"[^a-z0-9\s]+", " ", text)
 
 
-def _npc_text(npc: dict[str, Any]) -> str:
-    return " ".join(
-        part
-        for part in (
-            _normalize_text(npc.get("name")),
-            _normalize_text(npc.get("role")),
-            _normalize_text(npc.get("personality")),
-            _normalize_text(npc.get("personality_traits")),
-            _normalize_text(npc.get("description")),
-            _normalize_text(npc.get("motivation")),
-            _normalize_text(npc.get("secrets")),
-            _normalize_text(npc.get("faction")),
-        )
-        if part
-    )
+def _contains_keyword(text: str, keyword: str) -> bool:
+    pattern = r"(?:^|\b)" + re.escape(keyword) + r"(?:\b|$)"
+    return re.search(pattern, text) is not None
 
 
-def _voice_text(voice: dict[str, Any]) -> str:
+def _voice_search_text(voice: dict[str, Any]) -> str:
     return " ".join(
         part
         for part in (
@@ -166,45 +71,73 @@ def _voice_text(voice: dict[str, Any]) -> str:
     )
 
 
-def _count_hits(text: str, keywords: tuple[str, ...]) -> int:
-    return sum(1 for keyword in keywords if keyword and keyword in text)
+def _explicit_voice_tags(voice: dict[str, Any]) -> set[str]:
+    tags: set[str] = set()
+    for raw_tag in voice.get("tags") or []:
+        normalized = _normalize_text(raw_tag).replace(" ", "_")
+        if normalized in _SUPPORTED_TAGS:
+            tags.add(normalized)
+            continue
+        for tag, keywords in _TAG_KEYWORDS.items():
+            if normalized == tag or any(_contains_keyword(normalized, keyword) for keyword in keywords):
+                tags.add(tag)
+                break
+    return tags
 
 
-def _select_archetype(npc_text: str) -> dict[str, Any]:
-    best = _ARCHETYPES[-1]
-    best_score = 0
-    for archetype in _ARCHETYPES:
-        score = _count_hits(npc_text, archetype["keywords"])
-        if score > best_score:
-            best = archetype
-            best_score = score
-    return best
+def _derive_voice_tags(voice: dict[str, Any]) -> set[str]:
+    search = _voice_search_text(voice)
+    tags = set(_explicit_voice_tags(voice))
+    for tag, keywords in _TAG_KEYWORDS.items():
+        if tag in tags:
+            continue
+        if any(_contains_keyword(search, keyword) for keyword in keywords):
+            tags.add(tag)
+    return tags
 
 
-def _score_voice(voice: dict[str, Any], npc_text: str, archetype: dict[str, Any]) -> tuple[int, int, int, str]:
-    search = _voice_text(voice)
-    score = 0
-    score += _count_hits(search, archetype["voice_keywords"]) * 5
-    score += _count_hits(search, tuple(_normalize_text(archetype["tone"]).split())) * 2
-    score += _count_hits(search, tuple(_normalize_text(archetype["style"]).split())) * 1
+def _infer_npc_tag_weights(npc: dict[str, Any]) -> dict[str, int]:
+    field_texts = {
+        field: _normalize_text(npc.get(field))
+        for field in _NPC_FIELD_WEIGHTS
+    }
+    weights: dict[str, int] = {}
+    for tag, keywords in _TAG_KEYWORDS.items():
+        score = 0
+        for field, weight in _NPC_FIELD_WEIGHTS.items():
+            text = field_texts.get(field, "")
+            if text and any(_contains_keyword(text, keyword) for keyword in keywords):
+                score += weight
+        if score > 0:
+            weights[tag] = score
+    return weights
 
-    role_text = _normalize_text(voice.get("name"))
-    npc_role = _normalize_text(npc_text)
-    if role_text and role_text in npc_role:
-        score += 2
+
+def _score_voice(
+    voice: dict[str, Any],
+    npc_tag_weights: dict[str, int],
+) -> tuple[int, int, int, str]:
+    derived_tags = _derive_voice_tags(voice)
+    explicit_tags = _explicit_voice_tags(voice)
+    matched_tags = [tag for tag in _SUPPORTED_TAGS if tag in npc_tag_weights and tag in derived_tags]
+
+    weighted_score = sum(npc_tag_weights[tag] for tag in matched_tags)
+    weighted_score += sum(2 for tag in matched_tags if tag in explicit_tags)
+    weighted_score += len(matched_tags)
 
     is_custom = 1 if _normalize_text(voice.get("source")) == "custom" else 0
-    is_non_featured = 1 if not voice.get("featured") else 0
-    if voice.get("featured"):
-        score -= 1
-
+    has_explicit_tags = len(explicit_tags)
     name = _normalize_text(voice.get("name")) or _normalize_text(voice.get("voice_id"))
-    return (score, is_custom, is_non_featured, name)
+    return (weighted_score, has_explicit_tags, is_custom, name)
 
 
 def _list_assignable_voices(owner_id: Optional[str] = None) -> list[dict[str, Any]]:
     if tts_service.is_hume_provider():
-        return [voice for voice in tts_service.list_hume_voices() if str((voice or {}).get("voice_id") or "").strip()]
+        return [
+            voice
+            for voice in tts_service.list_hume_voices()
+            if str((voice or {}).get("voice_id") or "").strip()
+        ]
 
     usable: list[dict[str, Any]] = []
     for voice in list_voices(owner_id=owner_id):
@@ -217,22 +150,41 @@ def _list_assignable_voices(owner_id: Optional[str] = None) -> list[dict[str, An
     return usable
 
 
-def suggest_voice_for_npc(npc: dict[str, Any], owner_id: Optional[str] = None) -> Optional[dict[str, Any]]:
-    npc_text = _npc_text(npc)
+def _confidence_for_match(matched_tags: list[str], npc_tag_weights: dict[str, int]) -> float:
+    total_possible = sum(npc_tag_weights.values())
+    if total_possible <= 0:
+        return 0.1
+    matched_weight = sum(npc_tag_weights.get(tag, 0) for tag in matched_tags)
+    if matched_weight <= 0:
+        return 0.1
+    confidence = matched_weight / total_possible
+    return round(min(0.99, max(0.1, confidence)), 3)
+
+
+def suggest_voice_for_npc(
+    npc: dict[str, Any],
+    owner_id: Optional[str] = None,
+) -> Optional[dict[str, Any]]:
     voices = _list_assignable_voices(owner_id=owner_id)
     if not voices:
         return None
 
-    archetype = _select_archetype(npc_text)
-    selected = max(voices, key=lambda voice: _score_voice(voice, npc_text, archetype))
+    npc_tag_weights = _infer_npc_tag_weights(npc)
+    selected = max(voices, key=lambda voice: _score_voice(voice, npc_tag_weights))
     voice_id = str(selected.get("voice_id") or "").strip()
     if not voice_id:
         return None
 
+    matched_tags = [
+        tag
+        for tag in _SUPPORTED_TAGS
+        if tag in npc_tag_weights and tag in _derive_voice_tags(selected)
+    ]
+
     return {
-        "provider": str(selected.get("provider") or tts_service.get_tts_provider()),
         "voice_id": voice_id,
+        "provider": str(selected.get("provider") or tts_service.get_tts_provider()),
+        "confidence": _confidence_for_match(matched_tags, npc_tag_weights),
         "voice_name": str(selected.get("name") or voice_id),
-        "tone": archetype["tone"],
-        "style": archetype["style"],
+        "matched_tags": matched_tags,
     }

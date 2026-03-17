@@ -15,5 +15,13 @@ export interface CodexEntry {
   content?: string;
   relatedNpcIds?: string[];
   relatedSceneIds?: string[];
+  relatedNpcNames?: string[];
+  relatedSceneNames?: string[];
+  relatedLocationNames?: string[];
+  relatedFactionNames?: string[];
+  relatedQuestNames?: string[];
   tags?: string[];
+  confidenceScore?: number;
+  confidenceLabel?: "high" | "medium" | "low";
+  needsReview?: boolean;
 }

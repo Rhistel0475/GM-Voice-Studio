@@ -11,11 +11,20 @@ export interface Npc {
   campaignId: string;
   name: string;
   summary: string;
+  description?: string;
+  personality?: string;
   role?: string;
   profession?: string;
   locationId?: string;
   factionId?: string;
+  factionName?: string;
   voiceId?: string;
   tags: string[];
   disposition?: NpcDisposition;
+  relatedSceneNames?: string[];
+  relatedLocationNames?: string[];
+  relatedQuestNames?: string[];
+  confidenceScore?: number;
+  confidenceLabel?: "high" | "medium" | "low";
+  needsReview?: boolean;
 }

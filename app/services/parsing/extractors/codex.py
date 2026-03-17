@@ -7,6 +7,7 @@ import logging
 import re
 from typing import Any, List
 
+from app.services.llm_json import parse_llm_json_array
 from app.services.parsing.models import SectionChunk
 
 
@@ -19,6 +20,22 @@ def _slug_id(title: str, prefix: str = "codex") -> str:
     """Generate a stable id from title for codex entry."""
     slug = re.sub(r"[^a-z0-9]+", "_", (title or "entry").lower()).strip("_")
     return f"{prefix}_{slug}" if slug else f"{prefix}_entry"
+
+
+def _coerce_short_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (list, tuple)):
+        parts = [_coerce_short_text(item) for item in value]
+        return "\n".join(part for part in parts if part).strip()
+    if isinstance(value, dict):
+        try:
+            return json.dumps(value, ensure_ascii=False, sort_keys=True)
+        except Exception:
+            return str(value).strip()
+    return str(value).strip()
 
 
 def extract_codex_entries(
@@ -37,16 +54,16 @@ def extract_codex_entries(
     effective_model = model or AI_MODEL
 
     # Map pipeline content_type to frontend CodexEntryType
-    type_map = {"lore": "lore", "rule": "rule", "faction": "faction", "boxed_text": "lore"}
+    type_map = {"lore": "lore", "rule": "rule", "faction": "faction", "boxed_text": "lore", "mixed": "lore"}
     entry_type = type_map.get((content_type or chunk.content_type or "lore"), "lore")
 
     prompt = (
-        "Extract codex-style entries (lore, rules, faction info) from this RPG section. "
+        "Extract codex-style entries (lore, rules, faction info) from this RPG chunk. "
         "Return ONLY a JSON array of objects. Each object: title, summary (≤25 words), "
         "content (key facts or full text, concise), tags (array of strings), confidence (0.0-1.0). "
         "If the section is a single coherent entry, return one object. If multiple distinct topics, return multiple. "
         "Keep prose minimal; prefer structured bullets or short phrases.\n\n"
-        f"Section:\n---\n{chunk.full_text()}\n---"
+        f"Chunk:\n---\n{chunk.llm_context()}\n---"
     )
 
     try:
@@ -56,12 +73,7 @@ def extract_codex_entries(
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        items = json.loads(raw)
+        items = parse_llm_json_array(raw)
     except Exception as e:
         logging.warning("extract_codex_entries failed: %s", e)
         return []
@@ -85,8 +97,8 @@ def extract_codex_entries(
             "id": _slug_id(title),
             "type": entry_type,
             "title": title,
-            "summary": (obj.get("summary") or "").strip(),
-            "content": (obj.get("content") or "").strip(),
+            "summary": _coerce_short_text(obj.get("summary")),
+            "content": _coerce_short_text(obj.get("content")),
             "tags": tags,
             "confidence": float(obj.get("confidence", 0.8)),
         })

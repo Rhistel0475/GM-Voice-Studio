@@ -26,9 +26,12 @@ export default function NPCVoiceAssignment({
                 <Wand2 size={13} className="shrink-0" />
                 <span className="truncate">{suggestion.voice_name || suggestedVoiceId}</span>
               </div>
-              {(suggestion.tone || suggestion.style) && (
+              {(typeof suggestion.confidence === "number" || (suggestion.matched_tags || []).length > 0) && (
                 <p className="mt-1 text-xs text-[var(--text-2)]">
-                  {[suggestion.tone, suggestion.style].filter(Boolean).join(" · ")}
+                  {[
+                    typeof suggestion.confidence === "number" ? `Confidence ${(suggestion.confidence * 100).toFixed(0)}%` : "",
+                    ...(Array.isArray(suggestion.matched_tags) ? suggestion.matched_tags : []),
+                  ].filter(Boolean).join(" · ")}
                 </p>
               )}
             </div>

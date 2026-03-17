@@ -25,7 +25,8 @@
  * @property {string} [description]
  * @property {string} [act]
  * @property {string} [type] - e.g. "combat" | "social" | "exploration" | "mystery" | "travel"
- * @property {string} [atmosphere_type] - e.g. "forest" | "tavern" | "town" | "dungeon" | "combat"
+ * @property {string} [atmosphere_type] - e.g. "forest" | "tavern" | "town" | "dungeon" | "combat" | "mystery"
+ * @property {string|{ url?: string, label?: string, atmosphere_type?: string, filename?: string, loop?: boolean, volume?: number }} [ambience_track]
  * @property {string} [location]
  * @property {string} [read_aloud]
  * @property {string} [notes]
@@ -43,10 +44,16 @@
  * @typedef {Object} Campaign
  * @property {string|number} [id]
  * @property {string} title
+ * @property {string} [system_id]
+ * @property {string} [systemId]
+ * @property {{ id: string, label: string, rules_flavor: string, skill_check_terminology: { skill_term: string, check_term: string, difficulty_term: string }, encounter_assumptions: string, thematic_guidance: string }} [system]
  * @property {Scene[]} scenes
  * @property {Array<{ name: string, role?: string, personality?: string, voice_id?: string, [key: string]: unknown }>} npcs
  * @property {Array<{ name: string, hp?: string, ac?: string, [key: string]: unknown }>} [party]
  * @property {Array<{ name: string, [key: string]: unknown }>} [items]
+ * @property {Array<{ name?: string, title?: string, description?: string, summary?: string, [key: string]: unknown }>} [quests]
+ * @property {Array<{ name?: string, title?: string, description?: string, summary?: string, [key: string]: unknown }>} [factions]
+ * @property {Array<{ name?: string, title?: string, description?: string, summary?: string, [key: string]: unknown }>} [lore]
  * @property {Array<{ name: string, type?: string, when?: string, [key: string]: unknown }>} [reveals]
  * @property {Array<string|{ name: string, description?: string }>} [locations]
  */

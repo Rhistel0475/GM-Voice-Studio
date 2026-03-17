@@ -2,10 +2,10 @@
 Structured extraction for encounter/scene sections (scene seeds).
 Returns list of scene dicts compatible with db_models.Scene and frontend.
 """
-import json
 import logging
 from typing import Any, List
 
+from app.services.llm_json import parse_llm_json_array
 from app.services.parsing.models import SectionChunk
 
 
@@ -24,12 +24,14 @@ def extract_scene_seeds(chunk: SectionChunk, model: str | None = None) -> List[d
     effective_model = model or AI_MODEL
 
     prompt = (
-        "Extract encounter/scene data from this RPG section. Return ONLY a JSON array of objects. "
-        "Each object must have: title, act (optional), type (combat|social|exploration|mystery), "
+        "Extract scene or encounter data from this RPG chunk. Return ONLY a JSON array of objects. "
+        "Each object must have: title, act (optional), type (combat|social|exploration|mystery|travel|investigation), "
         "read_aloud (≤40 words, boxed text to read to players), npcs (array of NPC names), "
-        "location (place name), difficulty (easy|medium|hard|deadly|none), rewards (brief), notes (brief), "
-        "confidence (0.0-1.0). If no encounter is described, return []. Keep strings short.\n\n"
-        f"Section:\n---\n{chunk.full_text()}\n---"
+        "location (place name), difficulty (short descriptive label or empty string), rewards (brief), notes (brief), "
+        "confidence (0.0-1.0). Keep scene framing system-agnostic and do not assume combat math or challenge tiers "
+        "unless the text provides them. The chunk may describe a location, a set-piece scene, or boxed read-aloud text. "
+        "If no scene beat is described, return []. Keep strings short.\n\n"
+        f"Chunk:\n---\n{chunk.llm_context()}\n---"
     )
 
     try:
@@ -39,12 +41,7 @@ def extract_scene_seeds(chunk: SectionChunk, model: str | None = None) -> List[d
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        items = json.loads(raw)
+        items = parse_llm_json_array(raw)
     except Exception as e:
         logging.warning("extract_scene_seeds failed: %s", e)
         return []

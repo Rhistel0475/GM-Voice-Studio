@@ -20,6 +20,7 @@ function buildAssistPayload(query: string, context: AiContext) {
     scene: context.scene,
     npcs: context.npcs,
     location: context.location,
+    relatedQuests: context.relatedQuests,
     recentEvents: context.recentEvents,
     codexReferences: context.codexReferences,
   };
@@ -78,6 +79,7 @@ export async function generateSessionChronicle(
     session: context.session,
     scene: context.scene,
     npcs: context.npcs,
+    relatedQuests: context.relatedQuests,
     codexReferences: context.codexReferences,
     recentEvents: context.recentEvents,
     rawLog: logLines,
@@ -99,4 +101,3 @@ export async function generateSessionChronicle(
     playerSafeSummary: data.playerSafeSummary,
   };
 }
-

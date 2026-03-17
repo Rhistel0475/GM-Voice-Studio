@@ -2,10 +2,10 @@
 Structured extraction for NPC sections.
 Returns list of NPC dicts compatible with db_models.NPC and frontend.
 """
-import json
 import logging
 from typing import Any, List
 
+from app.services.llm_json import parse_llm_json_array
 from app.services.parsing.models import SectionChunk
 
 
@@ -17,7 +17,7 @@ def _get_client():
 def extract_npcs(chunk: SectionChunk, model: str | None = None) -> List[dict[str, Any]]:
     """
     Extract one or more NPCs from a section chunk. Returns structured objects with
-    name, role, personality, faction, description, motivation, secrets, hp, ac, cr, confidence.
+    name, role, personality, faction, description, motivation, secrets, and optional stat hints.
     """
     from app.core.config import AI_MODEL
     client = _get_client()
@@ -26,10 +26,12 @@ def extract_npcs(chunk: SectionChunk, model: str | None = None) -> List[dict[str
     prompt = (
         "Extract NPC/character data from this RPG section. Return ONLY a JSON array of objects. "
         "Each object must have: name, role (villain|ally|quest-giver|neutral), personality (short), "
-        "faction, description, motivation, secrets, hp (e.g. \"45\" or \"3d8\"), ac (int or 0), cr (e.g. \"CR 3\"). "
-        "Add \"confidence\" (0.0-1.0) for each. If no NPC is described, return []. "
-        "Keep all string values brief (≤20 words each).\n\n"
-        f"Section:\n---\n{chunk.full_text()}\n---"
+        "faction, description, motivation, secrets. Optional only when explicitly present in the text: "
+        "hp, ac, cr, and notable roleplaying cues. Add \"confidence\" (0.0-1.0) for each. "
+        "Use the section heading and subheading as source clues, but do not merge multiple unrelated people. "
+        "Do not invent system-specific combat stats for characters when the section does not provide them. "
+        "If no NPC is described, return []. Keep all string values brief (≤20 words each).\n\n"
+        f"Chunk:\n---\n{chunk.llm_context()}\n---"
     )
 
     try:
@@ -39,12 +41,7 @@ def extract_npcs(chunk: SectionChunk, model: str | None = None) -> List[dict[str
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        items = json.loads(raw)
+        items = parse_llm_json_array(raw)
     except Exception as e:
         logging.warning("extract_npcs failed: %s", e)
         return []

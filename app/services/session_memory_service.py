@@ -22,6 +22,34 @@ def _normalize_iso_timestamp(timestamp: Optional[str]) -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_tags(tags: Any) -> list[str]:
+    if tags is None:
+        return []
+    raw_items = tags if isinstance(tags, (list, tuple, set)) else [tags]
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in raw_items:
+        tag = _normalize_event_type(item)
+        if not tag or tag in seen:
+            continue
+        seen.add(tag)
+        normalized.append(tag)
+    return normalized
+
+
+def _deserialize_tags(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return _normalize_tags(value)
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        parsed = [part.strip() for part in raw.split(",")]
+    return _normalize_tags(parsed)
+
+
 def _parse_sortable_timestamp(value: Optional[str]) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -141,6 +169,7 @@ def _label_for_event(event_type: str) -> str:
         "npc_interaction": "NPC Interaction",
         "player_decision": "Player Decision",
         "quest_progress": "Quest Progress",
+        "combat_outcome": "Combat Outcome",
         "important_dialogue": "Important Dialogue",
     }
     normalized = _normalize_event_type(event_type)
@@ -151,9 +180,11 @@ def _format_event_line(event: dict[str, Any]) -> str:
     label = _label_for_event(str(event.get("event_type") or ""))
     description = str(event.get("description") or "").strip()
     npc_id = str(event.get("npc_id") or "").strip()
+    tags = _normalize_tags(event.get("tags"))
+    tags_text = f" [tags: {', '.join(tags)}]" if tags else ""
     if npc_id:
-        return f"- {label} ({npc_id}): {description}"
-    return f"- {label}: {description}"
+        return f"- {label} ({npc_id}): {description}{tags_text}"
+    return f"- {label}: {description}{tags_text}"
 
 
 def _summarize_events(events: list[dict[str, Any]], *, npc_id: Optional[str] = None) -> tuple[str, str]:
@@ -175,6 +206,7 @@ def record_event(
     event_type: str,
     description: str,
     npc_id: Optional[str] = None,
+    tags: Any = None,
     campaign_id: Optional[int] = None,
     scene_id: Optional[str] = None,
     session_id: Optional[str] = None,
@@ -195,12 +227,14 @@ def record_event(
 
     db = SessionLocal()
     try:
+        normalized_tags = _normalize_tags(tags)
         record = SessionMemory(
             session_id=str(resolved_session["id"]),
             timestamp=_normalize_iso_timestamp(timestamp),
             event_type=normalized_type,
             npc_id=str(npc_id or "").strip() or None,
             description=normalized_description,
+            tags=json.dumps(normalized_tags, ensure_ascii=True),
         )
         db.add(record)
         db.commit()
@@ -214,19 +248,20 @@ def record_event(
             "event_type": record.event_type,
             "npc_id": record.npc_id,
             "description": record.description,
+            "tags": normalized_tags,
         }
     finally:
         db.close()
 
 
-def get_session_context(
+def get_session_summary(
     *,
     campaign_id: Optional[int] = None,
     session_id: Optional[str] = None,
     npc_id: Optional[str] = None,
     limit: int = 24,
 ) -> dict[str, Any]:
-    """Return recent memory and compact summaries for AI dialogue prompts."""
+    """Return recent session memory and compact summaries for AI prompts."""
     try:
         resolved_session = _resolve_session_reference(campaign_id=campaign_id, session_id=session_id)
         if resolved_session is None:
@@ -267,6 +302,7 @@ def get_session_context(
             "event_type": row.event_type,
             "npc_id": row.npc_id,
             "description": row.description,
+            "tags": _deserialize_tags(getattr(row, "tags", None)),
         }
         for row in reversed(rows)
     ]
@@ -279,3 +315,19 @@ def get_session_context(
         "summary": summary,
         "npc_memory_summary": npc_summary,
     }
+
+
+def get_session_context(
+    *,
+    campaign_id: Optional[int] = None,
+    session_id: Optional[str] = None,
+    npc_id: Optional[str] = None,
+    limit: int = 24,
+) -> dict[str, Any]:
+    """Backward-compatible alias for callers expecting session context."""
+    return get_session_summary(
+        campaign_id=campaign_id,
+        session_id=session_id,
+        npc_id=npc_id,
+        limit=limit,
+    )

@@ -1,6 +1,7 @@
-export type { Campaign } from "./campaign";
+export type { Campaign, CampaignKnowledgeRecord } from "./campaign";
+export type { CampaignSystemPreset, CampaignSystemTerminology } from "./system";
 export type { Session, SessionStatus } from "./session";
-export type { Scene, SceneTrigger, SceneTriggerType } from "./scene";
+export type { Scene, SceneAmbienceTrack, SceneTrigger, SceneTriggerType } from "./scene";
 export type { Npc, NpcDisposition } from "./npc";
 export type { Voice, VoiceStatus } from "./voice";
 export type { CodexEntry, CodexEntryType } from "./codex";

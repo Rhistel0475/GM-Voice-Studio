@@ -10,7 +10,13 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from app.domain.campaign.systems import (
+    DEFAULT_CAMPAIGN_SYSTEM_ID,
+    get_campaign_system_preset,
+    normalize_campaign_system,
+)
 from app.domain.live.scene_triggers import normalize_scene_triggers, resolve_scene_npcs
+from app.services.entity_normalization_service import normalize_campaign_entities
 from app.infrastructure.database import SessionLocal
 from app.infrastructure.db_models import (
     Campaign,
@@ -36,6 +42,16 @@ _ATMOSPHERE_ALIASES = {
     "town": ("town", "city", "street", "market", "village", "plaza"),
     "dungeon": ("dungeon", "crypt", "cavern", "cave", "catacomb", "ruin", "underground"),
     "combat": ("combat", "battle", "fight", "skirmish", "ambush", "war"),
+    "mystery": ("mystery", "eerie", "ominous", "suspense", "investigation"),
+}
+
+_DEFAULT_AMBIENCE_TRACKS = {
+    "forest": "forest.wav",
+    "tavern": "tavern.wav",
+    "town": "town.wav",
+    "dungeon": "dungeon.wav",
+    "combat": "combat.wav",
+    "mystery": "dungeon.wav",
 }
 
 
@@ -128,6 +144,15 @@ def _normalize_scene_graph_fields(
     return scene_payload
 
 
+def _normalize_ambience_track(value: Any, atmosphere_type: str) -> Optional[str]:
+    raw = str(value or "").strip()
+    if raw:
+        return raw
+    if atmosphere_type:
+        return _DEFAULT_AMBIENCE_TRACKS.get(atmosphere_type, f"{atmosphere_type}.wav")
+    return None
+
+
 def _resolve_scene_atmosphere_type(
     scene_payload: Optional[dict[str, Any]],
     *,
@@ -203,6 +228,14 @@ def _normalize_session_payload(session: Any, campaign_id: int) -> Optional[dict[
     return normalized_session
 
 
+def _apply_campaign_system_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    system_id = normalize_campaign_system(payload.get("system_id") or payload.get("systemId"))
+    payload["system_id"] = system_id
+    payload["systemId"] = system_id
+    payload["system"] = get_campaign_system_preset(system_id)
+    return payload
+
+
 def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str, Any]]:
     """
     Parse and normalize Campaign.data_json payload.
@@ -221,7 +254,7 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     payload["id"] = campaign.id
     payload["title"] = campaign.title or payload.get("title", "")
     payload["summary"] = campaign.summary or payload.get("summary", "")
-    for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images"):
+    for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images", "quests", "factions", "lore"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
     if not isinstance(payload.get("encounters"), list):
@@ -239,6 +272,10 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
                 scene["triggers"] = []
             _normalize_scene_graph_fields(scene)
             scene["atmosphere_type"] = _resolve_scene_atmosphere_type(scene)
+            scene["ambience_track"] = _normalize_ambience_track(
+                scene.get("ambience_track") or scene.get("ambienceTrack"),
+                scene["atmosphere_type"],
+            )
     normalized_sessions: list[dict[str, Any]] = []
     for session in payload.get("sessions", []):
         normalized_session = _normalize_session_payload(session, campaign.id)
@@ -248,16 +285,19 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     for key in ("codex_entries", "relationships"):
         if not isinstance(payload.get(key), list):
             payload[key] = []
+    if not isinstance(payload.get("review_summary"), dict):
+        payload["review_summary"] = {}
     if not isinstance(payload.get("documents"), list):
         payload["documents"] = []
-    return payload
+    return _apply_campaign_system_metadata(payload)
 
 def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
     """Legacy fallback payload built from normalized relational tables."""
-    return {
+    return _apply_campaign_system_metadata({
         "id": campaign.id,
         "title": campaign.title,
         "summary": campaign.summary,
+        "system_id": DEFAULT_CAMPAIGN_SYSTEM_ID,
         "active_session_id": None,
         "sessions": [],
         "npcs": [
@@ -288,6 +328,7 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
                 "act": s.act,
                 "type": s.type,
                 "atmosphere_type": _resolve_scene_atmosphere_type(None, relation_scene=s),
+                "ambience_track": _normalize_ambience_track(None, _resolve_scene_atmosphere_type(None, relation_scene=s)),
                 "read_aloud": s.read_aloud,
                 "difficulty": s.difficulty,
                 "rewards": s.rewards,
@@ -309,11 +350,14 @@ def _campaign_payload_from_relations(campaign: Campaign) -> dict[str, Any]:
         "encounters": [],
         "reveals": [],
         "items": [],
+        "quests": [],
+        "factions": [],
+        "lore": [],
         "images": [],
         "codex_entries": [],
         "relationships": [],
         "documents": [],
-    }
+    })
 
 
 def _campaign_documents_payload(db, campaign_id: int) -> list[dict[str, Any]]:
@@ -413,6 +457,10 @@ def _build_scene_record(
         "notes": str(payload_scene.get("notes") or (relation_scene.notes if relation_scene is not None else "") or "").strip(),
         "type": str(payload_scene.get("type") or (relation_scene.type if relation_scene is not None else "") or "").strip(),
         "atmosphere_type": _resolve_scene_atmosphere_type(payload_scene, relation_scene=relation_scene),
+        "ambience_track": _normalize_ambience_track(
+            payload_scene.get("ambience_track") or payload_scene.get("ambienceTrack"),
+            _resolve_scene_atmosphere_type(payload_scene, relation_scene=relation_scene),
+        ),
         "location": str(payload_scene.get("location") or "").strip(),
         "connected_scenes": _normalize_connected_scene_refs(
             payload_scene.get("connected_scenes") or payload_scene.get("connectedScenes")
@@ -424,6 +472,7 @@ def _build_scene_record(
 
 
 def _enrich_campaign_payload(campaign: Campaign, payload: dict[str, Any]) -> dict[str, Any]:
+    _apply_campaign_system_metadata(payload)
     scenes = payload.get("scenes")
     if not isinstance(scenes, list):
         payload["scenes"] = []
@@ -482,9 +531,13 @@ def _enrich_campaign_payload(campaign: Campaign, payload: dict[str, Any]) -> dic
                 scene_entry[key] = []
         _normalize_scene_graph_fields(scene_entry, relation_scene=relation_scene)
         scene_entry["atmosphere_type"] = _resolve_scene_atmosphere_type(scene_entry, relation_scene=relation_scene)
+        scene_entry["ambience_track"] = _normalize_ambience_track(
+            scene_entry.get("ambience_track") or scene_entry.get("ambienceTrack"),
+            scene_entry["atmosphere_type"],
+        )
         scene_entry["triggers"] = normalize_scene_triggers(scene_entry, npcs=payload_npcs)
 
-    return payload
+    return _apply_campaign_system_metadata(payload)
 
 
 def list_all() -> list[dict[str, Any]]:
@@ -492,7 +545,21 @@ def list_all() -> list[dict[str, Any]]:
     db = SessionLocal()
     try:
         campaigns = db.query(Campaign).order_by(Campaign.id.desc()).all()
-        return [{"id": c.id, "title": c.title, "summary": c.summary} for c in campaigns]
+        payload: list[dict[str, Any]] = []
+        for campaign in campaigns:
+            system_payload = _campaign_payload_from_json_record(campaign) or {}
+            system_id = normalize_campaign_system(system_payload.get("system_id"))
+            system = get_campaign_system_preset(system_id)
+            payload.append(
+                {
+                    "id": campaign.id,
+                    "title": campaign.title,
+                    "summary": campaign.summary,
+                    "system_id": system_id,
+                    "system_label": system["label"],
+                }
+            )
+        return payload
     finally:
         db.close()
 
@@ -535,6 +602,11 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
     """
     db = SessionLocal()
     try:
+        result = normalize_campaign_entities(result)
+        system_id = normalize_campaign_system(result.get("system_id") or result.get("systemId"))
+        quests_payload = result.get("quests", []) if isinstance(result.get("quests"), list) else []
+        factions_payload = result.get("factions", []) if isinstance(result.get("factions"), list) else []
+        lore_payload = result.get("lore", []) if isinstance(result.get("lore"), list) else []
         campaign = Campaign(title=result.get("title", ""), summary=result.get("summary", ""), data_json="{}")
         db.add(campaign)
         db.flush()
@@ -580,6 +652,10 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
             scene_payload["id"] = str(scene_row.id)
             _normalize_scene_graph_fields(scene_payload, relation_scene=scene_row)
             scene_payload["atmosphere_type"] = _resolve_scene_atmosphere_type(scene_payload, relation_scene=scene_row)
+            scene_payload["ambience_track"] = _normalize_ambience_track(
+                scene_payload.get("ambience_track") or scene_payload.get("ambienceTrack"),
+                scene_payload["atmosphere_type"],
+            )
             scene_payload["triggers"] = normalize_scene_triggers(scene_payload, npcs=npcs_payload)
             scenes_payload.append(scene_payload)
 
@@ -596,6 +672,7 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
         canonical_payload = {
             "title": result.get("title", ""),
             "summary": result.get("summary", ""),
+            "system_id": system_id,
             "active_session_id": None,
             "sessions": [],
             "npcs": npcs_payload,
@@ -605,13 +682,23 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
             "encounters": result.get("encounters", []) if isinstance(result.get("encounters"), list) else [],
             "reveals": result.get("reveals", []),
             "items": result.get("items", []),
+            "quests": quests_payload,
+            "factions": factions_payload,
+            "lore": lore_payload,
             "images": result.get("images", []),
             "codex_entries": result.get("codex_entries", []),
             "relationships": result.get("relationships", []),
+            "review_summary": result.get("review_summary", {}),
         }
         campaign.data_json = json.dumps(canonical_payload, ensure_ascii=False)
         result["id"] = campaign.id
         result["scenes"] = scenes_payload
+        result["system_id"] = system_id
+        result["systemId"] = system_id
+        result["system"] = get_campaign_system_preset(system_id)
+        result["quests"] = quests_payload
+        result["factions"] = factions_payload
+        result["lore"] = lore_payload
 
         db.commit()
         return campaign.id

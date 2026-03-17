@@ -37,12 +37,20 @@ function deriveLegacyCampaign(state) {
   if (!campaign) return null;
   const campaignScenes = state.scenes.filter((s) => s.campaignId === campaign.id);
   const campaignNpcs = state.npcs.filter((n) => n.campaignId === campaign.id);
+  const campaignCodex = state.codexEntries.filter((entry) => entry.campaignId === campaign.id);
   const campaignSessions = state.sessions.filter((s) => s.campaignId === campaign.id);
   return {
     id: campaign.id,
     title: campaign.name,
+    system_id: campaign.systemId,
+    systemId: campaign.systemId,
+    system: campaign.system,
     activeSessionId: campaign.activeSessionId,
     active_session_id: campaign.activeSessionId,
+    quests: campaign.quests ?? [],
+    factions: campaign.factions ?? [],
+    lore: campaign.lore ?? [],
+    relationships: campaign.relationships ?? [],
     sessions: campaignSessions.map((session) => ({
       id: session.id,
       campaign_id: session.campaignId,
@@ -60,9 +68,14 @@ function deriveLegacyCampaign(state) {
       act: s.act || "",
       type: s.type || "",
       atmosphere_type: s.atmosphereType || s.atmosphere_type || "",
+      ambience_track: s.ambienceTrack || s.ambience_track || null,
       read_aloud: s.readAloud || s.read_aloud || s.summary || "",
       notes: s.notes || "",
       location: s.location || "",
+      related_npcs: s.relatedNpcNames ?? [],
+      related_locations: s.relatedLocationNames ?? [],
+      related_quests: s.relatedQuestNames ?? [],
+      related_factions: s.relatedFactionNames ?? [],
       connected_scenes: Array.isArray(s.connectedScenes)
         ? s.connectedScenes
         : Array.isArray(s.connected_scenes)
@@ -92,13 +105,27 @@ function deriveLegacyCampaign(state) {
       name: n.name,
       role: n.role,
       personality: n.summary,
+      description: n.description || n.summary,
+      faction: n.factionName,
+      related_scenes: n.relatedSceneNames ?? [],
+      related_locations: n.relatedLocationNames ?? [],
+      related_quests: n.relatedQuestNames ?? [],
       voice_id: n.voiceId,
       voiceId: n.voiceId,
     })),
     party: [],
     items: [],
     reveals: [],
-    locations: [],
+    locations: campaignCodex
+      .filter((entry) => entry.type === "location")
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.title,
+        description: entry.summary,
+        related_npcs: entry.relatedNpcNames ?? [],
+        related_scenes: entry.relatedSceneNames ?? [],
+        related_factions: entry.relatedFactionNames ?? [],
+      })),
   };
 }
 
@@ -117,9 +144,14 @@ function deriveLegacyActiveScene(state) {
     act: scene.act || "",
     type: scene.type || "",
     atmosphere_type: scene.atmosphereType || scene.atmosphere_type || "",
+    ambience_track: scene.ambienceTrack || scene.ambience_track || null,
     read_aloud: scene.readAloud || scene.read_aloud || scene.summary || "",
     notes: scene.notes || "",
     location: scene.location || "",
+    related_npcs: scene.relatedNpcNames ?? [],
+    related_locations: scene.relatedLocationNames ?? [],
+    related_quests: scene.relatedQuestNames ?? [],
+    related_factions: scene.relatedFactionNames ?? [],
     connected_scenes: Array.isArray(scene.connectedScenes)
       ? scene.connectedScenes
       : Array.isArray(scene.connected_scenes)

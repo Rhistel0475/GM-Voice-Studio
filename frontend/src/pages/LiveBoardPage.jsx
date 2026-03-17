@@ -114,6 +114,7 @@ export default function LiveBoardPage({
             <CodexSidePanel
               campaignData={campaignData}
               onInsertIntoNarration={onInsertIntoNarration}
+              onSpeakNpc={onSelectNpc}
               authFetch={authFetch}
               onNarrateAnswer={onNarrateCampaignAnswer}
             />

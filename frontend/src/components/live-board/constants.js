@@ -10,8 +10,9 @@ export const QUICK_TOOLS = [
 ];
 
 export const CODEX_TABS = [
-  { key: "documents", label: "Documents" },
   { key: "npcs", label: "NPCs" },
+  { key: "scenes", label: "Scenes" },
   { key: "locations", label: "Locations" },
-  { key: "rules", label: "Rules" },
+  { key: "quests", label: "Quests" },
+  { key: "factions", label: "Factions" },
 ];

@@ -4,6 +4,7 @@ Mirrors the pattern of tts_service.py — lazy client init, clear public API.
 """
 import json
 import logging
+import re
 from typing import Any, Optional
 
 try:
@@ -24,8 +25,12 @@ except ModuleNotFoundError:
     anthropic = _AnthropicImportFallback()
 
 from app.core.config import AI_MODEL, ANTHROPIC_API_KEY, MAX_ADVENTURE_CHARS
+from app.services.entity_normalization_service import normalize_campaign_entities
+from app.services.llm_json import parse_llm_json, parse_llm_json_array, strip_json_fences
+from app.services.parsing.confidence import annotate_campaign_confidence
 
 _client: Optional[Any] = None
+_IMAGE_ASSIGNMENT_TYPES = {"portrait", "map", "handout", "illustration", "decoration"}
 
 
 def _get_client() -> Any:
@@ -44,6 +49,7 @@ def build_npc_system_prompt(
     personality: str,
     faction: str = "",
     situation: str = "",
+    live_context_summary: str = "",
     session_context: str = "",
     npc_memory_summary: str = "",
 ) -> str:
@@ -53,19 +59,24 @@ def build_npc_system_prompt(
     """
     faction_line = f"\nFaction/Allegiance: {faction.strip()}" if faction.strip() else ""
     situation_line = f"\nCurrent situation: {situation.strip()}" if situation.strip() else ""
+    live_context_line = (
+        f"\nActive scene context:\n{live_context_summary.strip()}"
+        if live_context_summary.strip()
+        else ""
+    )
     npc_memory_line = (
         f"\nNPC memory from this session:\n{npc_memory_summary.strip()}"
         if npc_memory_summary.strip()
         else ""
     )
     session_context_line = (
-        f"\nRecent session events:\n{session_context.strip()}"
+        f"\nSession memory from this session:\n{session_context.strip()}"
         if session_context.strip()
         else ""
     )
     return (
         f"You are {npc_name.strip()}, a character in a tabletop RPG session. "
-        f"Personality: {personality.strip()}{faction_line}{situation_line}"
+        f"Personality: {personality.strip()}{faction_line}{situation_line}{live_context_line}"
         f"{npc_memory_line}{session_context_line}\n\n"
         "Speak ONLY as this character. Do NOT break character. Do NOT explain or narrate. "
         "Do NOT say you are an AI. Respond as if you are actually speaking the words out loud "
@@ -81,6 +92,7 @@ def generate_dialogue(
     situation: str,
     conversation_history: list[dict],
     faction: str = "",
+    live_context_summary: str = "",
     session_context: str = "",
     npc_memory_summary: str = "",
 ) -> str:
@@ -108,6 +120,7 @@ def generate_dialogue(
         personality,
         faction,
         situation,
+        live_context_summary,
         session_context,
         npc_memory_summary,
     )
@@ -140,15 +153,101 @@ def generate_dialogue(
 
 
 def _parse_json_payload(raw_text: str) -> Any:
-    raw = (raw_text or "").strip()
-    if raw.startswith("```"):
-        parts = raw.split("```")
-        if len(parts) >= 2:
-            raw = parts[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-    raw = raw.strip()
-    return json.loads(raw)
+    return parse_llm_json(raw_text)
+
+
+def _finalize_parse_payload(payload: dict[str, Any], *, chunks: list[Any] | None = None) -> dict[str, Any]:
+    result = dict(payload)
+    for key in ("title", "summary"):
+        result.setdefault(key, "")
+    for key in ("npcs", "party", "scenes", "locations", "encounters", "reveals", "items", "quests", "factions", "lore"):
+        if not isinstance(result.get(key), list):
+            result[key] = []
+    result.setdefault("codex_entries", [])
+    result.setdefault("relationships", [])
+
+    for npc in result.get("npcs", []):
+        if isinstance(npc, dict):
+            npc.setdefault("hp", "")
+            npc.setdefault("ac", 0)
+            npc.setdefault("cr", "")
+    for scene in result.get("scenes", []):
+        if isinstance(scene, dict):
+            scene.setdefault("difficulty", "")
+            scene.setdefault("rewards", "")
+            scene.setdefault("notes", "")
+
+    already_scored = isinstance(result.get("review_summary"), dict)
+    if not already_scored:
+        result = normalize_campaign_entities(result)
+        result = annotate_campaign_confidence(result, chunks=chunks or [])
+    return result
+
+
+def _salvage_image_assignments(
+    raw_text: str,
+    *,
+    valid_indexes: set[int],
+    valid_targets: set[str],
+) -> list[dict[str, Any]]:
+    text = strip_json_fences(raw_text)
+    if not text:
+        return []
+
+    idx_matches = list(re.finditer(r'"idx"\s*:\s*(\d+)', text))
+    if not idx_matches:
+        return []
+
+    salvaged: list[dict[str, Any]] = []
+    seen_indexes: set[int] = set()
+    for index, match in enumerate(idx_matches):
+        try:
+            image_idx = int(match.group(1))
+        except (TypeError, ValueError):
+            continue
+        if image_idx not in valid_indexes or image_idx in seen_indexes:
+            continue
+
+        start = text.rfind("{", 0, match.start())
+        if start == -1:
+            start = match.start()
+        end = idx_matches[index + 1].start() if index + 1 < len(idx_matches) else len(text)
+        chunk = text[start:end]
+
+        type_match = re.search(r'"type"\s*:\s*"([^"\r\n]+)"', chunk)
+        assigned_match = re.search(r'"assigned_to"\s*:\s*"([^"\r\n]+)"', chunk)
+        null_assigned = re.search(r'"assigned_to"\s*:\s*null\b', chunk)
+        label_match = re.search(r'"label"\s*:\s*"([^"\r\n]*)', chunk)
+
+        assignment_type = ""
+        if type_match:
+            candidate_type = type_match.group(1).strip().lower()
+            if candidate_type in _IMAGE_ASSIGNMENT_TYPES:
+                assignment_type = candidate_type
+
+        assigned_to = None
+        if assigned_match:
+            candidate_target = assigned_match.group(1).strip()
+            if candidate_target in valid_targets:
+                assigned_to = candidate_target
+        elif null_assigned:
+            assigned_to = None
+
+        label = label_match.group(1).strip()[:80] if label_match else ""
+        if not assignment_type and assigned_to is None and not label:
+            continue
+
+        salvaged.append(
+            {
+                "idx": image_idx,
+                "type": assignment_type,
+                "assigned_to": assigned_to,
+                "label": label,
+            }
+        )
+        seen_indexes.add(image_idx)
+
+    return salvaged
 
 
 def analyze_session_context(
@@ -335,26 +434,12 @@ def ai_full_parse(text: str) -> dict:
     """
     Use the staged parsing pipeline to extract a complete campaign data object from adventure text.
     Falls back to single-shot Claude extraction if the pipeline fails.
-    Returns structured data for NPCs, party, scenes, locations, reveals, codex_entries, relationships.
+    Returns structured data for universal campaign structures plus compatibility fields.
     """
     try:
         from app.services.parsing.pipeline import run_parsing_pipeline
         result = run_parsing_pipeline(text)
-        for key in ("title", "summary"):
-            result.setdefault(key, "")
-        for key in ("npcs", "party", "scenes", "locations", "reveals", "items"):
-            result.setdefault(key, [])
-        result.setdefault("codex_entries", [])
-        result.setdefault("relationships", [])
-        for npc in result.get("npcs", []):
-            npc.setdefault("hp", "")
-            npc.setdefault("ac", 0)
-            npc.setdefault("cr", "")
-        for scene in result.get("scenes", []):
-            scene.setdefault("difficulty", "")
-            scene.setdefault("rewards", "")
-            scene.setdefault("notes", "")
-        return result
+        return _finalize_parse_payload(result)
     except Exception as e:
         logging.warning("Parsing pipeline failed, falling back to single-shot parse: %s", e)
         return _ai_full_parse_fallback(text)
@@ -377,16 +462,23 @@ def _ai_full_parse_fallback(text: str) -> dict:
         "Extract GM prep data from this adventure text. "
         "Return ONLY compact JSON — no markdown, no prose. "
         "Keep ALL string values short (≤15 words each). "
-        "Limits: max 10 npcs, max 10 scenes, max 8 locations, max 8 reveals, max 8 items.\n\n"
+        "Keep the parser system-agnostic: extract only what the text supports, and do not assume D&D, Pathfinder, "
+        "or any other ruleset unless the source explicitly states it. "
+        "Limits: max 10 npcs, max 10 scenes, max 8 locations, max 8 quests, max 8 items, max 8 factions, max 12 lore entries.\n\n"
         'JSON keys required:\n'
         '"title": adventure title\n'
         '"summary": 2-sentence premise\n'
-        '"npcs": [{"name","role"(villain|ally|quest-giver|neutral),"personality","faction","motivation","secrets","hp"(e.g."45" or "3d8"),"ac"(int),"cr"(e.g."CR 3")}]\n'
-        '"party": [{"name","class_","race","level"(int),"hp","ac"(int)}] or []\n'
-        '"scenes": [{"title","act","type"(combat|social|exploration|mystery),"read_aloud"(≤30 words),"npcs":[str],"location","difficulty"(easy|medium|hard|deadly|none),"rewards"(≤15 words),"notes"(≤20 words)}]\n'
+        '"npcs": [{"name","role"(villain|ally|quest-giver|neutral),"personality","faction","description","motivation","secrets","hp"(optional if explicit),"ac"(optional int if explicit),"cr"(optional if explicit)}]\n'
+        '"party": [{"name","role","description","class_"(optional),"race"(optional),"level"(optional int),"hp"(optional),"ac"(optional int)}] or []\n'
+        '"scenes": [{"title","act","type"(combat|social|exploration|mystery|travel|investigation),"read_aloud"(≤30 words),"npcs":[str],"location","difficulty"(short label or empty),"rewards"(≤15 words),"notes"(≤20 words)}]\n'
         '"locations": [{"name","description"}]\n'
-        '"reveals": [{"name","when","type"(hook|secret|clue|twist)}]\n'
-        '"items": [{"name","description"(≤15 words),"scene"(scene title or ""),"magical"(true|false)}]\n\n'
+        '"quests": [{"name","description","objective","stakes","related_npcs":[str],"related_locations":[str],"tags":[str]}]\n'
+        '"items": [{"name","description"(≤15 words),"scene"(scene title or ""),"magical"(true|false),"rarity"(optional),"owner"(optional)}]\n'
+        '"factions": [{"name","description","tags":[str]}]\n'
+        '"lore": [{"title","summary","content","type"(lore|rule),"tags":[str]}]\n'
+        '"reveals": [{"name","when","type"(hook|secret|clue|twist)}] or []\n'
+        '"codex_entries": [{"id"(optional),"type"(lore|rule|faction),"title","summary","content","tags":[str]}] or []\n'
+        '"relationships": []\n\n'
         "Adventure text:\n---\n"
         f"{truncated}\n---"
     )
@@ -415,21 +507,7 @@ def _ai_full_parse_fallback(text: str) -> dict:
             logging.warning("ai_full_parse: JSON was truncated; attempted auto-close.")
 
         result = json.loads(raw)
-        for key in ("title", "summary"):
-            result.setdefault(key, "")
-        for key in ("npcs", "party", "scenes", "locations", "reveals", "items"):
-            result.setdefault(key, [])
-        result.setdefault("codex_entries", [])
-        result.setdefault("relationships", [])
-        for npc in result.get("npcs", []):
-            npc.setdefault("hp", "")
-            npc.setdefault("ac", 0)
-            npc.setdefault("cr", "")
-        for scene in result.get("scenes", []):
-            scene.setdefault("difficulty", "")
-            scene.setdefault("rewards", "")
-            scene.setdefault("notes", "")
-        return result
+        return _finalize_parse_payload(result)
     except json.JSONDecodeError as e:
         logging.error("Claude returned non-JSON for ai_full_parse: %s", e)
         raise RuntimeError("Claude returned invalid JSON. Try a shorter or cleaner text input.") from e
@@ -464,6 +542,8 @@ def assign_images_to_entities(images: list[dict], campaign: dict, total_pages: i
     npc_names = [n["name"] for n in campaign.get("npcs", [])]
     scene_titles = [s["title"] for s in campaign.get("scenes", [])]
     location_names = [l["name"] for l in campaign.get("locations", [])]
+    valid_indexes = {int(img["idx"]) for img in images if img.get("idx") is not None}
+    valid_targets = {name for name in [*npc_names, *scene_titles, *location_names] if str(name).strip()}
 
     img_list = [{"idx": img["idx"], "page": img["page"]} for img in images]
 
@@ -485,21 +565,29 @@ def assign_images_to_entities(images: list[dict], campaign: dict, total_pages: i
     try:
         response = client.messages.create(
             model=AI_MODEL,
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-            raw = raw.strip()
-        assignments = json.loads(raw)
+        assignments = parse_llm_json_array(raw)
     except Exception as e:
-        logging.warning("assign_images_to_entities failed: %s", e)
-        # Return images without assignments rather than failing the whole parse
-        return [{"idx": img["idx"], "page": img["page"], "url": img["url"],
-                 "type": "illustration", "assigned_to": None, "label": ""} for img in images]
+        recovered = _salvage_image_assignments(
+            locals().get("raw", ""),
+            valid_indexes=valid_indexes,
+            valid_targets=valid_targets,
+        )
+        if recovered:
+            logging.warning(
+                "assign_images_to_entities recovered %d partial assignments after malformed JSON: %s",
+                len(recovered),
+                e,
+            )
+            assignments = recovered
+        else:
+            logging.warning("assign_images_to_entities failed: %s", e)
+            # Return images without assignments rather than failing the whole parse
+            return [{"idx": img["idx"], "page": img["page"], "url": img["url"],
+                     "type": "illustration", "assigned_to": None, "label": ""} for img in images]
 
     # Merge assignments back onto original image list
     assign_map = {a["idx"]: a for a in assignments if isinstance(a, dict)}
@@ -588,12 +676,7 @@ def parse_adventure(text: str) -> dict:
             messages=[{"role": "user", "content": user_prompt}],
         )
         raw = response.content[0].text.strip()
-        # Strip markdown code fences if Claude wrapped the JSON
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        result = json.loads(raw)
+        result = json.loads(strip_json_fences(raw))
         # Normalise: ensure both keys exist
         result.setdefault("read_alouds", [])
         result.setdefault("npcs", [])

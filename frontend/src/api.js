@@ -68,6 +68,7 @@ export function createClient(apiKey = "") {
 
     getCampaigns: () => request("/api/campaigns").then((r) => r.json()),
     getCampaign: (id) => request(`/api/campaigns/${id}`).then((r) => r.json()),
+    getCampaignSystems: () => request("/api/campaign-systems").then((r) => r.json()),
     deleteCampaign: (id) => request(`/api/campaigns/${id}`, { method: "DELETE" }),
     getCampaignDocuments: (id) => request(`/api/campaigns/${id}/documents`).then((r) => r.json()),
     uploadCampaignDocuments: (id, formData) => request(`/api/campaigns/${id}/documents`, { method: "POST", body: formData }).then((r) => r.json()),
