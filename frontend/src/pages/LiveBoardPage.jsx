@@ -86,15 +86,15 @@ export default function LiveBoardPage({
         <main className="xl:col-span-7 min-h-0 flex flex-col gap-3">
 
           {showSessionEmpty ? (
-            /* Compact no-session state — replaces StartSessionPanel */
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 py-16 text-center">
-              <LayoutDashboard size={28} className="text-[var(--gold)]/40" aria-hidden />
+            /* Compact no-session state */
+            <div className="empty-card flex-1 flex flex-col items-center justify-center gap-3 py-12">
+              <LayoutDashboard size={32} className="text-[var(--gold)] opacity-30" aria-hidden />
               <div>
-                <p className="font-heading text-[var(--text-1)] text-sm tracking-wide">
-                  No active scene loaded
+                <p className="font-heading text-[var(--text-1)] text-sm tracking-widest uppercase">
+                  No Active Scene
                 </p>
-                <p className="mt-1 text-xs text-[var(--text-2)]">
-                  Load a campaign in Prep or Campaign mode to begin
+                <p className="mt-1.5 text-xs text-[var(--text-2)] leading-relaxed">
+                  Load a campaign in Prep or Campaign to begin your session.
                 </p>
               </div>
               {onNavigateToPrep ? (
@@ -106,22 +106,22 @@ export default function LiveBoardPage({
           ) : (
             /* Scene Stage — read-aloud + NPC speak actions */
             scene && (
-              <section className="panel-ornate rounded-lg overflow-hidden">
-                <div className="panel-head">
+              <section className="panel-ornate scene-stage rounded-lg overflow-hidden flex-1">
+                <div className="panel-head panel-head--row">
                   <div className="plaque flex items-center gap-3">
                     <span className="truncate">{scene.title || scene.name || "Scene"}</span>
-                    {scene.location ? (
-                      <span className="text-[10px] font-normal uppercase tracking-[0.14em] text-[#9b7440] ml-auto flex-shrink-0">
-                        {scene.location}
-                      </span>
-                    ) : null}
                   </div>
+                  {scene.location ? (
+                    <span className="text-[10px] uppercase tracking-[0.16em] text-[#9b7440] flex-shrink-0 pr-2">
+                      {scene.location}
+                    </span>
+                  ) : null}
                 </div>
-                <div className="panel-body space-y-3">
+                <div className="panel-body space-y-4">
                   {readAloud ? (
-                    <p className="text-sm text-[var(--text-1)] leading-relaxed italic border-l-2 border-[var(--gold)]/40 pl-3">
+                    <div className="read-aloud-text rounded-sm">
                       {readAloud}
-                    </p>
+                    </div>
                   ) : null}
 
                   {presentNpcs.length > 0 && (

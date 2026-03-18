@@ -1835,3 +1835,146 @@ button.tracker-row:hover:not(.is-active) {
   border-color: var(--gold);
   color: var(--gold);
 }
+
+/* ── UI Polish Pass ─────────────────────────────────────────────────────────── */
+
+/* Custom scrollbars — thin, themed */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #3a2510; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #5c3e23; }
+
+/* Button press states — all interactive buttons */
+.nav-glyph-btn:active:not(:disabled),
+.quick-tile:active:not(:disabled),
+.quick-tool-card:active:not(:disabled),
+.scene-trigger-btn:active:not(:disabled),
+.cta-secondary:active:not(:disabled),
+.send-btn:active:not(:disabled) {
+  transform: translateY(1px) !important;
+  filter: brightness(0.92) !important;
+  transition: none !important;
+}
+
+/* Scene stage — visually dominant center panel */
+.scene-stage {
+  border-color: #9a7236;
+  box-shadow:
+    inset 0 0 0 1px #3d2a15,
+    inset 0 0 40px rgba(0, 0, 0, 0.22),
+    0 0 24px rgba(202, 167, 75, 0.07);
+}
+
+.scene-stage .panel-head {
+  background: linear-gradient(180deg, #2e1f0e, #1e1307);
+  border-bottom-color: #7a5a2e;
+  padding: 11px 16px;
+}
+
+.scene-stage .plaque {
+  font-size: clamp(18px, 1.25vw, 24px);
+  letter-spacing: 0.08em;
+}
+
+/* Read-aloud text block */
+.read-aloud-text {
+  background: rgba(14, 8, 3, 0.5);
+  border-left: 3px solid rgba(202, 167, 75, 0.45);
+  padding: 13px 15px;
+  font-family: "Crimson Text", serif;
+  font-size: clamp(14px, 1.08vw, 20px);
+  color: var(--text-1);
+  line-height: 1.58;
+  font-style: italic;
+}
+
+/* Compact empty-state card */
+.empty-card {
+  border: 1px solid #3a2510;
+  background: linear-gradient(180deg, #1b110a, #130c07);
+  border-radius: 8px;
+  padding: 20px 18px;
+  text-align: center;
+}
+
+/* Campaign hero banner */
+.campaign-hero {
+  background:
+    radial-gradient(circle at 50% 110%, rgba(202, 167, 75, 0.2), transparent 55%),
+    linear-gradient(180deg, #2c1c0d, #1b1108);
+  border: 2px solid #7a5230;
+  border-radius: 10px;
+  padding: 22px 28px;
+}
+
+/* Stat tile */
+.stat-tile {
+  border: 1px solid #5c3e23;
+  background: linear-gradient(180deg, #1e1309, #150d06);
+  border-radius: 6px;
+  padding: 14px 8px;
+  text-align: center;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-tile:hover {
+  border-color: #8a6236;
+  box-shadow: 0 0 12px rgba(202, 167, 75, 0.12);
+}
+
+.stat-tile-number {
+  font-family: "Cinzel", serif;
+  font-size: clamp(22px, 1.7vw, 32px);
+  color: var(--gold);
+  line-height: 1;
+}
+
+.stat-tile-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-2);
+  margin-top: 5px;
+}
+
+/* Detail workspace panel */
+.detail-workspace {
+  background: linear-gradient(180deg, #1c1209, #130c07);
+}
+
+/* Remove nested scroll from assistant suggestions (max 3 items shown) */
+.session-assistant-suggestions {
+  max-height: none;
+  overflow-y: visible;
+}
+
+/* Prep: stronger selected entry */
+.prep-entry-selected {
+  background: #221808 !important;
+  border-color: var(--gold) !important;
+  box-shadow: 0 0 10px rgba(202, 167, 75, 0.16) !important;
+}
+
+/* Prep: section label */
+.sidebar-section-label {
+  font-family: "Cinzel", serif;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  padding: 0 2px;
+  border-bottom: 1px solid #3a2510;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+}
+
+/* Voice page: section divider */
+.voice-section {
+  padding-top: 12px;
+  border-top: 1px solid #2a1a0a;
+}
+
+.voice-section:first-child {
+  padding-top: 0;
+  border-top: none;
+}

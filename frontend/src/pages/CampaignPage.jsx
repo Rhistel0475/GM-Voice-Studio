@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useAppState } from "../context/AppStateContext";
 import SettingsPage from "./SettingsPage";
-import SectionHeader from "../components/layout/SectionHeader";
 import { ParchmentCard } from "../components/shared";
 
 /**
@@ -40,48 +39,53 @@ export default function CampaignPage() {
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {tab === "overview" && (
-          <section className="max-w-xl mx-auto p-4 space-y-4">
-            <SectionHeader title={campaignData?.title || "Campaign"} />
+          <section className="max-w-3xl mx-auto p-5 space-y-5">
 
             {!hasCampaign ? (
-              <ParchmentCard title="No Campaign Loaded">
-                <p className="text-sm text-[var(--text-2)]">
+              <div className="campaign-hero flex flex-col items-center text-center gap-4">
+                <div className="font-heading text-[var(--gold)] text-xl tracking-widest uppercase">
+                  No Campaign Loaded
+                </div>
+                <p className="text-sm text-[var(--text-2)] leading-relaxed max-w-sm">
                   Upload a campaign document in{" "}
                   <strong className="text-[var(--text-1)]">Prep → Upload Adventure</strong>{" "}
                   to get started. Parsed campaign data will appear here.
                 </p>
-              </ParchmentCard>
+              </div>
             ) : (
               <>
-                <ParchmentCard title="Campaign Info">
-                  <dl className="space-y-2">
-                    {campaignData.system && (
-                      <div className="flex justify-between text-sm">
-                        <dt className="text-[var(--text-2)]">Game System</dt>
-                        <dd className="text-[var(--text-1)] font-heading">{campaignData.system}</dd>
-                      </div>
-                    )}
-                    {campaignData.setting && (
-                      <div className="flex justify-between text-sm">
-                        <dt className="text-[var(--text-2)]">Setting</dt>
-                        <dd className="text-[var(--text-1)]">{campaignData.setting}</dd>
-                      </div>
-                    )}
-                    {campaignData.description && (
-                      <div className="pt-1">
-                        <dt className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mb-1">
-                          Description
-                        </dt>
-                        <dd className="text-sm text-[var(--text-1)] leading-relaxed">
-                          {campaignData.description}
-                        </dd>
-                      </div>
-                    )}
-                  </dl>
-                </ParchmentCard>
+                {/* ── Campaign hero banner ── */}
+                <div className="campaign-hero">
+                  <div className="font-heading text-2xl text-[var(--gold)] tracking-widest uppercase leading-tight">
+                    {campaignData.title}
+                  </div>
+                  {(campaignData.system || campaignData.setting) && (
+                    <div className="flex gap-4 mt-2 flex-wrap">
+                      {campaignData.system && (
+                        <span className="text-xs text-[var(--text-2)] uppercase tracking-[0.14em]">
+                          <span className="text-[var(--text-2)]">System: </span>
+                          <span className="text-[var(--text-1)] font-heading">{campaignData.system}</span>
+                        </span>
+                      )}
+                      {campaignData.setting && (
+                        <span className="text-xs text-[var(--text-2)]">
+                          <span className="text-[var(--text-2)]">Setting: </span>
+                          <span className="text-[var(--text-1)]">{campaignData.setting}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {campaignData.description && (
+                    <p className="mt-3 text-sm text-[var(--text-1)] leading-relaxed border-t border-[#5c3e23]/50 pt-3">
+                      {campaignData.description}
+                    </p>
+                  )}
+                </div>
 
-                <ParchmentCard title="Content Summary">
-                  <div className="grid grid-cols-3 gap-3">
+                {/* ── Stat tiles ── */}
+                <div>
+                  <div className="sidebar-section-label mb-3">Campaign Contents</div>
+                  <div className="grid grid-cols-5 gap-2">
                     {[
                       { label: "NPCs", count: npcCount },
                       { label: "Scenes", count: sceneCount },
@@ -89,18 +93,13 @@ export default function CampaignPage() {
                       { label: "Quests", count: questCount },
                       { label: "Factions", count: factionCount },
                     ].map(({ label, count }) => (
-                      <div
-                        key={label}
-                        className="rounded-md border border-[#5c3e23] bg-[#1a1008]/80 px-3 py-2 text-center"
-                      >
-                        <div className="font-heading text-lg text-[var(--gold)]">{count}</div>
-                        <div className="text-[10px] uppercase tracking-[0.12em] text-[var(--text-2)]">
-                          {label}
-                        </div>
+                      <div key={label} className="stat-tile">
+                        <div className="stat-tile-number">{count}</div>
+                        <div className="stat-tile-label">{label}</div>
                       </div>
                     ))}
                   </div>
-                </ParchmentCard>
+                </div>
 
                 {campaignData.narrator_voice && (
                   <ParchmentCard title="Narrator Voice">

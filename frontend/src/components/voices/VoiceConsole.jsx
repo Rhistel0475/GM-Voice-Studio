@@ -618,22 +618,19 @@ export default function VoiceConsole({ campaignData, authFetch }) {
 
       {/* ── RIGHT: Testing + Provider + Clone ───────────────────── */}
       <aside
-        className="flex-shrink-0 flex flex-col min-h-0 overflow-y-auto gap-0"
-        style={{ width: "300px" }}
+        className="flex-shrink-0 flex flex-col min-h-0 overflow-hidden"
+        style={{ width: "280px" }}
       >
         {/* Provider status */}
-        <div className="px-3 py-2 border-b border-[#3a2510] flex items-center gap-2 flex-shrink-0">
+        <div className="px-3 py-2 border-b border-[#3a2510] flex items-center gap-2 flex-shrink-0 bg-[#130d07]">
           <span className="text-[10px] text-[var(--text-2)] uppercase tracking-[0.12em]">Provider</span>
           <ProviderBadge provider={ttsProvider} />
-          {ttsProvider === "hume" && (
-            <span className="text-[10px] text-[var(--text-2)] ml-auto">Voice upload unavailable</span>
-          )}
         </div>
 
-        <div className="flex flex-col gap-4 p-3 flex-1 min-h-0 overflow-y-auto">
+        <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
 
           {/* Narration test */}
-          <section>
+          <div className="voice-section p-3 border-b border-[#2a1a0a]">
             <SectionLabel>
               <ScrollText size={10} className="inline mr-1" />
               Narration Test
@@ -641,16 +638,16 @@ export default function VoiceConsole({ campaignData, authFetch }) {
             <textarea
               value={narrationText}
               onChange={(e) => setNarrationText(e.target.value)}
-              rows={3}
-              placeholder="Enter narration text to test with the selected voice…"
-              className="w-full rounded-md border border-[#4a3018] bg-[#1c1008] px-2.5 py-2 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+              rows={2}
+              placeholder="Enter text to test with the selected voice…"
+              className="w-full rounded border border-[#4a3018] bg-[#1c1008] px-2.5 py-1.5 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
             />
             {narrateError && (
               <p className="text-[11px] text-[#ff9d82] mt-1">{narrateError}</p>
             )}
             <FantasyButton
               variant="primary"
-              className="text-xs mt-2 w-full"
+              className="text-xs mt-1.5 w-full"
               onClick={handleNarrate}
               disabled={!narrationText.trim() || !selectedVoiceId || isNarrating}
             >
@@ -658,21 +655,21 @@ export default function VoiceConsole({ campaignData, authFetch }) {
             </FantasyButton>
             {!selectedVoiceId && (
               <p className="text-[10px] text-[var(--text-2)] mt-1">
-                Select a voice in the library first.
+                Select a voice first.
               </p>
             )}
-          </section>
+          </div>
 
           {/* NPC dialogue test */}
-          <section>
+          <div className="voice-section p-3 border-b border-[#2a1a0a]">
             <SectionLabel>
               <Mic2 size={10} className="inline mr-1" />
-              NPC Dialogue Test
+              NPC Dialogue
             </SectionLabel>
             <select
               value={npcVoiceNpcId}
               onChange={(e) => setNpcVoiceNpcId(e.target.value)}
-              className="w-full mb-2 rounded-md border border-[#4a3018] bg-[#1c1008] px-2.5 py-1.5 text-xs text-[var(--text-1)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+              className="w-full mb-1.5 rounded border border-[#4a3018] bg-[#1c1008] px-2.5 py-1.5 text-xs text-[var(--text-1)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
             >
               <option value="">— Select NPC —</option>
               {npcOptions.map((npc) => (
@@ -685,39 +682,39 @@ export default function VoiceConsole({ campaignData, authFetch }) {
               value={npcVoiceText}
               onChange={(e) => setNpcVoiceText(e.target.value)}
               rows={2}
-              placeholder="NPC dialogue line…"
-              className="w-full rounded-md border border-[#4a3018] bg-[#1c1008] px-2.5 py-2 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+              placeholder="Dialogue line…"
+              className="w-full rounded border border-[#4a3018] bg-[#1c1008] px-2.5 py-1.5 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] resize-none focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
             />
             {npcVoiceError && (
               <p className="text-[11px] text-[#ff9d82] mt-1">{npcVoiceError}</p>
             )}
             <FantasyButton
               variant="secondary"
-              className="text-xs mt-2 w-full"
+              className="text-xs mt-1.5 w-full"
               onClick={handleSpeakAsNpc}
               disabled={!npcVoiceNpcId || !npcVoiceText.trim() || npcVoiceBusy}
             >
               {npcVoiceBusy ? "Speaking…" : "Speak as NPC"}
             </FantasyButton>
-          </section>
+          </div>
 
           {/* Recent clips */}
           {generatedAudio.length > 0 && (
-            <section>
+            <div className="voice-section p-3 border-b border-[#2a1a0a]">
               <SectionLabel>Recent Audio</SectionLabel>
               <GeneratedAudioList
                 clips={generatedAudio}
                 onPlayClip={handlePlayClip}
                 playingClipId={playingClipId}
               />
-            </section>
+            </div>
           )}
 
           {/* Voice upload / clone — kani only */}
           {cloneAvailable && (
-            <section className="border-t border-[#3a2510] pt-4">
+            <div className="voice-section p-3">
               <div className="flex items-center justify-between mb-2">
-                <SectionLabel>Add Voice Sample</SectionLabel>
+                <SectionLabel>Add Voice</SectionLabel>
                 {showClone ? (
                   <button
                     type="button"
@@ -725,7 +722,7 @@ export default function VoiceConsole({ campaignData, authFetch }) {
                     className="text-[var(--text-2)] hover:text-[var(--text-1)]"
                     title="Close"
                   >
-                    <X size={14} />
+                    <X size={13} />
                   </button>
                 ) : (
                   <FantasyButton
@@ -733,14 +730,14 @@ export default function VoiceConsole({ campaignData, authFetch }) {
                     className="text-[10px] px-2 py-1"
                     onClick={() => setShowClone(true)}
                   >
-                    <Plus size={11} className="inline mr-1" />
-                    New Voice
+                    <Plus size={10} className="inline mr-1" />
+                    New
                   </FantasyButton>
                 )}
               </div>
 
-              {showClone && (
-                <div className="rounded-lg border border-[#5c3e23] bg-[#150d07]/80 p-3">
+              {showClone ? (
+                <div className="rounded border border-[#5c3e23] bg-[#150d07]/80 p-2.5">
                   <VoiceCloneWizard
                     step={cloneStep}
                     setStep={setCloneStep}
@@ -764,24 +761,22 @@ export default function VoiceConsole({ campaignData, authFetch }) {
                     saveError={cloneSaveError}
                   />
                 </div>
-              )}
-
-              {!showClone && (
+              ) : (
                 <p className="text-[10px] text-[var(--text-2)] leading-relaxed">
-                  Upload or record a voice sample to add it to your library.
+                  Upload a voice sample to clone it into your library.
                 </p>
               )}
-            </section>
+            </div>
           )}
 
           {/* Hume: explain what's available */}
           {!cloneAvailable && (
-            <section className="border-t border-[#3a2510] pt-4">
-              <SectionLabel>Voice Library</SectionLabel>
+            <div className="voice-section p-3">
+              <SectionLabel>Note</SectionLabel>
               <p className="text-[11px] text-[var(--text-2)] leading-relaxed">
-                Voices are managed by Hume AI. Select a voice from the library to assign it to NPCs or use it for narration. Local voice upload is not available in Hume mode.
+                Using Hume AI — local voice upload is unavailable. Select a voice to assign it to NPCs.
               </p>
-            </section>
+            </div>
           )}
 
         </div>

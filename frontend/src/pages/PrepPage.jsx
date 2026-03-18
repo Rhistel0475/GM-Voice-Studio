@@ -64,94 +64,95 @@ export default function PrepPage({
 
       {/* ── LEFT: Filters + Actions ────────────────────────────────── */}
       <aside
-        className="flex-shrink-0 flex flex-col gap-3 p-3 border-r border-[#3a2510] bg-[#12090400] overflow-y-auto"
-        style={{ width: "220px" }}
+        className="flex-shrink-0 flex flex-col gap-0 border-r border-[#3a2510] overflow-y-auto"
+        style={{ width: "210px" }}
       >
         {/* Search */}
-        <div className="relative">
-          <Search
-            size={13}
-            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-2)] pointer-events-none"
-          />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setCenterMode("codex");
-            }}
-            placeholder="Search…"
-            className="w-full rounded-md border border-[#4a3018] bg-[#1c1008] pl-7 pr-3 py-1.5 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
-          />
+        <div className="p-3 border-b border-[#3a2510]">
+          <div className="sidebar-section-label">Search</div>
+          <div className="relative mt-1">
+            <Search
+              size={12}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-2)] pointer-events-none"
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setCenterMode("codex");
+              }}
+              placeholder="Filter entries…"
+              className="w-full rounded-md border border-[#4a3018] bg-[#1c1008] pl-7 pr-3 py-1.5 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+            />
+          </div>
         </div>
 
         {/* Category filters */}
-        <div className="flex flex-col gap-1">
-          <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mb-1 px-1">
-            Categories
+        <div className="p-3 flex-1 border-b border-[#3a2510]">
+          <div className="sidebar-section-label">Categories</div>
+          <div className="flex flex-col gap-0.5 mt-2">
+            {CODEX_TABS.map((tab) => {
+              const count = intelligence[tab.key]?.length ?? 0;
+              const isActive = activeCategory === tab.key && centerMode === "codex";
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => handleCategoryChange(tab.key)}
+                  className={[
+                    "flex items-center justify-between rounded px-2.5 py-2 text-xs text-left transition-colors",
+                    isActive
+                      ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
+                      : "border border-transparent text-[var(--text-1)] hover:bg-[#1e1208] hover:border-[#4a3018]",
+                  ].join(" ")}
+                >
+                  <span>{tab.label}</span>
+                  {count > 0 && (
+                    <span
+                      className={[
+                        "text-[9px] rounded-full px-1.5 py-0.5 min-w-[18px] text-center tabular-nums",
+                        isActive
+                          ? "bg-[var(--gold)] text-[#1a0e04] font-bold"
+                          : "bg-[#2a1a0a] text-[var(--text-2)]",
+                      ].join(" ")}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          {CODEX_TABS.map((tab) => {
-            const count = intelligence[tab.key]?.length ?? 0;
-            const isActive = activeCategory === tab.key && centerMode === "codex";
-            return (
-              <button
-                key={tab.key}
-                type="button"
-                onClick={() => handleCategoryChange(tab.key)}
-                className={[
-                  "flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs text-left transition-colors",
-                  isActive
-                    ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
-                    : "border border-transparent text-[var(--text-1)] hover:bg-[#1e1208] hover:border-[#4a3018]",
-                ].join(" ")}
-              >
-                <span>{tab.label}</span>
-                {count > 0 && (
-                  <span
-                    className={[
-                      "text-[10px] rounded-full px-1.5 py-0.5 min-w-[20px] text-center",
-                      isActive
-                        ? "bg-[var(--gold)] text-[#1a0e04]"
-                        : "bg-[#2a1a0a] text-[var(--text-2)]",
-                    ].join(" ")}
-                  >
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
         </div>
 
         {/* Action buttons */}
-        <div className="flex flex-col gap-1.5 mt-auto pt-3 border-t border-[#3a2510]">
-          <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mb-1 px-1">
-            Actions
-          </div>
+        <div className="p-3 flex flex-col gap-1.5">
+          <div className="sidebar-section-label">Tools</div>
           <button
             type="button"
             onClick={() => handleOpenMode("upload")}
             className={[
-              "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-left transition-colors",
+              "flex items-center gap-2 rounded px-2.5 py-2 text-xs text-left transition-colors",
               centerMode === "upload"
                 ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
                 : "border border-[#4a3018] text-[var(--text-1)] hover:bg-[#1e1208]",
             ].join(" ")}
           >
-            <Upload size={13} className="shrink-0" />
+            <Upload size={12} className="shrink-0" />
             Upload Adventure
           </button>
           <button
             type="button"
             onClick={() => handleOpenMode("prep")}
             className={[
-              "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs text-left transition-colors",
+              "flex items-center gap-2 rounded px-2.5 py-2 text-xs text-left transition-colors",
               centerMode === "prep"
                 ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
                 : "border border-[#4a3018] text-[var(--text-1)] hover:bg-[#1e1208]",
             ].join(" ")}
           >
-            <BookOpen size={13} className="shrink-0" />
+            <BookOpen size={12} className="shrink-0" />
             Scene Builder
           </button>
         </div>
@@ -174,28 +175,26 @@ export default function PrepPage({
         ) : (
           <>
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#3a2510] flex-shrink-0">
-              <div className="font-heading text-sm text-[var(--gold)]">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#3a2510] flex-shrink-0 bg-[#150e07]">
+              <div className="font-heading text-sm text-[var(--gold)] tracking-wide uppercase">
                 {CODEX_TABS.find((t) => t.key === activeCategory)?.label ?? "Codex"}
               </div>
-              <div className="text-xs text-[var(--text-2)]">
+              <div className="text-[10px] text-[var(--text-2)] tabular-nums">
                 {entries.length !== totalForCategory
-                  ? `${entries.length} of ${totalForCategory}`
+                  ? `${entries.length} / ${totalForCategory}`
                   : `${totalForCategory} entr${totalForCategory !== 1 ? "ies" : "y"}`}
               </div>
             </div>
 
             {/* Entry list */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
+            <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-0.5">
               {entries.length === 0 ? (
-                <div className="p-4">
-                  <EmptyState
-                    message={
-                      search
-                        ? `No matches for "${search}".`
-                        : `No ${activeCategory} in this campaign yet.`
-                    }
-                  />
+                <div className="empty-card mt-4 mx-2">
+                  <p className="text-xs text-[var(--text-2)]">
+                    {search
+                      ? `No matches for "${search}".`
+                      : `No ${activeCategory} loaded yet.`}
+                  </p>
                 </div>
               ) : (
                 entries.map((entry) => {
@@ -206,22 +205,22 @@ export default function PrepPage({
                       type="button"
                       onClick={() => handleEntryClick(entry)}
                       className={[
-                        "w-full text-left rounded-md px-3 py-2 border transition-all",
+                        "w-full text-left rounded px-3 py-2.5 border transition-all",
                         isSelected
-                          ? "bg-[#221808] border-[var(--gold)] shadow-[0_0_8px_rgba(202,167,75,0.18)]"
-                          : "bg-[#1a1008]/90 border-[#5c3e23] hover:border-[var(--gold)] hover:bg-[#221808]",
+                          ? "prep-entry-selected"
+                          : "bg-[#1a1008]/90 border-[#5c3e23] hover:border-[#8a6236] hover:bg-[#1e1409]",
                       ].join(" ")}
                     >
-                      <div className="font-heading text-sm text-[var(--text-1)] truncate">
+                      <div className="font-heading text-[13px] text-[var(--text-1)] truncate">
                         {entry.title}
                       </div>
                       {entry.subtitle && (
-                        <div className="text-[11px] text-[var(--gold)] truncate">
+                        <div className="text-[11px] text-[var(--gold)] truncate mt-0.5">
                           {entry.subtitle}
                         </div>
                       )}
                       {entry.description && (
-                        <div className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-0.5">
+                        <div className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-0.5 leading-snug">
                           {entry.description}
                         </div>
                       )}
@@ -236,8 +235,8 @@ export default function PrepPage({
 
       {/* ── RIGHT: Detail panel ────────────────────────────────────── */}
       <aside
-        className="flex-shrink-0 flex flex-col min-h-0 overflow-hidden"
-        style={{ width: "300px" }}
+        className="flex-shrink-0 flex flex-col min-h-0 overflow-hidden detail-workspace"
+        style={{ width: "320px" }}
       >
         {selected ? (
           <DetailPanel
@@ -245,9 +244,12 @@ export default function PrepPage({
             onNavigate={onNavigate}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center p-6">
+          <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3">
+            <div className="w-8 h-8 rounded-full border border-[#3a2510] flex items-center justify-center">
+              <span className="text-[var(--text-2)] text-lg">↖</span>
+            </div>
             <p className="text-xs text-[var(--text-2)] text-center leading-relaxed">
-              Select an entry to view details, relationships, and actions.
+              Select an entry from the list to view details and actions.
             </p>
           </div>
         )}
