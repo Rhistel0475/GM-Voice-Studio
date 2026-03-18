@@ -94,7 +94,7 @@ export default function SessionAssistantPanel({
           </div>
           <div className="session-assistant-suggestions">
             {suggestions.length > 0 ? (
-              suggestions.slice(0, 5).map((suggestion) => (
+              suggestions.slice(0, 3).map((suggestion) => (
                 <article key={suggestion.id} className="session-assistant-card">
                   <div className="session-assistant-card-head">
                     <div className="min-w-0">
@@ -140,7 +140,7 @@ export default function SessionAssistantPanel({
               ))
             ) : (
               <div className="session-assistant-empty">
-                The assistant will surface scene beats, NPC moments, and rules prompts as session context updates.
+                Suggestions appear once the session is active.
               </div>
             )}
           </div>

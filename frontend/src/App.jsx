@@ -26,7 +26,6 @@ import PrepPage from "./pages/PrepPage";
 import VoicePage from "./pages/VoicePage";
 import CampaignPage from "./pages/CampaignPage";
 import NpcVoiceModal from "./components/live-board/NpcVoiceModal";
-import StartSessionPanel from "./components/live-board/StartSessionPanel";
 import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
 import { buildSessionAssistantContext, buildSessionAssistantSuggestions } from "./lib/sessionAssistant";
 
@@ -2122,14 +2121,7 @@ const LiveBoard = ({
         onNarrateAssistantSuggestion={(suggestion) => handleAssistantSuggestionAction(suggestion, "narrate")}
         onIgnoreAssistantSuggestion={handleIgnoreAssistantSuggestion}
         showSessionEmpty={!hasActiveSession}
-        emptyStateContent={
-          <StartSessionPanel
-            authFetch={authFetch}
-            initialCampaign={campaign}
-            onSessionStarted={onSessionStarted}
-            onOpenLibrary={() => onNavigate?.("intake")}
-          />
-        }
+        onNavigateToPrep={() => onNavigate?.("prep")}
       />
       <NpcVoiceModal
         open={npcVoiceModal.open}

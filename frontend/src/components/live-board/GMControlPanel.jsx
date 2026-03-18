@@ -1,24 +1,17 @@
-import EncounterLaunchPanel from "./EncounterLaunchPanel";
-import SceneControlPanel from "./SceneControlPanel";
-import SceneSuggestionsPanel from "./SceneSuggestionsPanel";
-import { getPartyPlaceholder } from "../../lib/placeholders";
-
+/**
+ * Left-column GM panel: Active Scene + Party Roster.
+ *
+ * Active Scene actions:
+ *   PRIMARY  — Narrate (read aloud), Add Twist
+ *   SECONDARY — Expand description (compact text link)
+ *
+ * Removed (not hidden): SceneControlPanel, EncounterLaunchPanel, SceneSuggestionsPanel
+ */
 export default function GMControlPanel({
   campaignData,
   scene,
   selectedNpcName,
   onSelectNpc,
-  onTriggerScene,
-  activeTriggerName = "",
-  triggerSceneError = "",
-  sceneSuggestions = [],
-  sceneSuggestionsLoading = false,
-  sceneSuggestionsError = "",
-  onActivateSuggestedScene,
-  activeSuggestedSceneId = "",
-  onLaunchEncounter,
-  isLaunchingEncounter = false,
-  launchEncounterError = "",
   onNarrateScene,
   isNarratingScene = false,
   narrateSceneError = "",
@@ -29,69 +22,40 @@ export default function GMControlPanel({
 }) {
   const party = campaignData?.party || [];
   const allNpcs = campaignData?.npcs || [];
-  const sceneNpcs = (scene?.npcs || []).map((npcName) => allNpcs.find((n) => n.name === npcName)).filter(Boolean);
-  const allItems = campaignData?.items || [];
-  const sceneItems = (scene?.items || []).map((itemName) => allItems.find((i) => i.name === itemName)).filter(Boolean);
-  const allReveals = campaignData?.reveals || [];
-  const sceneReveals = (scene?.reveals || []).map((revealName) => allReveals.find((r) => r.name === revealName)).filter(Boolean);
+  const sceneNpcs = (scene?.npcs || [])
+    .map((name) => allNpcs.find((n) => n.name === name))
+    .filter(Boolean);
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-3">
-      <SceneControlPanel
-        scene={scene}
-        onTrigger={onTriggerScene}
-        busyTriggerName={activeTriggerName}
-        triggerError={triggerSceneError}
-      />
+    <div className="flex flex-col gap-3">
 
-      <EncounterLaunchPanel
-        scene={scene}
-        onLaunch={onLaunchEncounter}
-        isLaunching={isLaunchingEncounter}
-        error={launchEncounterError}
-      />
-
-      <SceneSuggestionsPanel
-        suggestions={sceneSuggestions}
-        isLoading={sceneSuggestionsLoading}
-        error={sceneSuggestionsError}
-        onActivate={onActivateSuggestedScene}
-        busySceneId={activeSuggestedSceneId}
-      />
-
-      <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden">
+      {/* ── Active Scene ───────────────────────────────────────────── */}
+      <section className="panel-ornate rounded-lg overflow-hidden">
         <div className="panel-head">
           <div className="plaque">Active Scene</div>
         </div>
-        <div className="panel-body space-y-2 overflow-y-auto min-h-[160px] max-h-[320px]">
+        <div className="panel-body space-y-2">
           {scene ? (
-            <div className="rounded border border-[#5c3e23] bg-[#1a1008]/70 p-2 space-y-2">
-              <div className="font-heading text-sm text-[var(--text-1)]">
-                {scene.title || scene.name || "Active Scene"}
+            <>
+              <div className="font-heading text-sm text-[var(--text-1)] leading-tight">
+                {scene.title || scene.name || "Scene"}
               </div>
               {scene.location ? (
-                <div className="text-[11px] uppercase tracking-[0.14em] text-[#9b7440]">
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[#9b7440]">
                   {scene.location}
                 </div>
               ) : null}
-              <div className="grid grid-cols-1 gap-1.5">
+
+              {/* Primary actions — 2 columns */}
+              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
                 <button
                   type="button"
                   className="scene-trigger-btn"
                   onClick={() => onNarrateScene?.(scene)}
                   disabled={!onNarrateScene || isNarratingScene}
                 >
-                  <span>{isNarratingScene ? "Working..." : "Read Aloud"}</span>
-                  <span className="scene-trigger-type">narration</span>
-                </button>
-                <button
-                  type="button"
-                  className="scene-trigger-btn"
-                  onClick={() => onExpandSceneDescription?.()}
-                  disabled={!onExpandSceneDescription || sceneActionBusy === "expand"}
-                >
-                  <span>{sceneActionBusy === "expand" ? "Working..." : "Expand Description"}</span>
-                  <span className="scene-trigger-type">scene</span>
+                  <span>{isNarratingScene ? "Working…" : "Narrate"}</span>
+                  <span className="scene-trigger-type">read aloud</span>
                 </button>
                 <button
                   type="button"
@@ -99,75 +63,80 @@ export default function GMControlPanel({
                   onClick={() => onAddSceneTwist?.()}
                   disabled={!onAddSceneTwist || sceneActionBusy === "twist"}
                 >
-                  <span>{sceneActionBusy === "twist" ? "Working..." : "Add Twist"}</span>
+                  <span>{sceneActionBusy === "twist" ? "Working…" : "Add Twist"}</span>
                   <span className="scene-trigger-type">twist</span>
                 </button>
               </div>
-              {narrateSceneError ? <div className="text-xs text-red-400">{narrateSceneError}</div> : null}
-              {sceneActionError ? <div className="text-xs text-red-400">{sceneActionError}</div> : null}
-            </div>
-          ) : null}
-          {sceneNpcs.map((npc) => (
-            <button
-              key={npc.name}
-              type="button"
-              className={`tracker-row w-full text-left cursor-pointer ${selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""}`}
-              onClick={() => onSelectNpc(npc.name)}
-            >
-              <span className="encounter-name">{npc.name}</span>
-              <span className="text-[#9b7440] text-xs">{npc.role}</span>
-            </button>
-          ))}
-          {sceneItems.map((item) => (
-            <div key={item.name} className="tracker-row w-full text-left">
-              <span className="encounter-name">{item.name}</span>
-              <span className="text-[#9b7440] text-xs">Item</span>
-            </div>
-          ))}
-          {sceneReveals.map((reveal) => (
-            <div key={reveal.name} className="tracker-row w-full text-left">
-              <span className="encounter-name">{reveal.name}</span>
-              <span className="text-[#9b7440] text-xs capitalize">{reveal.type}</span>
-            </div>
-          ))}
-          {sceneNpcs.length === 0 && sceneItems.length === 0 && sceneReveals.length === 0 && (
-            <div className="intake-empty text-xs">No NPCs, items, or reveals in this scene.</div>
+
+              {/* Secondary action — compact text link */}
+              <button
+                type="button"
+                className="block w-full text-center text-[10px] text-[#7a5a30] hover:text-[#c8a050] transition-colors disabled:opacity-40"
+                onClick={() => onExpandSceneDescription?.()}
+                disabled={!onExpandSceneDescription || sceneActionBusy === "expand"}
+              >
+                {sceneActionBusy === "expand" ? "Expanding…" : "Expand description"}
+              </button>
+
+              {narrateSceneError ? (
+                <div className="text-[10px] text-red-400">{narrateSceneError}</div>
+              ) : null}
+              {sceneActionError ? (
+                <div className="text-[10px] text-red-400">{sceneActionError}</div>
+              ) : null}
+
+              {/* NPC selector rows */}
+              {sceneNpcs.length > 0 ? (
+                <div className="pt-1 border-t border-[#3a2510] space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.13em] text-[var(--text-2)]">NPCs</div>
+                  {sceneNpcs.map((npc) => (
+                    <button
+                      key={npc.name}
+                      type="button"
+                      className={`tracker-row w-full text-left cursor-pointer ${
+                        selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""
+                      }`}
+                      onClick={() => onSelectNpc?.(selectedNpcName === npc.name ? null : npc.name)}
+                    >
+                      <span className="encounter-name text-xs">{npc.name}</span>
+                      {npc.role ? (
+                        <span className="text-[#9b7440] text-[10px]">{npc.role}</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="text-xs text-[var(--text-2)] italic">No scene loaded.</div>
           )}
         </div>
       </section>
 
+      {/* ── Party Roster ───────────────────────────────────────────── */}
       {party.length > 0 && (
-        <section className="panel-ornate min-h-0 flex flex-col rounded-lg overflow-hidden flex-shrink-0">
+        <section className="panel-ornate rounded-lg overflow-hidden flex-shrink-0">
           <div className="panel-head">
-            <div className="plaque">Party Roster</div>
+            <div className="plaque">Party</div>
           </div>
-          <div className="panel-body">
-            <div className="grid grid-cols-2 gap-1">
-              {party.slice(0, 4).map((char) => {
-                const portraitSrc = getPartyPlaceholder();
-                return (
-                  <article key={char.name} className="party-card">
-                    <div
-                      className="party-face"
-                      style={{ backgroundImage: `url(${portraitSrc})`, backgroundSize: "cover", backgroundPosition: "center" }}
-                    />
-                    <div className="party-meta">
-                      <div className="name text-sm">{char.name}</div>
-                      <div className="stats text-xs">
-                        {char.hp !== "—" ? (
-                          <>HP {char.hp} <span>/ AC {char.ac}</span></>
-                        ) : (
-                          <span className="text-[#6b5030]">—</span>
-                        )}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
+          <div className="panel-body space-y-1">
+            {party.slice(0, 4).map((char) => (
+              <div
+                key={char.name}
+                className="flex items-center justify-between text-xs py-0.5"
+              >
+                <span className="font-heading text-[var(--text-1)] text-[11px] tracking-wide">
+                  {char.name}
+                </span>
+                <span className="text-[#9b7440] text-[10px] tabular-nums">
+                  {char.hp !== "—" ? `HP ${char.hp}` : "—"}
+                </span>
+              </div>
+            ))}
           </div>
         </section>
       )}
+
     </div>
   );
 }
