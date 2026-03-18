@@ -1,5 +1,4 @@
 import WorkspaceContainer from "../components/layout/WorkspaceContainer";
-import SessionStream from "../components/live-board/SessionStream";
 import SessionAssistantPanel from "../components/live-board/SessionAssistantPanel";
 import { FantasyButton, LiveBoardEmptyState } from "../components/shared";
 import { deriveNpcTone } from "../lib/sessionAssistant";
@@ -51,7 +50,6 @@ export default function LiveBoardPage({
   onRunAssistantSuggestion,
   onNarrateAssistantSuggestion,
   onIgnoreAssistantSuggestion,
-  middleColumn,
   showSessionEmpty = false,
   emptyStateContent = null,
 }) {
@@ -290,16 +288,12 @@ export default function LiveBoardPage({
             </section>
           )}
 
-          {/* Panel 4: Session stream — Co-GM input, narration log, audio */}
-          <div className="min-h-0 flex-1 min-w-0 overflow-hidden">
-            {showSessionEmpty ? (
-              <div className="h-full flex items-center justify-center p-4">
-                {emptyStateContent || <LiveBoardEmptyState />}
-              </div>
-            ) : (
-              <SessionStream>{middleColumn}</SessionStream>
-            )}
-          </div>
+          {/* Empty state — shown before a session is started */}
+          {showSessionEmpty && (
+            <div className="min-h-0 flex-1 flex items-center justify-center p-4">
+              {emptyStateContent || <LiveBoardEmptyState />}
+            </div>
+          )}
 
         </main>
 
