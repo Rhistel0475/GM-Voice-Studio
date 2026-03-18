@@ -31,7 +31,7 @@ export default function EncounterLaunchPanel({
           disabled={disabled}
         >
           <div className="font-heading text-sm uppercase tracking-[0.18em] text-[#e8c787]">
-            {isLaunching ? "Launching Encounter..." : "Launch Encounter"}
+            {isLaunching ? "Starting Combat..." : "Start Combat"}
           </div>
           <div className="mt-1 text-[11px] uppercase tracking-[0.16em] text-[#9b7440]">
             {sceneTitle}

@@ -1454,6 +1454,9 @@ class SessionAssistantAnalyzeRequest(BaseModel):
     transcript_entries: list[str]
     scene_title: str = ""
     scene_summary: str = ""
+    location_name: str = ""
+    active_quests: list[str] = Field(default_factory=list)
+    recent_events: list[str] = Field(default_factory=list)
     npcs: list[dict] = Field(default_factory=list)
 
 
@@ -1494,6 +1497,9 @@ async def session_assistant_analyze(
             transcript_entries=req.transcript_entries,
             scene_title=req.scene_title,
             scene_summary=req.scene_summary,
+            location_name=req.location_name,
+            active_quests=req.active_quests,
+            recent_events=req.recent_events,
             npcs=req.npcs,
         )
     except RuntimeError as e:

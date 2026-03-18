@@ -27,7 +27,7 @@ export default function SettingsPage() {
       <ParchmentCard title="API Key">
         <p className="text-sm text-[var(--text-2)] mb-2">
           {requireApiKey
-            ? "The server requires an API key. Enter it below to use Co-DM, voice, and AI features."
+            ? "The server requires an API key. Enter it below to use Co-GM, voice, and AI features."
             : "Optional. If the server is configured to require an API key, enter it here."}
         </p>
         <label className="field-wrap block">

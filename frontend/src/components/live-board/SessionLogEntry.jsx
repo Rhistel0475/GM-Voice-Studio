@@ -13,7 +13,7 @@ const roleLabels = {
 
 export default function SessionLogEntry({ entry }) {
   const style = roleStyles[entry.role] ?? "border-[#37553e] bg-[#102016] text-[#d4f0cf]";
-  const label = roleLabels[entry.role] ?? "Co-DM";
+  const label = roleLabels[entry.role] ?? "Co-GM";
   return (
     <div className={`rounded border px-2 py-1 text-xs ${style}`}>
       <div className="mb-0.5 flex items-center justify-between">

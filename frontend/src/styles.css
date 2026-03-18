@@ -1237,10 +1237,10 @@ button.tracker-row:hover:not(.is-active) {
 
 /* ── Session Assistant Panel ─────────────────────────────────────────────── */
 
-.session-assistant-panel {
-  border: 1px solid #5b3e23;
-  border-radius: 4px;
-  overflow: hidden;
+.session-assistant-shell .panel-body {
+  background:
+    radial-gradient(circle at top right, rgba(202, 167, 75, 0.08), transparent 36%),
+    linear-gradient(180deg, rgba(22, 13, 8, 0.96), rgba(14, 9, 5, 0.96));
 }
 
 .session-assistant-header {
@@ -1266,18 +1266,42 @@ button.tracker-row:hover:not(.is-active) {
   padding: 0;
 }
 
-.session-assistant-body {
-  padding: 8px 10px;
-  background: #130e08;
-  border-top: 1px solid #3a2510;
+.session-assistant-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.session-assistant-section-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: "Cinzel", serif;
+  font-size: 10px;
+  color: #b88f52;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.session-assistant-suggestions,
+.session-assistant-log,
+.session-assistant-context-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.session-assistant-suggestions {
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
 .session-assistant-transcript,
-.session-assistant-recent,
-.session-assistant-card {
+.session-assistant-card,
+.session-assistant-context-card,
+.session-assistant-log-item,
+.session-npc-card {
   border: 1px solid #4f341f;
   background: #161009;
   border-radius: 4px;
@@ -1285,43 +1309,60 @@ button.tracker-row:hover:not(.is-active) {
 }
 
 .session-assistant-transcript-label,
-.session-assistant-recent-label {
+.session-assistant-context-label,
+.session-assistant-log-meta {
   font-family: "Cinzel", serif;
   font-size: 10px;
   color: #8a7050;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin-bottom: 4px;
 }
 
 .session-assistant-transcript-text,
-.session-assistant-recent-item,
-.session-assistant-card-text {
+.session-assistant-card-text,
+.session-assistant-context-body,
+.session-assistant-context-meta,
+.session-assistant-log-text,
+.session-npc-card-info {
   font-family: "Crimson Text", serif;
   font-size: 13px;
   color: #d7b77d;
   line-height: 1.45;
 }
 
-.session-assistant-recent-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.session-assistant-context-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
-.session-assistant-suggestions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.session-assistant-context-label,
+.session-assistant-log-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .session-assistant-card-head {
   display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 6px;
   flex-wrap: wrap;
+}
+
+.session-assistant-card-title,
+.session-npc-card-name {
+  font-family: "Cinzel", serif;
+  font-size: 13px;
+  color: #ebcb8d;
+}
+
+.session-assistant-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .session-assistant-card-type,
@@ -1344,6 +1385,8 @@ button.tracker-row:hover:not(.is-active) {
   margin-top: 8px;
   display: flex;
   justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .session-assistant-empty,
@@ -1360,6 +1403,72 @@ button.tracker-row:hover:not(.is-active) {
 
 .session-assistant-error {
   color: #bf6d6d;
+}
+
+.session-assistant-empty--inline {
+  text-align: left;
+  padding: 0;
+}
+
+.session-assistant-context-name {
+  font-family: "Cinzel", serif;
+  font-size: 12px;
+  color: #e5c483;
+}
+
+.session-assistant-context-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-assistant-log {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.session-assistant-log-item {
+  background: rgba(26, 17, 10, 0.92);
+}
+
+.session-assistant-log-meta {
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.session-npc-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.session-npc-card:hover,
+.session-npc-card.is-active {
+  border-color: #a98244;
+  box-shadow: 0 0 12px rgba(202, 167, 75, 0.14);
+}
+
+.session-npc-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.session-npc-card-tone {
+  font-size: 11px;
+  color: #9b7440;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.session-npc-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 /* ── Extraction Review Queue ────────────────────────────────────────────────── */

@@ -254,6 +254,9 @@ def analyze_session_context(
     transcript_entries: list[str],
     scene_title: str = "",
     scene_summary: str = "",
+    location_name: str = "",
+    active_quests: Optional[list[str]] = None,
+    recent_events: Optional[list[str]] = None,
     npcs: Optional[list[dict[str, Any]]] = None,
 ) -> list[dict[str, str]]:
     """
@@ -305,8 +308,9 @@ def analyze_session_context(
         '"action_prompt":"question to send to the GM assistant for rule/lore help, else empty string"}'
         "]}\n\n"
         "Rules:\n"
-        "- Return 0 to 4 suggestions.\n"
+        "- Return 3 to 5 suggestions when there is enough context; otherwise return as many strong suggestions as you can.\n"
         "- Prefer concrete opportunities over vague advice.\n"
+        "- Use the scene, location, quest, NPC, and recent-event context together.\n"
         "- npc_dialogue must use an NPC name exactly from the provided NPC list.\n"
         "- narration should be one or two spoken sentences.\n"
         "- rule_check should identify a likely check, save, or ruling question.\n"
@@ -314,8 +318,13 @@ def analyze_session_context(
         "- Do not include markdown fences.\n\n"
         f"Scene title: {scene_title.strip() or 'Unknown scene'}\n"
         f"Scene summary: {scene_summary.strip() or 'No summary provided.'}\n"
+        f"Location: {location_name.strip() or 'Unknown location'}\n"
+        "Active quests:\n"
+        f"{chr(10).join(f'- {str(item).strip()}' for item in (active_quests or []) if str(item).strip()) or '- None provided'}\n\n"
         "NPCs in play:\n"
         f"{chr(10).join(npc_rows) if npc_rows else '- None provided'}\n\n"
+        "Recent session events:\n"
+        f"{chr(10).join(f'- {str(item).strip()}' for item in (recent_events or [])[-6:] if str(item).strip()) or '- None provided'}\n\n"
         "Recent transcript entries:\n"
         + "\n".join(f"- {line}" for line in transcript_lines[-8:])
     )
@@ -349,7 +358,7 @@ def analyze_session_context(
     allowed_types = {"npc_dialogue", "narration", "rule_check", "lore_reference"}
     normalized: list[dict[str, str]] = []
 
-    for item in raw_suggestions[:4]:
+    for item in raw_suggestions[:5]:
         if not isinstance(item, dict):
             continue
         suggestion_type = str(item.get("type") or "").strip().lower()

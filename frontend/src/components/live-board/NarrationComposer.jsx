@@ -5,7 +5,7 @@ export default function NarrationComposer({
   onChange,
   onSubmit,
   disabled,
-  placeholder = "Ask Co-DM...",
+  placeholder = "Ask Co-GM...",
 }) {
   return (
     <div className="flex gap-2">

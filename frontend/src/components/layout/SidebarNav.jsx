@@ -1,14 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Book, Users, Volume2, LayoutDashboard, Settings } from "lucide-react";
+import { LayoutDashboard, BookOpen, Volume2, Map } from "lucide-react";
 
 const navItems = [
-  { to: "/", label: "Live Board", icon: LayoutDashboard },
-  { to: "/codex", label: "Campaign Codex", icon: Book },
-  { to: "/npcs", label: "NPC Workshop", icon: Users },
-  { to: "/voices", label: "Voice Studio", icon: Volume2 },
-  { to: "/prep", label: "Prep Room", icon: Book },
-  { to: "/intake", label: "Library", icon: Book },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/", label: "Live", icon: LayoutDashboard },
+  { to: "/prep", label: "Prep", icon: BookOpen },
+  { to: "/voices", label: "Voices", icon: Volume2 },
+  { to: "/campaign", label: "Campaign", icon: Map },
 ];
 
 export default function SidebarNav() {

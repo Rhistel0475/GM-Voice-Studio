@@ -21,16 +21,18 @@ import CommandPalette from "./components/layout/CommandPalette";
 import LiveBoardPage from "./app/live-board";
 import CodexPage from "./app/codex";
 import NPCWorkshopPage from "./app/npcs";
-import VoiceStudioPage from "./app/voices";
 import SettingsPage from "./pages/SettingsPage";
+import PrepPage from "./pages/PrepPage";
+import VoicePage from "./pages/VoicePage";
+import CampaignPage from "./pages/CampaignPage";
 import SessionLog from "./components/live-board/SessionLog";
 import AudioPlaybackCard from "./components/live-board/AudioPlaybackCard";
 import AiNarrateButton from "./components/live-board/AiNarrateButton";
 import SceneDirectorPanel from "./components/live-board/SceneDirectorPanel";
 import NpcVoiceModal from "./components/live-board/NpcVoiceModal";
-import SessionAssistantPanel from "./components/live-board/SessionAssistantPanel";
 import StartSessionPanel from "./components/live-board/StartSessionPanel";
 import { addSessionLogEntry } from "./lib/liveboardCampaignContext";
+import { buildSessionAssistantContext, buildSessionAssistantSuggestions } from "./lib/sessionAssistant";
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null }; }
@@ -85,6 +87,7 @@ const pathToView = (path) => {
   if (p === "/settings") return "settings";
   if (p === "/prep") return "prep";
   if (p === "/intake") return "intake";
+  if (p === "/campaign") return "campaign";
   return "live";
 };
 
@@ -96,6 +99,7 @@ const viewToPath = {
   settings: "/settings",
   prep: "/prep",
   intake: "/intake",
+  campaign: "/campaign",
 };
 const buildWebSocketUrl = (path) => {
   if (typeof window === "undefined") return "";
@@ -216,18 +220,7 @@ const MiddleColumn = ({
   narrateSceneError = "",
   onSpeakNpc,
   onGenerateNpcResponse,
-  assistantSupported = false,
-  assistantListening = false,
-  assistantAnalyzing = false,
-  assistantError = "",
   assistantPartialTranscript = "",
-  assistantSuggestions = [],
-  assistantRecentEntries = [],
-  assistantActionBusyId = "",
-  onStartAssistantListening,
-  onStopAssistantListening,
-  onAnalyzeAssistant,
-  onRunAssistantSuggestion,
   authFetch,
   actionLog,
   onLogEntry,
@@ -497,22 +490,6 @@ const MiddleColumn = ({
                   onLogEntry={onLogEntry}
                 />
               </div>
-              <div className="mt-2">
-                <SessionAssistantPanel
-                  supported={assistantSupported}
-                  listening={assistantListening}
-                  analyzing={assistantAnalyzing}
-                  error={assistantError}
-                  partialTranscript={assistantPartialTranscript}
-                  suggestions={assistantSuggestions}
-                  recentEntries={assistantRecentEntries}
-                  actionBusyId={assistantActionBusyId}
-                  onStartListening={onStartAssistantListening}
-                  onStopListening={onStopAssistantListening}
-                  onAnalyzeNow={onAnalyzeAssistant}
-                  onRunSuggestion={onRunAssistantSuggestion}
-                />
-              </div>
               {scene.notes && (
                 <div className="text-xs text-[#7a5a30] italic mt-2 px-1">{scene.notes}</div>
               )}
@@ -547,7 +524,7 @@ const MiddleColumn = ({
               <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Ask Co-DM…"
+                  placeholder="Ask Co-GM…"
                   className="chat-input flex-1"
                   value={coDmQuery}
                   onChange={(e) => onChangeCoDmQuery(e.target.value)}
@@ -725,7 +702,9 @@ const LiveBoard = ({
   const [assistantPartialTranscript, setAssistantPartialTranscript] = useState("");
   const [assistantSuggestions, setAssistantSuggestions] = useState([]);
   const [assistantActionBusyId, setAssistantActionBusyId] = useState("");
-  const [assistantRecentEntries, setAssistantRecentEntries] = useState([]);
+  const [ignoredAssistantSuggestionIds, setIgnoredAssistantSuggestionIds] = useState([]);
+  const [sceneActionBusy, setSceneActionBusy] = useState("");
+  const [sceneActionError, setSceneActionError] = useState("");
   const [npcVoiceModal, setNpcVoiceModal] = useState({
     open: false,
     mode: "speak",
@@ -792,6 +771,21 @@ const LiveBoard = ({
       .find((entry) => String(entry?.role || "").toLowerCase() === "player" && String(entry?.text || "").trim());
     return recentPlayerEntry ? String(recentPlayerEntry.text).trim() : "";
   }, [actionLog]);
+  const assistantContext = useMemo(() => buildSessionAssistantContext({
+    campaign,
+    scene,
+    actionLog,
+  }), [actionLog, campaign, scene]);
+  const visibleAssistantSuggestions = useMemo(() => {
+    const suggestions = buildSessionAssistantSuggestions({
+      aiSuggestions: assistantSuggestions,
+      context: assistantContext,
+      scene,
+    });
+    if (!ignoredAssistantSuggestionIds.length) return suggestions;
+    const ignored = new Set(ignoredAssistantSuggestionIds);
+    return suggestions.filter((suggestion) => !ignored.has(suggestion.id));
+  }, [assistantContext, assistantSuggestions, ignoredAssistantSuggestionIds, scene]);
   const appendActionLogLocal = useCallback((role, text, meta = "") => {
     if (!text) return;
     const entry = {
@@ -1141,17 +1135,90 @@ const LiveBoard = ({
     return firstVoice.voice_id;
   }, [authFetch]);
 
+  const narrateText = useCallback(async (text, meta = "Session Assistant") => {
+    const narrationText = String(text || "").trim();
+    if (!narrationText) return;
+
+    setAudioStatus("loading");
+    const voiceId = scene?.narrator_voice_id || scene?.narratorVoiceId || await resolveNarrationVoiceId();
+    const response = await authFetch("/tts/narrate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: narrationText, voice_id: voiceId }),
+    });
+    if (!response.ok) {
+      throw new Error((await response.text()) || "Narration failed.");
+    }
+    const blob = await response.blob();
+    appendSessionEntry("assistant", "narration", narrationText, meta);
+    await playAudioBlob(blob);
+  }, [appendSessionEntry, authFetch, playAudioBlob, resolveNarrationVoiceId, scene?.narratorVoiceId, scene?.narrator_voice_id]);
+
+  const runSceneBrainAction = useCallback(async (mode) => {
+    if (!scene) return;
+
+    const sceneTitle = scene?.title || "Current scene";
+    const npcNames = assistantContext.npcsInScene.map((npc) => npc.name).join(", ");
+    const questNames = assistantContext.activeQuests.map((quest) => quest.name).join(", ");
+    const recentEvents = assistantContext.recentEvents.slice(0, 3).map((entry) => entry.text).join(" | ");
+
+    const prompt = mode === "twist"
+      ? [
+          `Give the GM one strong twist or complication for the scene "${sceneTitle}".`,
+          assistantContext.currentLocation ? `Location: ${assistantContext.currentLocation}.` : "",
+          npcNames ? `NPCs present: ${npcNames}.` : "",
+          questNames ? `Active quests: ${questNames}.` : "",
+          recentEvents ? `Recent events: ${recentEvents}.` : "",
+          "Return only 2-3 concise sentences the GM can use immediately.",
+        ].filter(Boolean).join(" ")
+      : [
+          `Expand the scene "${sceneTitle}" into a vivid read-aloud description for the GM.`,
+          assistantContext.currentLocation ? `Location: ${assistantContext.currentLocation}.` : "",
+          npcNames ? `NPCs present: ${npcNames}.` : "",
+          questNames ? `Active quests: ${questNames}.` : "",
+          recentEvents ? `Recent events: ${recentEvents}.` : "",
+          "Keep it to 3-4 sentences. Return only the description text.",
+        ].filter(Boolean).join(" ");
+
+    setSceneActionBusy(mode);
+    setSceneActionError("");
+    try {
+      const response = await authFetch("/brain/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: prompt }),
+      });
+      if (!response.ok) {
+        throw new Error((await response.text()) || "Scene assistant action failed.");
+      }
+      const payload = await response.json().catch(() => ({}));
+      const content = String(payload?.content || payload?.text || "").trim();
+      if (!content) {
+        throw new Error("Scene assistant returned no usable text.");
+      }
+      appendSessionEntry(
+        "assistant",
+        mode === "twist" ? "system" : "narration",
+        content,
+        mode === "twist" ? "Add Twist" : "Expand Description",
+      );
+    } catch (error) {
+      setSceneActionError(error?.message || "Scene assistant action failed.");
+    } finally {
+      setSceneActionBusy("");
+    }
+  }, [appendSessionEntry, assistantContext, authFetch, scene]);
+
   const getAssistantContextPayload = useCallback((transcriptEntries) => {
     const recentEntries = (transcriptEntries || []).filter(Boolean).slice(-8);
-    const allNpcs = campaign?.npcs || [];
-    const sceneNpcNames = scene?.npcs || [];
-    const sceneNpcs = sceneNpcNames.length
-      ? sceneNpcNames.map((name) => allNpcs.find((npc) => npc.name === name)).filter(Boolean)
-      : allNpcs.slice(0, 8);
+    const sceneNpcs = assistantContext.npcsInScene.map((npc) => npc.raw).filter(Boolean);
     return {
       transcript_entries: recentEntries,
       scene_title: scene?.title || "",
       scene_summary: scene?.read_aloud || scene?.summary || scene?.notes || "",
+      location_name: assistantContext.currentLocation || "",
+      active_quests: assistantContext.activeQuests.map((quest) => quest.name),
+      recent_events: assistantContext.recentEvents.map((entry) => entry.text),
       npcs: sceneNpcs.map((npc) => ({
         id: npc.id,
         name: npc.name,
@@ -1159,7 +1226,7 @@ const LiveBoard = ({
         description: npc.description || npc.personality || npc.summary || "",
       })),
     };
-  }, [campaign?.npcs, scene]);
+  }, [assistantContext, scene]);
 
   const runSessionAssistantAnalysis = useCallback(async (transcriptEntries, { force = false } = {}) => {
     const entries = (transcriptEntries || []).filter(Boolean).slice(-8);
@@ -1257,7 +1324,6 @@ const LiveBoard = ({
             appendSessionEntry("player", "player", transcript, "Session Assistant");
             const nextEntries = [...assistantRecentEntriesRef.current, transcript].slice(-8);
             assistantRecentEntriesRef.current = nextEntries;
-            setAssistantRecentEntries(nextEntries);
             assistantPendingEntriesRef.current += 1;
             if (assistantPendingEntriesRef.current >= 3) {
               assistantPendingEntriesRef.current = 0;
@@ -1601,6 +1667,8 @@ const LiveBoard = ({
   useEffect(() => {
     setSceneTriggerError("");
     setActiveSceneTriggerName("");
+    setSceneActionBusy("");
+    setSceneActionError("");
   }, [scene?.id, scene?.title]);
 
   useEffect(() => {
@@ -1718,7 +1786,7 @@ const LiveBoard = ({
         const response = await authFetch("/npc/generate-dialogue", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ npc_id: String(npcId), player_input: value }),
+          body: JSON.stringify({ npc_id: String(npcId), player_input: value, scene_id: scene?.id }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -1759,7 +1827,7 @@ const LiveBoard = ({
         error: error?.message || "NPC voice action failed.",
       }));
     }
-  }, [appendSessionEntry, authFetch, npcVoiceModal, playAudioBlob, playBase64Audio]);
+  }, [appendSessionEntry, authFetch, npcVoiceModal, playAudioBlob, playBase64Audio, scene?.id]);
 
   const preferredPaletteNpc = resolvePreferredNpc(campaign, scene, selectedNpcName);
 
@@ -1838,11 +1906,45 @@ const LiveBoard = ({
   useEffect(() => {
     assistantRecentEntriesRef.current = [];
     assistantPendingEntriesRef.current = 0;
-    setAssistantRecentEntries([]);
+    setIgnoredAssistantSuggestionIds([]);
     setAssistantSuggestions([]);
     setAssistantPartialTranscript("");
     setAssistantError("");
   }, [scene?.id, scene?.title]);
+
+  useEffect(() => {
+    if (!hasActiveSession || !scene) return undefined;
+
+    const transcriptEntries = assistantContext.recentEvents
+      .slice(0, 6)
+      .map((entry) => String(entry?.text || "").trim())
+      .filter(Boolean)
+      .reverse();
+
+    if (!transcriptEntries.length && !scene?.summary && !scene?.read_aloud) return undefined;
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      void runSessionAssistantAnalysis(
+        transcriptEntries.length ? transcriptEntries : [scene?.summary || scene?.read_aloud || scene?.title || "Current scene context"],
+        { force: true },
+      );
+    }, 700);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    assistantContext,
+    hasActiveSession,
+    runSessionAssistantAnalysis,
+    scene?.id,
+    scene?.read_aloud,
+    scene?.summary,
+    scene?.title,
+  ]);
 
   useEffect(() => () => {
     stopAssistantListening();
@@ -2160,20 +2262,100 @@ const LiveBoard = ({
   }, [appendActionLog, authFetch, autoQueryOnVoice]);
 
   const analyzeAssistantNow = useCallback(() => {
-    void runSessionAssistantAnalysis(assistantRecentEntriesRef.current, { force: true });
-  }, [runSessionAssistantAnalysis]);
+    const fallbackEntries = assistantContext.recentEvents
+      .slice(0, 6)
+      .map((entry) => String(entry?.text || "").trim())
+      .filter(Boolean)
+      .reverse();
+    void runSessionAssistantAnalysis(
+      assistantRecentEntriesRef.current.length ? assistantRecentEntriesRef.current : fallbackEntries,
+      { force: true },
+    );
+  }, [assistantContext.recentEvents, runSessionAssistantAnalysis]);
 
-  const handleAssistantSuggestionAction = useCallback(async (suggestion) => {
+  const handleNpcWhisper = useCallback(async (npc, { busyId = "" } = {}) => {
+    if (!npc) return;
+    const prompt = [
+      "Offer a brief in-character whisper or private aside for the GM.",
+      scene?.title ? `Scene: ${scene.title}.` : "",
+      assistantContext.currentLocation ? `Location: ${assistantContext.currentLocation}.` : "",
+      "Keep it to one or two sentences.",
+    ].filter(Boolean).join(" ");
+
+    setAssistantActionBusyId(String(busyId || npc?.id || npc?.name || "npc-whisper"));
+    setAssistantError("");
+    try {
+      const response = await authFetch("/npc/generate-dialogue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          npc_id: String(npc.id || npc.name),
+          player_input: prompt,
+          scene_id: scene?.id,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.detail || payload?.error || "NPC whisper failed.");
+      }
+      const generatedLine = `${npc.name || "NPC"}: ${payload.generated_text || ""}`.trim();
+      appendSessionEntry("assistant", "npc", generatedLine, "Whisper");
+      if (payload.audio_base64) {
+        await playBase64Audio(payload.audio_base64, payload.mime_type || "audio/wav");
+      }
+    } catch (error) {
+      setAssistantError(error?.message || "NPC whisper failed.");
+    } finally {
+      setAssistantActionBusyId("");
+    }
+  }, [appendSessionEntry, assistantContext.currentLocation, authFetch, playBase64Audio, scene?.id, scene?.title]);
+
+  const handleAssistantSuggestionAction = useCallback(async (suggestion, mode = "run") => {
     if (!suggestion || !suggestion.id || assistantActionBusyId) return;
     setAssistantActionBusyId(suggestion.id);
     setAssistantError("");
 
     try {
-      if (suggestion.type === "npc_dialogue") {
-        const npc = (campaign?.npcs || []).find((item) => item.name === suggestion.npc_name);
-        if (!npc) throw new Error(`NPC not found for suggestion: ${suggestion.npc_name || "Unknown NPC"}`);
+      if (mode === "narrate") {
+        const narrationText = String(suggestion?.narrateText || suggestion?.description || "").trim();
+        if (!narrationText) throw new Error("No narration text returned for this suggestion.");
+        await narrateText(narrationText, suggestion.title || "Session Assistant");
+        return;
+      }
 
-        const spokenText = (suggestion.spoken_text || suggestion.text || "").trim();
+      const runAction = suggestion?.runAction || {};
+      if (runAction.kind === "narrate_scene") {
+        await handleNarrateScene(scene);
+        return;
+      }
+
+      if (runAction.kind === "expand_scene_description") {
+        await runSceneBrainAction("expand");
+        return;
+      }
+
+      if (runAction.kind === "add_scene_twist") {
+        await runSceneBrainAction("twist");
+        return;
+      }
+
+      if (runAction.kind === "start_combat") {
+        await handleLaunchEncounter();
+        return;
+      }
+
+      if (runAction.kind === "npc_whisper") {
+        const npc = (campaign?.npcs || []).find((item) => item.name === runAction.npcName);
+        if (!npc) throw new Error(`NPC not found for suggestion: ${runAction.npcName || "Unknown NPC"}`);
+        await handleNpcWhisper(npc, { busyId: suggestion.id });
+        return;
+      }
+
+      if (runAction.kind === "npc_dialogue") {
+        const npc = (campaign?.npcs || []).find((item) => item.name === runAction.npcName);
+        if (!npc) throw new Error(`NPC not found for suggestion: ${runAction.npcName || "Unknown NPC"}`);
+
+        const spokenText = String(runAction.text || "").trim();
         if (!spokenText) throw new Error("No dialogue text returned for this suggestion.");
 
         const response = await authFetch("/tts/npc-dialogue", {
@@ -2185,31 +2367,19 @@ const LiveBoard = ({
           throw new Error((await response.text()) || "NPC voice failed.");
         }
         const blob = await response.blob();
-        appendSessionEntry("assistant", "npc", `${npc.name}: ${spokenText}`, "Session Assistant");
+        appendSessionEntry("assistant", "npc", `${npc.name}: ${spokenText}`, suggestion.title || "Session Assistant");
         await playAudioBlob(blob);
         return;
       }
 
-      if (suggestion.type === "narration") {
-        const voiceId = await resolveNarrationVoiceId();
-        const narrationText = (suggestion.spoken_text || suggestion.text || "").trim();
+      if (runAction.kind === "narrate_text") {
+        const narrationText = String(runAction.text || "").trim();
         if (!narrationText) throw new Error("No narration text returned for this suggestion.");
-
-        const response = await authFetch("/tts/narrate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: narrationText, voice_id: voiceId }),
-        });
-        if (!response.ok) {
-          throw new Error((await response.text()) || "Narration failed.");
-        }
-        const blob = await response.blob();
-        appendSessionEntry("assistant", "narration", narrationText, "Session Assistant");
-        await playAudioBlob(blob);
+        await narrateText(narrationText, suggestion.title || "Session Assistant");
         return;
       }
 
-      const query = (suggestion.action_prompt || suggestion.text || "").trim();
+      const query = String(runAction.query || suggestion?.description || "").trim();
       if (!query) throw new Error("No rule or lore prompt returned for this suggestion.");
       const response = await authFetch("/brain/query", {
         method: "POST",
@@ -2231,10 +2401,23 @@ const LiveBoard = ({
     assistantActionBusyId,
     authFetch,
     campaign?.npcs,
+    handleLaunchEncounter,
+    handleNarrateScene,
+    handleNpcWhisper,
+    narrateText,
     playAudioBlob,
+    runSceneBrainAction,
     renderBrainPayload,
-    resolveNarrationVoiceId,
+    scene,
   ]);
+
+  const handleIgnoreAssistantSuggestion = useCallback((suggestion) => {
+    const suggestionId = String(suggestion?.id || "").trim();
+    if (!suggestionId) return;
+    setIgnoredAssistantSuggestionIds((current) => (
+      current.includes(suggestionId) ? current : [...current, suggestionId]
+    ));
+  }, []);
 
   useEffect(() => {
     if (!isWakeArmed || isMicActive) {
@@ -2384,6 +2567,27 @@ const LiveBoard = ({
         onNarrateScene={handleNarrateScene}
         isNarratingScene={isNarratingScene}
         narrateSceneError={narrateSceneError}
+        onExpandSceneDescription={() => runSceneBrainAction("expand")}
+        onAddSceneTwist={() => runSceneBrainAction("twist")}
+        sceneActionBusy={sceneActionBusy}
+        sceneActionError={sceneActionError}
+        onSpeakNpcAction={(npc) => openNpcVoiceModal(npc, "speak")}
+        onWhisperNpc={handleNpcWhisper}
+        assistantSupported={assistantSupported}
+        assistantListening={assistantListening}
+        assistantAnalyzing={assistantAnalyzing}
+        assistantError={assistantError}
+        assistantPartialTranscript={assistantPartialTranscript}
+        assistantSuggestions={visibleAssistantSuggestions}
+        assistantContext={assistantContext}
+        actionLog={actionLog}
+        assistantActionBusyId={assistantActionBusyId}
+        onStartAssistantListening={startAssistantListening}
+        onStopAssistantListening={stopAssistantListening}
+        onAnalyzeAssistant={analyzeAssistantNow}
+        onRunAssistantSuggestion={(suggestion) => handleAssistantSuggestionAction(suggestion, "run")}
+        onNarrateAssistantSuggestion={(suggestion) => handleAssistantSuggestionAction(suggestion, "narrate")}
+        onIgnoreAssistantSuggestion={handleIgnoreAssistantSuggestion}
         showSessionEmpty={!hasActiveSession}
         emptyStateContent={
           <StartSessionPanel
@@ -2404,18 +2608,7 @@ const LiveBoard = ({
             narrateSceneError={narrateSceneError}
             onSpeakNpc={(npc) => openNpcVoiceModal(npc, "speak")}
             onGenerateNpcResponse={(npc) => openNpcVoiceModal(npc, "generate")}
-            assistantSupported={assistantSupported}
-            assistantListening={assistantListening}
-            assistantAnalyzing={assistantAnalyzing}
-            assistantError={assistantError}
             assistantPartialTranscript={assistantPartialTranscript}
-            assistantSuggestions={assistantSuggestions}
-            assistantRecentEntries={assistantRecentEntries}
-            assistantActionBusyId={assistantActionBusyId}
-            onStartAssistantListening={startAssistantListening}
-            onStopAssistantListening={stopAssistantListening}
-            onAnalyzeAssistant={analyzeAssistantNow}
-            onRunAssistantSuggestion={handleAssistantSuggestionAction}
             authFetch={authFetch}
             actionLog={actionLog}
             onLogEntry={appendActionLog}
@@ -4100,8 +4293,27 @@ function CurrentView() {
   let content = null;
 
   if (view === "prep") {
-    content = <PrepRoom view={view} onNavigate={onNavigate} campaignData={campaignData} onUpdateCampaign={setCampaignData} />;
+    content = (
+      <PrepPage
+        prepContent={
+          <PrepRoom view={view} onNavigate={onNavigate} campaignData={campaignData} onUpdateCampaign={setCampaignData} />
+        }
+        libraryContent={
+          <ErrorBoundary>
+            <AdventureIntake
+              view={view}
+              onNavigate={onNavigate}
+              campaignData={campaignData}
+              onSaveCampaign={setCampaignData}
+              authFetch={authFetch}
+            />
+          </ErrorBoundary>
+        }
+        onNavigate={onNavigate}
+      />
+    );
   } else if (view === "intake") {
+    // Backward-compat: direct /intake URL still works
     content = (
       <ErrorBoundary>
         <AdventureIntake
@@ -4114,12 +4326,14 @@ function CurrentView() {
       </ErrorBoundary>
     );
   } else if (view === "codex") {
+    // Backward-compat: direct /codex URL still works
     content = (
       <ErrorBoundary>
         <CodexPage campaignData={campaignData} authFetch={authFetch} />
       </ErrorBoundary>
     );
   } else if (view === "npc-workshop") {
+    // Backward-compat: direct /npcs URL still works
     content = (
       <ErrorBoundary>
         <NPCWorkshopPage campaignData={campaignData} authFetch={authFetch} />
@@ -4128,10 +4342,13 @@ function CurrentView() {
   } else if (view === "voice-studio") {
     content = (
       <ErrorBoundary>
-        <VoiceStudioPage authFetch={authFetch} />
+        <VoicePage />
       </ErrorBoundary>
     );
+  } else if (view === "campaign") {
+    content = <CampaignPage />;
   } else if (view === "settings") {
+    // Backward-compat: direct /settings URL still works
     content = <SettingsPage />;
   } else {
     content = (

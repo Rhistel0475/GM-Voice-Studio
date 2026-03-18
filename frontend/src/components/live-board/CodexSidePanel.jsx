@@ -14,6 +14,8 @@ export default function CodexSidePanel({
   onSpeakNpc,
   authFetch,
   onNarrateAnswer,
+  hideBrain = false,
+  panelTitle = "Quick reference",
 }) {
   const [codexTab, setCodexTab] = useState("npcs");
   const [codexSelection, setCodexSelection] = useState(null);
@@ -35,16 +37,18 @@ export default function CodexSidePanel({
     <div className="h-full min-h-0 flex flex-col rounded-b-lg overflow-hidden">
       <section className="panel-ornate flex-1 min-h-0 flex flex-col">
         <div className="panel-head">
-          <div className="plaque">Quick reference</div>
+          <div className="plaque">{panelTitle}</div>
         </div>
         <div className="panel-body min-h-0 flex flex-col gap-2 overflow-hidden">
-          <CampaignBrainPanel
-            campaignId={campaignData?.id}
-            authFetch={authFetch}
-            documents={brainDocuments}
-            onDocumentsChange={setBrainDocuments}
-            onNarrateAnswer={onNarrateAnswer}
-          />
+          {!hideBrain ? (
+            <CampaignBrainPanel
+              campaignId={campaignData?.id}
+              authFetch={authFetch}
+              documents={brainDocuments}
+              onDocumentsChange={setBrainDocuments}
+              onNarrateAnswer={onNarrateAnswer}
+            />
+          ) : null}
           <CodexTabs selectedKey={codexTab} onChange={handleTabChange} />
           <CodexQuickView
             codexTab={codexTab}
