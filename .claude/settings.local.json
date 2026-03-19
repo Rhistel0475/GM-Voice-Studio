@@ -73,7 +73,8 @@
       "Bash(grep -r \"nemo\\\\|NeMo\" /home/brian/GM-Voice-Studio/*.py)",
       "Bash(.venv/bin/python -c \"import server; print\\(''''server OK''''\\)\")",
       "Bash(git fetch:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(identify /home/brian/GM-Voice-Studio/static/img/game_master_dashboard_1920x300.png)"
     ]
   }
 }

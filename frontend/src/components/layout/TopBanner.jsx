@@ -8,8 +8,8 @@ export default function TopBanner({ campaignName, activeScene, sessionTime, audi
       className="dm-header"
       style={{
         backgroundImage: `url('${BACKEND_URL}/static/img/game_master_dashboard_1920x300.png')`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
+        backgroundSize: "100% auto",
+        backgroundPosition: "center top",
         backgroundRepeat: "no-repeat",
       }}
     >

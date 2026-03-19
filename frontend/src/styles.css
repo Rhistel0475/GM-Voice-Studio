@@ -1978,3 +1978,29 @@ button.tracker-row:hover:not(.is-active) {
   padding-top: 0;
   border-top: none;
 }
+
+.scene-watermark {
+  background-image: url('/static/img/gm_header.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--wood-3);
+}
+.scene-watermark::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 6, 4, 0.85);
+  z-index: 1;
+}
+.scene-watermark > * {
+  position: relative;
+  z-index: 2;
+}
