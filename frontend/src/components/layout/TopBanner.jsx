@@ -8,18 +8,12 @@ export default function TopBanner({ campaignName, activeScene, sessionTime, audi
       className="dm-header"
       style={{
         backgroundImage: `url('${BACKEND_URL}/static/img/game_master_dashboard_1920x300.png')`,
-        backgroundSize: "100% auto",
-        backgroundPosition: "center top",
+        backgroundSize: "cover",
+        backgroundPosition: "center 15%",
         backgroundRepeat: "no-repeat",
       }}
     >
-      <div
-        className="header-glow"
-        style={{
-          background: "linear-gradient(to top, #0b0604 0%, rgba(0,0,0,0.55) 50%, rgba(0,0,0,0.35) 100%)",
-        }}
-        aria-hidden
-      />
+      <div className="header-glow" aria-hidden />
       <div className="relative z-10 flex flex-col items-center gap-2 w-full">
         <h1 className="font-heading text-[clamp(1.5rem,2.1vw,2.6rem)] leading-[1.1] text-[#e7c27a] drop-shadow-[0_2px_1px_#1a0f08] tracking-wide">
           GM Voice Studio
