@@ -3,6 +3,8 @@ import WorkspaceContainer from "../components/layout/WorkspaceContainer";
 import GMControlPanel from "../components/live-board/GMControlPanel";
 import SessionAssistantPanel from "../components/live-board/SessionAssistantPanel";
 import { FantasyButton } from "../components/shared";
+
+const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
 import { deriveNpcTone } from "../lib/sessionAssistant";
 
 /**
@@ -86,22 +88,34 @@ export default function LiveBoardPage({
         <main className="xl:col-span-7 min-h-0 flex flex-col gap-3">
 
           {showSessionEmpty ? (
-            /* Compact no-session state */
-            <div className="empty-card flex-1 flex flex-col items-center justify-center gap-3 py-12">
-              <LayoutDashboard size={32} className="text-[var(--gold)] opacity-30" aria-hidden />
-              <div>
-                <p className="font-heading text-[var(--text-1)] text-sm tracking-widest uppercase">
-                  No Active Scene
-                </p>
-                <p className="mt-1.5 text-xs text-[var(--text-2)] leading-relaxed">
-                  Load a campaign in Prep or Campaign to begin your session.
-                </p>
+            /* Compact no-session state — watermark painting behind text */
+            <div
+              className="flex-1 rounded-lg overflow-hidden relative flex flex-col items-center justify-center gap-3"
+              style={{
+                backgroundImage: `url('${BACKEND_URL}/static/img/gm_header.png')`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            >
+              {/* Dark overlay so text stays readable */}
+              <div className="absolute inset-0 bg-black/80" aria-hidden />
+              {/* Content */}
+              <div className="relative z-10 flex flex-col items-center gap-3 py-12 text-center px-6">
+                <LayoutDashboard size={32} className="text-[var(--gold)] opacity-40" aria-hidden />
+                <div>
+                  <p className="font-heading text-[var(--text-1)] text-sm tracking-widest uppercase">
+                    No Active Scene
+                  </p>
+                  <p className="mt-1.5 text-xs text-[var(--text-2)] leading-relaxed">
+                    Load a campaign in Prep or Campaign to begin your session.
+                  </p>
+                </div>
+                {onNavigateToPrep ? (
+                  <FantasyButton variant="secondary" className="text-xs mt-1" onClick={onNavigateToPrep}>
+                    Open Prep Room
+                  </FantasyButton>
+                ) : null}
               </div>
-              {onNavigateToPrep ? (
-                <FantasyButton variant="secondary" className="text-xs mt-1" onClick={onNavigateToPrep}>
-                  Open Prep Room
-                </FantasyButton>
-              ) : null}
             </div>
           ) : (
             /* Scene Stage — read-aloud + NPC speak actions */
