@@ -94,7 +94,7 @@ export default function SessionAssistantPanel({
           </div>
           <div className="session-assistant-suggestions">
             {suggestions.length > 0 ? (
-              suggestions.slice(0, 3).map((suggestion) => (
+              suggestions.slice(0, 2).map((suggestion) => (
                 <article key={suggestion.id} className="session-assistant-card">
                   <div className="session-assistant-card-head">
                     <div className="min-w-0">

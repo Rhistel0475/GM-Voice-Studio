@@ -74,7 +74,11 @@
       "Bash(.venv/bin/python -c \"import server; print\\(''''server OK''''\\)\")",
       "Bash(git fetch:*)",
       "Bash(npx tsc:*)",
-      "Bash(identify /home/brian/GM-Voice-Studio/static/img/game_master_dashboard_1920x300.png)"
+      "Bash(identify /home/brian/GM-Voice-Studio/static/img/game_master_dashboard_1920x300.png)",
+      "Bash(grep -l \"import.*PrepPage\\\\|import.*VoicePage\\\\|import.*CampaignPage\\\\|import.*CodexPage\" /home/brian/GM-Voice-Studio/frontend/src/**/*.jsx)",
+      "Bash(python3 -:*)",
+      "Bash(ls /home/brian/GM-Voice-Studio/frontend/src/pages/Voice*)",
+      "Bash(ls /home/brian/GM-Voice-Studio/frontend/src/components/voices/Voice*)"
     ]
   }
 }

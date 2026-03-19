@@ -34,20 +34,22 @@ export default function GMControlPanel({
         <div className="panel-head">
           <div className="plaque">Active Scene</div>
         </div>
-        <div className="panel-body space-y-2">
+        <div className="panel-body space-y-2.5">
           {scene ? (
             <>
-              <div className="font-heading text-sm text-[var(--text-1)] leading-tight">
-                {scene.title || scene.name || "Scene"}
-              </div>
-              {scene.location ? (
-                <div className="text-[10px] uppercase tracking-[0.14em] text-[#9b7440]">
-                  {scene.location}
+              <div>
+                <div className="font-heading text-[15px] text-[var(--text-1)] leading-snug">
+                  {scene.title || scene.name || "Scene"}
                 </div>
-              ) : null}
+                {scene.location ? (
+                  <div className="text-[10px] uppercase tracking-[0.14em] text-[#9b7440] mt-0.5">
+                    {scene.location}
+                  </div>
+                ) : null}
+              </div>
 
               {/* Primary actions — 2 columns */}
-              <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   className="scene-trigger-btn"
@@ -87,20 +89,22 @@ export default function GMControlPanel({
 
               {/* NPC selector rows */}
               {sceneNpcs.length > 0 ? (
-                <div className="pt-1 border-t border-[#3a2510] space-y-1">
-                  <div className="text-[10px] uppercase tracking-[0.13em] text-[var(--text-2)]">NPCs</div>
+                <div className="pt-2 border-t border-[#2a1a0a] space-y-1">
+                  <div className="text-[10px] uppercase tracking-[0.13em] text-[var(--text-2)]">
+                    NPCs in Scene
+                  </div>
                   {sceneNpcs.map((npc) => (
                     <button
                       key={npc.name}
                       type="button"
                       className={`tracker-row w-full text-left cursor-pointer ${
-                        selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""
+                        selectedNpcName === npc.name ? "is-active" : ""
                       }`}
                       onClick={() => onSelectNpc?.(selectedNpcName === npc.name ? null : npc.name)}
                     >
-                      <span className="encounter-name text-xs">{npc.name}</span>
+                      <span className="encounter-name text-[11px]">{npc.name}</span>
                       {npc.role ? (
-                        <span className="text-[#9b7440] text-[10px]">{npc.role}</span>
+                        <span className="text-[#9b7440] text-[10px] truncate max-w-[60px]">{npc.role}</span>
                       ) : null}
                     </button>
                   ))}
@@ -119,17 +123,17 @@ export default function GMControlPanel({
           <div className="panel-head">
             <div className="plaque">Party</div>
           </div>
-          <div className="panel-body space-y-1">
-            {party.slice(0, 4).map((char) => (
+          <div className="panel-body space-y-1.5">
+            {party.slice(0, 5).map((char) => (
               <div
                 key={char.name}
-                className="flex items-center justify-between text-xs py-0.5"
+                className="flex items-center justify-between gap-2 py-0.5 border-b border-[#1e1208] last:border-0"
               >
-                <span className="font-heading text-[var(--text-1)] text-[11px] tracking-wide">
+                <span className="font-heading text-[var(--text-1)] text-[11px] tracking-wide truncate">
                   {char.name}
                 </span>
-                <span className="text-[#9b7440] text-[10px] tabular-nums">
-                  {char.hp !== "—" ? `HP ${char.hp}` : "—"}
+                <span className="text-[#9b7440] text-[10px] tabular-nums flex-shrink-0">
+                  {char.hp && char.hp !== "—" ? `HP ${char.hp}` : char.class || "—"}
                 </span>
               </div>
             ))}

@@ -1,24 +1,18 @@
-import { LayoutDashboard } from "lucide-react";
+import { ScrollText } from "lucide-react";
 import WorkspaceContainer from "../components/layout/WorkspaceContainer";
 import GMControlPanel from "../components/live-board/GMControlPanel";
 import SessionAssistantPanel from "../components/live-board/SessionAssistantPanel";
 import { FantasyButton } from "../components/shared";
-
 import { deriveNpcTone } from "../lib/sessionAssistant";
+
+const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
 
 /**
  * Live Board — 3-column session console.
- *
- * LEFT   (2/12): GMControlPanel — Active Scene + Party
- * CENTER (7/12): Scene Stage (read-aloud + NPC cards) or compact empty state
- * RIGHT  (3/12): Session Assistant (compact, max 3 suggestions)
- *
- * Legacy panels not mounted here:
- *   SceneControlPanel, EncounterLaunchPanel, SceneSuggestionsPanel,
- *   StartSessionPanel, QuickTools, SessionAssistantSidebar
+ * LEFT (3/12): GMControlPanel — Active Scene + Party
+ * CENTER (6/12): Scene Stage or empty state
+ * RIGHT (3/12): Session Assistant — max 2 suggestions
  */
-
-console.log("LiveBoard minimal layout active");
 
 export default function LiveBoardPage({
   campaignData,
@@ -64,10 +58,10 @@ export default function LiveBoardPage({
 
   return (
     <WorkspaceContainer className="live-board">
-      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-4 xl:gap-5">
+      <div className="min-h-0 flex-1 grid grid-cols-1 xl:grid-cols-12 gap-3 xl:gap-4">
 
         {/* ── LEFT: Active Scene + Party ───────────────────────────── */}
-        <aside className="xl:col-span-2 min-h-0 overflow-y-auto">
+        <aside className="xl:col-span-3 min-h-0 overflow-y-auto">
           <GMControlPanel
             campaignData={campaignData}
             scene={scene}
@@ -84,26 +78,38 @@ export default function LiveBoardPage({
         </aside>
 
         {/* ── CENTER: Scene Stage or empty state ──────────────────── */}
-        <main className="xl:col-span-7 min-h-0 flex flex-col gap-3">
+        <main className="xl:col-span-6 min-h-0 flex flex-col gap-3">
 
           {showSessionEmpty ? (
-            /* Compact no-session state — watermark painting behind text */
-            <div className="flex-1 flex flex-col items-center justify-center gap-3 rounded-lg" style={{ background: "rgba(10,6,4,0.6)", border: "1px solid #2a1a0a" }}>
-              <div className="flex flex-col items-center gap-3 py-12 text-center px-6">
-                <LayoutDashboard size={32} className="text-[var(--gold)] opacity-40" aria-hidden />
+            /* Empty state — faded artwork background with dark vignette */
+            <div
+              className="flex-1 flex flex-col items-center justify-center rounded-lg overflow-hidden relative"
+              style={{
+                backgroundImage: `url('${BACKEND_URL}/static/img/gm_header.png')`,
+                backgroundSize: "cover",
+                backgroundPosition: "center 40%",
+              }}
+            >
+              <div className="absolute inset-0" style={{ background: "rgba(8,4,2,0.82)" }} aria-hidden />
+              <div className="relative z-10 flex flex-col items-center gap-4 py-14 text-center px-8">
+                <div className="w-14 h-14 rounded-full border border-[#3a2510] bg-[#0f0804]/80 flex items-center justify-center">
+                  <ScrollText size={26} className="text-[var(--gold)] opacity-50" aria-hidden />
+                </div>
                 <div>
-                  <p className="font-heading text-[var(--text-1)] text-sm tracking-widest uppercase">
-                    No Active Scene
+                  <p className="font-heading text-[var(--text-1)] text-base tracking-widest uppercase">
+                    Awaiting Your Command
                   </p>
-                  <p className="mt-1.5 text-xs text-[var(--text-2)] leading-relaxed">
-                    Load a campaign in Prep or Campaign to begin your session.
+                  <p className="mt-2 text-sm text-[var(--text-2)] leading-relaxed max-w-[260px] mx-auto">
+                    Load a campaign and select a scene to begin your session.
                   </p>
                 </div>
-                {onNavigateToPrep ? (
-                  <FantasyButton variant="secondary" className="text-xs mt-1" onClick={onNavigateToPrep}>
-                    Open Prep Room
-                  </FantasyButton>
-                ) : null}
+                <div className="flex flex-col gap-2 w-full max-w-[200px]">
+                  {onNavigateToPrep ? (
+                    <FantasyButton variant="secondary" className="text-xs w-full" onClick={onNavigateToPrep}>
+                      Open Prep Room
+                    </FantasyButton>
+                  ) : null}
+                </div>
               </div>
             </div>
           ) : (
@@ -128,22 +134,42 @@ export default function LiveBoardPage({
                   ) : null}
 
                   {presentNpcs.length > 0 && (
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)]">
-                        NPCs Present
+                    <div className="space-y-2">
+                      <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] flex items-center gap-2">
+                        <span>NPCs Present</span>
+                        <span className="text-[#4a3018]">—</span>
+                        <span className="text-[#4a3018] normal-case not-italic">{presentNpcs.length}</span>
                       </div>
-                      <div className="flex flex-col gap-1.5">
+                      <div className="grid grid-cols-1 gap-1.5">
                         {presentNpcs.map((npc) => (
                           <article
                             key={npc.name}
                             className={`session-npc-card ${
-                              selectedNpcName === npc.name ? "is-active border-[#d4af37]" : ""
+                              selectedNpcName === npc.name ? "is-active" : ""
                             }`}
                           >
                             <div className="session-npc-card-head">
-                              <div className="min-w-0">
+                              <div className="min-w-0 flex-1">
                                 <div className="session-npc-card-name">{npc.name}</div>
                                 <div className="session-npc-card-tone">{deriveNpcTone(npc)}</div>
+                              </div>
+                              <div className="session-npc-card-actions">
+                                <FantasyButton
+                                  variant="secondary"
+                                  className="text-[10px] px-2 py-0.5"
+                                  onClick={() => onSpeakNpcAction?.(npc)}
+                                  disabled={!onSpeakNpcAction}
+                                >
+                                  Speak
+                                </FantasyButton>
+                                <FantasyButton
+                                  variant="ghost"
+                                  className="text-[10px] px-2 py-0.5"
+                                  onClick={() => onWhisperNpc?.(npc)}
+                                  disabled={!onWhisperNpc}
+                                >
+                                  Whisper
+                                </FantasyButton>
                               </div>
                             </div>
                             {selectedNpcName === npc.name &&
@@ -152,33 +178,6 @@ export default function LiveBoardPage({
                                 {npc.description || npc.summary || npc.personality}
                               </div>
                             ) : null}
-                            <div className="session-npc-card-actions">
-                              <FantasyButton
-                                variant="secondary"
-                                className="text-[10px] px-2 py-1"
-                                onClick={() => onSpeakNpcAction?.(npc)}
-                                disabled={!onSpeakNpcAction}
-                              >
-                                Speak
-                              </FantasyButton>
-                              <FantasyButton
-                                variant="ghost"
-                                className="text-[10px] px-2 py-1"
-                                onClick={() => onWhisperNpc?.(npc)}
-                                disabled={!onWhisperNpc}
-                              >
-                                Whisper
-                              </FantasyButton>
-                              <FantasyButton
-                                variant={selectedNpcName === npc.name ? "primary" : "ghost"}
-                                className="text-[10px] px-2 py-1"
-                                onClick={() =>
-                                  onSelectNpc?.(selectedNpcName === npc.name ? null : npc.name)
-                                }
-                              >
-                                Info
-                              </FantasyButton>
-                            </div>
                           </article>
                         ))}
                       </div>
@@ -201,7 +200,7 @@ export default function LiveBoardPage({
               analyzing={assistantAnalyzing}
               error={assistantError}
               partialTranscript={assistantPartialTranscript}
-              suggestions={assistantSuggestions.slice(0, 3)}
+              suggestions={assistantSuggestions.slice(0, 2)}
               context={assistantContext}
               sessionLog={actionLog}
               actionBusyId={assistantActionBusyId}

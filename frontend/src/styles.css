@@ -1299,7 +1299,6 @@ button.tracker-row:hover:not(.is-active) {
 }
 
 .session-assistant-transcript,
-.session-assistant-card,
 .session-assistant-context-card,
 .session-assistant-log-item,
 .session-npc-card {
@@ -1307,6 +1306,19 @@ button.tracker-row:hover:not(.is-active) {
   background: #161009;
   border-radius: 4px;
   padding: 8px;
+}
+
+.session-assistant-card {
+  border: 1px solid #5a3a1c;
+  background: linear-gradient(180deg, #1c1108, #131009);
+  border-radius: 6px;
+  padding: 10px 12px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.session-assistant-card:hover {
+  border-color: #7a5228;
+  box-shadow: 0 0 10px rgba(202, 167, 75, 0.08);
 }
 
 .session-assistant-transcript-label,
@@ -1442,8 +1454,8 @@ button.tracker-row:hover:not(.is-active) {
 .session-npc-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+  gap: 6px;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .session-npc-card:hover,
@@ -1454,9 +1466,15 @@ button.tracker-row:hover:not(.is-active) {
 
 .session-npc-card-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.session-npc-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .session-npc-card-tone {
@@ -1466,7 +1484,7 @@ button.tracker-row:hover:not(.is-active) {
   letter-spacing: 0.08em;
 }
 
-.session-npc-card-actions {
+.session-npc-card-actions--bottom {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -1859,22 +1877,23 @@ button.tracker-row:hover:not(.is-active) {
 
 /* Scene stage — visually dominant center panel */
 .scene-stage {
-  border-color: #9a7236;
+  border-color: #b08040;
   box-shadow:
-    inset 0 0 0 1px #3d2a15,
-    inset 0 0 40px rgba(0, 0, 0, 0.22),
-    0 0 24px rgba(202, 167, 75, 0.07);
+    inset 0 0 0 1px #4a3218,
+    inset 0 0 50px rgba(0, 0, 0, 0.28),
+    0 0 32px rgba(202, 167, 75, 0.12),
+    0 2px 8px rgba(0, 0, 0, 0.5);
 }
 
 .scene-stage .panel-head {
-  background: linear-gradient(180deg, #2e1f0e, #1e1307);
-  border-bottom-color: #7a5a2e;
-  padding: 11px 16px;
+  background: linear-gradient(180deg, #321f0d, #1e1206);
+  border-bottom-color: #8a6232;
+  padding: 12px 18px;
 }
 
 .scene-stage .plaque {
-  font-size: clamp(18px, 1.25vw, 24px);
-  letter-spacing: 0.08em;
+  font-size: clamp(16px, 1.3vw, 22px);
+  letter-spacing: 0.1em;
 }
 
 /* Read-aloud text block */

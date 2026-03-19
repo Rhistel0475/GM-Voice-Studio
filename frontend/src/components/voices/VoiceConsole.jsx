@@ -20,7 +20,7 @@ import VoiceDetailPanel from "./VoiceDetailPanel";
 import GeneratedAudioList from "./GeneratedAudioList";
 import VoiceCloneWizard from "./VoiceCloneWizard";
 
-/* ─── Filter helper (reused from VoiceStudioScreen) ─────────────── */
+/* ─── Filter helper ─────────────────────────────────────────────── */
 function filterVoices(voices, filterState, selectedPreset) {
   let out = voices;
   const q = (filterState.query || "").trim().toLowerCase();

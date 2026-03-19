@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useAppState } from "../context/AppStateContext";
 import { buildCodexIntelligence } from "../lib/codexIntelligence";
 import { CODEX_TABS } from "../components/live-board/constants";
 import { EmptyState, FantasyButton } from "../components/shared";
-import { BookOpen, Upload, Search } from "lucide-react";
+import { BookOpen, Upload, Search, Scroll, X } from "lucide-react";
 
 /**
  * PrepPage — 3-column campaign management interface.
@@ -21,10 +22,14 @@ export default function PrepPage({
   onNavigate,
 }) {
   const { campaignData } = useAppState();
+  const { search: locationSearch } = useLocation();
   const [activeCategory, setActiveCategory] = useState("npcs");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState(null);
-  const [centerMode, setCenterMode] = useState("codex"); // "codex" | "upload" | "prep"
+  const [centerMode, setCenterMode] = useState(() => {
+    const mode = new URLSearchParams(locationSearch).get("mode");
+    return mode === "upload" || mode === "prep" ? mode : "codex";
+  }); // "codex" | "upload" | "prep"
 
   const intelligence = useMemo(
     () => buildCodexIntelligence(campaignData),
@@ -64,11 +69,11 @@ export default function PrepPage({
 
       {/* ── LEFT: Filters + Actions ────────────────────────────────── */}
       <aside
-        className="flex-shrink-0 flex flex-col gap-0 border-r border-[#3a2510] overflow-y-auto"
+        className="flex-shrink-0 flex flex-col gap-0 border-r border-[#3a2510] overflow-y-auto bg-[#0d0804]"
         style={{ width: "210px" }}
       >
         {/* Search */}
-        <div className="p-3 border-b border-[#3a2510]">
+        <div className="p-3 pb-4 border-b border-[#2a1a0a]">
           <div className="sidebar-section-label">Search</div>
           <div className="relative mt-1">
             <Search
@@ -89,7 +94,7 @@ export default function PrepPage({
         </div>
 
         {/* Category filters */}
-        <div className="p-3 flex-1 border-b border-[#3a2510]">
+        <div className="p-3 pb-4 flex-1 border-b border-[#2a1a0a]">
           <div className="sidebar-section-label">Categories</div>
           <div className="flex flex-col gap-0.5 mt-2">
             {CODEX_TABS.map((tab) => {
@@ -101,10 +106,10 @@ export default function PrepPage({
                   type="button"
                   onClick={() => handleCategoryChange(tab.key)}
                   className={[
-                    "flex items-center justify-between rounded px-2.5 py-2 text-xs text-left transition-colors",
+                    "flex items-center justify-between rounded px-2.5 py-2 text-xs text-left transition-all",
                     isActive
-                      ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
-                      : "border border-transparent text-[var(--text-1)] hover:bg-[#1e1208] hover:border-[#4a3018]",
+                      ? "bg-[#2a1608] border border-[var(--gold)]/60 text-[var(--gold)] font-semibold shadow-[inset_0_0_8px_rgba(202,167,75,0.08)]"
+                      : "border border-transparent text-[var(--text-2)] hover:bg-[#181008] hover:text-[var(--text-1)] hover:border-[#3a2510]",
                   ].join(" ")}
                 >
                   <span>{tab.label}</span>
@@ -127,7 +132,7 @@ export default function PrepPage({
         </div>
 
         {/* Action buttons */}
-        <div className="p-3 flex flex-col gap-1.5">
+        <div className="p-3 pb-4 flex flex-col gap-1.5">
           <div className="sidebar-section-label">Tools</div>
           <button
             type="button"
@@ -189,13 +194,54 @@ export default function PrepPage({
             {/* Entry list */}
             <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-0.5">
               {entries.length === 0 ? (
-                <div className="empty-card mt-4 mx-2">
-                  <p className="text-xs text-[var(--text-2)]">
-                    {search
-                      ? `No matches for "${search}".`
-                      : `No ${activeCategory} loaded yet.`}
-                  </p>
-                </div>
+                search ? (
+                  /* Search no-results */
+                  <div className="flex flex-col items-center gap-3 mt-10 px-6 text-center">
+                    <Search size={28} className="text-[var(--text-2)] opacity-40" />
+                    <div>
+                      <p className="font-heading text-sm text-[var(--text-1)] tracking-wide">No Matches Found</p>
+                      <p className="text-xs text-[var(--text-2)] mt-1 leading-relaxed">
+                        No entries match <span className="text-[var(--gold)]">"{search}"</span>. Try a different term.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSearch("")}
+                      className="flex items-center gap-1.5 text-xs text-[var(--text-2)] hover:text-[var(--gold)] transition-colors"
+                    >
+                      <X size={11} /> Clear search
+                    </button>
+                  </div>
+                ) : (
+                  /* Category empty */
+                  <div className="flex flex-col items-center gap-4 mt-8 mx-2 px-5 py-7 rounded-lg border border-[#3a2510] bg-[#0f0804]/60 text-center">
+                    <Scroll size={30} className="text-[var(--gold)] opacity-35" />
+                    <div>
+                      <p className="font-heading text-sm text-[var(--text-1)] tracking-wide capitalize">
+                        No {activeCategory} in Your Codex
+                      </p>
+                      <p className="text-xs text-[var(--text-2)] mt-1.5 leading-relaxed max-w-[200px] mx-auto">
+                        Upload an adventure module or build scenes manually to populate this section.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 w-full">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMode("upload")}
+                        className="flex items-center justify-center gap-1.5 w-full rounded px-3 py-2 text-xs border border-[var(--gold)] text-[var(--gold)] bg-[#1e1208] hover:bg-[#2a1a0a] transition-colors font-heading tracking-wide"
+                      >
+                        <Upload size={11} /> Upload Adventure
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenMode("prep")}
+                        className="flex items-center justify-center gap-1.5 w-full rounded px-3 py-2 text-xs border border-[#4a3018] text-[var(--text-1)] hover:bg-[#1e1208] transition-colors"
+                      >
+                        <BookOpen size={11} /> Open Scene Builder
+                      </button>
+                    </div>
+                  </div>
+                )
               ) : (
                 entries.map((entry) => {
                   const isSelected = selected?.id === entry.id;
@@ -238,19 +284,41 @@ export default function PrepPage({
         className="flex-shrink-0 flex flex-col min-h-0 overflow-hidden detail-workspace"
         style={{ width: "320px" }}
       >
+        <div className="flex-shrink-0 px-4 py-2.5 border-b border-[#2a1a0a] bg-[#110b06]">
+          <div className="font-heading text-xs text-[var(--text-2)] uppercase tracking-[0.15em]">
+            {selected ? selected.title : "Detail"}
+          </div>
+        </div>
         {selected ? (
           <DetailPanel
             entry={selected}
             onNavigate={onNavigate}
           />
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 gap-3">
-            <div className="w-8 h-8 rounded-full border border-[#3a2510] flex items-center justify-center">
-              <span className="text-[var(--text-2)] text-lg">↖</span>
+          <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 gap-5 text-center">
+            <div className="w-12 h-12 rounded-full border border-[#3a2510] bg-[#130c06] flex items-center justify-center">
+              <BookOpen size={20} className="text-[var(--text-2)] opacity-50" />
             </div>
-            <p className="text-xs text-[var(--text-2)] text-center leading-relaxed">
-              Select an entry from the list to view details and actions.
-            </p>
+            <div>
+              <p className="font-heading text-sm text-[var(--text-1)] tracking-wide">Entry Details</p>
+              <p className="text-xs text-[var(--text-2)] mt-1.5 leading-relaxed">
+                Select an entry from the list to view its description, relationships, and available actions.
+              </p>
+            </div>
+            {/* Ghosted action hints */}
+            <div className="w-full pt-4 border-t border-[#2a1a0a] flex flex-col gap-2">
+              <p className="text-[10px] uppercase tracking-[0.15em] text-[#4a3018] mb-1">Actions</p>
+              {["Narrate", "Open in Live", "Assign Voice"].map((label) => (
+                <button
+                  key={label}
+                  type="button"
+                  disabled
+                  className="w-full rounded px-3 py-1.5 text-xs border border-[#2a1a0a] text-[#3a2510] bg-transparent cursor-not-allowed font-heading tracking-wide"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </aside>
