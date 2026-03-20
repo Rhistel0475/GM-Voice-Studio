@@ -61,11 +61,9 @@ export default function AppShell() {
         activeScene={bannerState.activeScene}
         sessionTime={bannerState.sessionTime}
         audioStatus={bannerState.audioStatus}
+        nav={<SidebarNav inBanner />}
       />
       <div className="flex flex-1 min-h-0 gap-4 mt-1">
-        <aside className="flex-shrink-0 w-40 md:w-14 xl:w-48 panel-ornate rounded overflow-auto">
-          <SidebarNav />
-        </aside>
         <main className={mainClassNames}>
           <Outlet />
         </main>

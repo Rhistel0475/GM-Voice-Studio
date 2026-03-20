@@ -8,9 +8,15 @@ const navItems = [
   { to: "/campaign", label: "Campaign", icon: Map },
 ];
 
-export default function SidebarNav() {
+export default function SidebarNav({ inBanner = false }) {
+  const navClass = inBanner
+    ? "flex flex-wrap items-center justify-center gap-2 w-full"
+    : "sidebar-nav";
+  const linkClass = inBanner
+    ? "nav-glyph-btn flex items-center gap-2 px-3 py-2"
+    : "nav-glyph-btn flex items-center gap-2 w-full justify-start md:justify-center xl:justify-start md:px-2";
   return (
-    <nav className="sidebar-nav">
+    <nav className={navClass}>
       {navItems.map(({ to, label, icon: Icon }) => (
         <NavLink
           key={to}
@@ -18,11 +24,11 @@ export default function SidebarNav() {
           end={to === "/"}
           title={label}
           className={({ isActive }) =>
-            `nav-glyph-btn flex items-center gap-2 w-full justify-start md:justify-center xl:justify-start md:px-2 ${isActive ? "is-active" : ""}`
+            `${linkClass} ${isActive ? "is-active" : ""}`
           }
         >
           <Icon size={18} className="shrink-0 text-[var(--gold)]/90" aria-hidden />
-          <span className="md:sr-only xl:not-sr-only">{label}</span>
+          <span className={inBanner ? "" : "md:sr-only xl:not-sr-only"}>{label}</span>
         </NavLink>
       ))}
     </nav>

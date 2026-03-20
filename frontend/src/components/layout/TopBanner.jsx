@@ -1,6 +1,6 @@
 const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
 
-export default function TopBanner({ campaignName, activeScene, sessionTime, audioStatus }) {
+export default function TopBanner({ campaignName, activeScene, sessionTime, audioStatus, nav }) {
   const audioLabel =
     audioStatus === "loading" ? "Loading…" : audioStatus === "playing" ? "Playing" : "Idle";
   return (
@@ -35,6 +35,7 @@ export default function TopBanner({ campaignName, activeScene, sessionTime, audi
             <span className="text-[var(--gold)] uppercase">Audio</span> {audioLabel}
           </span>
         </div>
+        {nav ? <div className="mt-2 w-full">{nav}</div> : null}
       </div>
     </header>
   );
