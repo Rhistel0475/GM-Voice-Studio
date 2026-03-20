@@ -1,5 +1,6 @@
 """Shared types for the parsing pipeline."""
 from dataclasses import dataclass, field
+import re
 from typing import Any, Optional
 
 
@@ -67,15 +68,26 @@ class SectionChunk:
         return "\n\n".join(part.strip() for part in parts if str(part).strip()).strip()
 
     def source_metadata(self) -> dict[str, Any]:
+        source_chunk_id = self.chunk_id()
         return {
             "document_id": self.document_id,
+            "source_document_id": self.document_id,
             "page_number": self.page_number,
+            "page_range": [self.page_number, self.page_number],
             "heading": self.heading,
             "subheading": self.subheading,
             "heading_path": list(self.heading_path),
             "chunk_type_guess": self.chunk_type_guess,
             "start_offset": self.start_offset,
+            "chunk_id": source_chunk_id,
+            "source_chunk_id": source_chunk_id,
         }
+
+    def chunk_id(self) -> str:
+        heading_key = re.sub(r"[^a-z0-9]+", "_", (self.heading or self.subheading or "chunk").strip().lower()).strip("_")
+        if not heading_key:
+            heading_key = "chunk"
+        return f"{self.document_id}:p{self.page_number}:{self.start_offset}:{heading_key}"
 
     def llm_context(self) -> str:
         """Render the chunk with explicit structure so prompts preserve source semantics."""

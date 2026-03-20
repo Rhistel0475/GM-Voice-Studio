@@ -160,11 +160,32 @@ def _finalize_parse_payload(payload: dict[str, Any], *, chunks: list[Any] | None
     result = dict(payload)
     for key in ("title", "summary"):
         result.setdefault(key, "")
-    for key in ("npcs", "party", "scenes", "locations", "encounters", "reveals", "items", "quests", "factions", "lore"):
+    for key in (
+        "npcs",
+        "party",
+        "scenes",
+        "locations",
+        "encounters",
+        "reveals",
+        "items",
+        "quests",
+        "factions",
+        "lore",
+        "clues",
+        "secrets",
+        "rumors",
+        "read_alouds",
+        "consequences",
+        "rewards",
+        "hooks",
+        "parse_candidates",
+    ):
         if not isinstance(result.get(key), list):
             result[key] = []
     result.setdefault("codex_entries", [])
     result.setdefault("relationships", [])
+    if not isinstance(result.get("coverage_report"), dict):
+        result["coverage_report"] = {"summary": {"total_gaps": 0}}
 
     for npc in result.get("npcs", []):
         if isinstance(npc, dict):

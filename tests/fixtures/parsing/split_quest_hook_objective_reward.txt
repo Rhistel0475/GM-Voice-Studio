@@ -1,0 +1,11 @@
+<<<DOCUMENT: Blackfen Marsh>>>
+# Quest Hook
+The party is asked to find Surveyor Lysa Dorn before the storm worsens.
+
+[Page 6]
+## Objective
+Search Blackfen Marsh, recover Lysa, and return with her field journal.
+
+[Page 7]
+## Reward
+Reward: Baron Voss grants 300 gp and a writ of safe passage.

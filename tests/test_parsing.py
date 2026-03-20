@@ -13,6 +13,10 @@ from app.services.parsing.dedupe import (
     dedupe_codex_entries,
 )
 from app.services.parsing.relationships import extract_relationships
+from app.services.parsing.candidates import build_candidates
+from app.services.parsing.aggregation import fuse_candidates
+from app.services.parsing.coverage_audit import audit_coverage
+from app.services.parsing.importance import score_importance
 
 
 class TestNormalize:
@@ -1277,3 +1281,135 @@ Nezznar is a drow. AC 15, HP 44. He seeks the forge.
         assert isinstance(result["lore"], list)
         assert isinstance(result["codex_entries"], list)
         assert isinstance(result["relationships"], list)
+
+
+class TestRecallUpgrade:
+    def test_extraction_attaches_evidence_fields(self):
+        from app.services.parsing.extraction import extract_typed_entities
+
+        chunk = SectionChunk(
+            heading="The Drowned Library",
+            level=1,
+            body="Clue: The silver key bears the mark of House Vey.",
+            document_id="doc_alpha",
+            page_number=12,
+            chunk_type_guess="quest_section",
+            content_type="quest",
+            content_types=["quest"],
+        )
+        with patch("app.services.parsing.extraction.extract_quests", return_value=[{
+            "name": "Find the Silver Key",
+            "description": "Investigate who forged the marked key.",
+            "objective": "Trace the sigil on the key.",
+            "stakes": "Without it, the vault remains sealed.",
+            "related_npcs": ["Archivist Mel"],
+            "related_locations": ["The Drowned Library"],
+            "tags": ["investigation"],
+            "confidence": 0.86,
+        }]):
+            result = extract_typed_entities([chunk])
+        quest = result["quests"][0]
+        assert quest["source_document_id"] == "doc_alpha"
+        assert quest["page_number"] == 12
+        assert quest["source_chunk_id"]
+        assert quest["evidence_text"]
+        assert isinstance(quest.get("evidence"), dict)
+
+    def test_cross_chunk_fusion_merges_split_npc_details(self):
+        chunk_a = SectionChunk(
+            heading="Captain Ilvara",
+            level=2,
+            body="Captain Ilvara commands the harbor guard.",
+            document_id="doc_beta",
+            page_number=9,
+            chunk_type_guess="stat_block",
+        )
+        chunk_b = SectionChunk(
+            heading="Captain Ilvara",
+            level=2,
+            body="Secret: Ilvara is smuggling relics for the Cinder Choir.",
+            document_id="doc_beta",
+            page_number=10,
+            chunk_type_guess="quest_section",
+        )
+        extracted = {
+            "npcs": [
+                {"name": "Captain Ilvara", "description": "Commands the harbor guard.", "confidence": 0.8, "source_chunk_id": chunk_a.chunk_id(), "source_document_id": "doc_beta", "page_number": 9},
+                {"name": "Ilvara", "description": "Smuggling relics for the Cinder Choir.", "confidence": 0.83, "source_chunk_id": chunk_b.chunk_id(), "source_document_id": "doc_beta", "page_number": 10},
+            ]
+        }
+        candidates = build_candidates(extracted, [chunk_a, chunk_b])
+        fused = fuse_candidates(candidates)
+        assert len(fused["npcs"]) == 1
+        assert "smuggling relics" in fused["npcs"][0]["description"].lower()
+        assert fused["npcs"][0]["mention_count"] >= 2
+
+    def test_high_value_extractors_capture_read_aloud_and_secrets(self):
+        from app.services.parsing.extraction import extract_typed_entities
+
+        chunk = SectionChunk(
+            heading="Moonwell Chapel",
+            level=2,
+            body=(
+                "Read Aloud: Moonlight pours over broken pews.\n\n"
+                "Secret: The altar conceals a blood-ink pact.\n\n"
+                "Rumor: Villagers whisper the chapel bells ring at dawn."
+            ),
+            chunk_type_guess="boxed_text",
+            content_type="scene",
+            content_types=["scene", "lore"],
+        )
+        with patch("app.services.parsing.extraction.extract_scene_seeds", return_value=[]):
+            result = extract_typed_entities([chunk])
+        assert len(result["read_alouds"]) >= 1
+        assert len(result["secrets"]) >= 1
+        assert len(result["rumors"]) >= 1
+
+    def test_coverage_audit_reports_missing_quest_details(self):
+        chunk = SectionChunk(
+            heading="Old Quarry",
+            level=1,
+            body="Objective: reach the quarry before sunset.",
+            document_id="doc_gamma",
+            page_number=4,
+            chunk_type_guess="quest_section",
+        )
+        payload = {
+            "npcs": [],
+            "locations": [{"name": "Old Quarry", "description": ""}],
+            "scenes": [{"title": "At the Quarry", "npcs": []}],
+            "quests": [{"name": "Reach the Quarry", "objective": "", "stakes": ""}],
+            "encounters": [{"name": "Quarry Wolves", "scene_id": ""}],
+            "clues": [],
+            "secrets": [],
+            "rumors": [],
+            "hooks": [],
+            "rewards": [],
+            "consequences": [],
+        }
+        report = audit_coverage(payload, [chunk])
+        assert report["summary"]["quest_detail_gaps"] >= 1
+        assert report["summary"]["encounter_link_gaps"] >= 1
+
+    def test_importance_scoring_prefers_repeated_linked_entities(self):
+        scored = score_importance(
+            {
+                "npcs": [
+                    {
+                        "name": "Marshal Tovin",
+                        "mention_count": 4,
+                        "related_locations": ["Bastion Gate", "Watch Barracks"],
+                        "confidence": 0.9,
+                        "source": {"heading": "Marshal Tovin", "subheading": "Quest Hook"},
+                    },
+                    {
+                        "name": "Dockhand Neri",
+                        "mention_count": 1,
+                        "related_locations": [],
+                        "confidence": 0.55,
+                        "source": {"heading": "", "subheading": ""},
+                    },
+                ]
+            }
+        )
+        assert scored["npcs"][0]["importance_score"] > scored["npcs"][1]["importance_score"]

@@ -2,6 +2,8 @@ from app.services.entity_normalization_service import normalize_campaign_entitie
 from app.services.live_context_service import build_scene_live_context
 from app.services.parsing.confidence import annotate_campaign_confidence
 from app.services.parsing.models import SectionChunk
+from app.services.parsing.coverage_audit import audit_coverage
+from app.services.parsing.importance import score_importance
 
 
 def test_annotate_campaign_confidence_sets_review_priority_from_chunk_signals():
@@ -162,3 +164,24 @@ def test_build_scene_live_context_collects_location_npcs_and_related_quests(monk
     assert context["scene_npcs"][0]["name"] == "Captain Vane"
     assert context["related_quests"][0]["name"] == "Gain Entry"
     assert "Related quests: Gain Entry" in context["summary"]
+
+
+def test_recall_upgrade_scores_and_coverage_can_coexist_with_payload():
+    payload = {
+        "npcs": [{"name": "Archivist Mel", "mention_count": 3, "confidence": 0.8, "source": {"heading": "Mel"}}],
+        "locations": [{"name": "Vault of Ash", "description": ""}],
+        "scenes": [{"title": "Vault Entry", "npcs": []}],
+        "quests": [{"name": "Open the Vault", "objective": "", "stakes": ""}],
+        "encounters": [],
+        "items": [],
+        "factions": [],
+        "lore": [],
+        "codex_entries": [],
+        "relationships": [],
+    }
+    scored = score_importance(payload)
+    report = audit_coverage(scored, [SectionChunk(heading="Vault of Ash", level=1, body="The vault waits.", page_number=2)])
+    scored["coverage_report"] = report
+    assert isinstance(scored["coverage_report"], dict)
+    assert "summary" in scored["coverage_report"]
+    assert "importance_score" in scored["npcs"][0]

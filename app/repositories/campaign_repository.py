@@ -254,7 +254,26 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
     payload["id"] = campaign.id
     payload["title"] = campaign.title or payload.get("title", "")
     payload["summary"] = campaign.summary or payload.get("summary", "")
-    for key in ("npcs", "party", "scenes", "locations", "reveals", "items", "images", "quests", "factions", "lore"):
+    for key in (
+        "npcs",
+        "party",
+        "scenes",
+        "locations",
+        "reveals",
+        "items",
+        "images",
+        "quests",
+        "factions",
+        "lore",
+        "clues",
+        "secrets",
+        "rumors",
+        "read_alouds",
+        "consequences",
+        "rewards",
+        "hooks",
+        "parse_candidates",
+    ):
         if not isinstance(payload.get(key), list):
             payload[key] = []
     if not isinstance(payload.get("encounters"), list):
@@ -287,6 +306,8 @@ def _campaign_payload_from_json_record(campaign: Campaign) -> Optional[dict[str,
             payload[key] = []
     if not isinstance(payload.get("review_summary"), dict):
         payload["review_summary"] = {}
+    if not isinstance(payload.get("coverage_report"), dict):
+        payload["coverage_report"] = {"summary": {"total_gaps": 0}}
     if not isinstance(payload.get("documents"), list):
         payload["documents"] = []
     return _apply_campaign_system_metadata(payload)
@@ -685,10 +706,19 @@ def create_from_parse_result(result: dict[str, Any]) -> int:
             "quests": quests_payload,
             "factions": factions_payload,
             "lore": lore_payload,
+            "clues": result.get("clues", []),
+            "secrets": result.get("secrets", []),
+            "rumors": result.get("rumors", []),
+            "read_alouds": result.get("read_alouds", []),
+            "consequences": result.get("consequences", []),
+            "rewards": result.get("rewards", []),
+            "hooks": result.get("hooks", []),
+            "parse_candidates": result.get("parse_candidates", []),
             "images": result.get("images", []),
             "codex_entries": result.get("codex_entries", []),
             "relationships": result.get("relationships", []),
             "review_summary": result.get("review_summary", {}),
+            "coverage_report": result.get("coverage_report", {"summary": {"total_gaps": 0}}),
         }
         campaign.data_json = json.dumps(canonical_payload, ensure_ascii=False)
         result["id"] = campaign.id

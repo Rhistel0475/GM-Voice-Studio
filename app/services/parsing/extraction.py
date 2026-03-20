@@ -3,13 +3,21 @@ import re
 from typing import Any, Iterable
 
 from app.services.parsing.extractors import (
+    extract_clues,
+    extract_consequences,
     extract_codex_entries,
+    extract_hooks,
     extract_items,
     extract_locations,
     extract_npcs,
     extract_quests,
+    extract_read_aloud,
+    extract_rewards,
+    extract_rumors,
     extract_scene_seeds,
+    extract_secrets,
 )
+from app.services.parsing.evidence import attach_entity_evidence
 from app.services.parsing.models import SectionChunk
 
 
@@ -32,12 +40,11 @@ def _normalized_name(value: Any) -> str:
 
 
 def _attach_source(items: Iterable[dict[str, Any]], chunk: SectionChunk) -> list[dict[str, Any]]:
-    source = chunk.source_metadata()
     decorated: list[dict[str, Any]] = []
     for item in items:
-        enriched = dict(item)
-        enriched["source"] = dict(source)
-        decorated.append(enriched)
+        if not isinstance(item, dict):
+            continue
+        decorated.append(attach_entity_evidence(item, chunk))
     return decorated
 
 
@@ -163,6 +170,13 @@ def extract_typed_entities(
         "items": [],
         "codex_entries": [],
         "encounters": [],
+        "clues": [],
+        "secrets": [],
+        "rumors": [],
+        "read_alouds": [],
+        "consequences": [],
+        "rewards": [],
+        "hooks": [],
     }
 
     for chunk in chunks:
@@ -215,6 +229,21 @@ def extract_typed_entities(
             )
             results["codex_entries"].extend(codex_items)
             extracted_any = extracted_any or bool(codex_items)
+
+        high_value_extractors = (
+            ("clues", extract_clues),
+            ("secrets", extract_secrets),
+            ("rumors", extract_rumors),
+            ("read_alouds", extract_read_aloud),
+            ("consequences", extract_consequences),
+            ("rewards", extract_rewards),
+            ("hooks", extract_hooks),
+        )
+        for result_key, extractor in high_value_extractors:
+            extracted_items = _attach_source(extractor(chunk, model=model), chunk)
+            if extracted_items:
+                results[result_key].extend(extracted_items)
+                extracted_any = True
 
         if not extracted_any and chunk.body.strip():
             fallback_codex = _attach_source(

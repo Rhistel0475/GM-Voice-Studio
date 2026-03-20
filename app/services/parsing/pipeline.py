@@ -12,6 +12,10 @@ from app.services.parsing.sections import split_into_sections
 from app.services.parsing.classify import classify_chunks
 from app.services.parsing.confidence import annotate_campaign_confidence
 from app.services.parsing.extraction import extract_typed_entities
+from app.services.parsing.candidates import build_candidates
+from app.services.parsing.aggregation import fuse_candidates
+from app.services.parsing.importance import score_importance
+from app.services.parsing.coverage_audit import audit_coverage
 from app.services.parsing.extractors.quest import canonicalize_quests
 from app.services.parsing.relationships import extract_relationships
 from app.services.entity_normalization_service import normalize_campaign_entities
@@ -100,13 +104,16 @@ def run_parsing_pipeline(
     title, summary = _extract_title_summary(normalized, model=model)
 
     extracted = extract_typed_entities(sections, model=model)
-    npcs = dedupe_npcs(extracted["npcs"])
-    locations = dedupe_locations(extracted["locations"])
-    scenes = dedupe_scenes(extracted["scenes"])
-    codex_entries = dedupe_codex_entries(extracted["codex_entries"])
-    quests = canonicalize_quests(extracted["quests"])
-    items = _dedupe_named_entries(extracted["items"], ("id", "name"))
-    encounters = _dedupe_named_entries(extracted["encounters"], ("id", "name"))
+    candidates = build_candidates(extracted, sections)
+    fused = fuse_candidates(candidates)
+    fused = score_importance(fused)
+    npcs = dedupe_npcs(fused["npcs"])
+    locations = dedupe_locations(fused["locations"])
+    scenes = dedupe_scenes(fused["scenes"])
+    codex_entries = dedupe_codex_entries(fused["codex_entries"])
+    quests = canonicalize_quests(fused["quests"])
+    items = _dedupe_named_entries(fused["items"], ("id", "name"))
+    encounters = _dedupe_named_entries(fused["encounters"], ("id", "name"))
     scenes = _canonicalize_scene_references(scenes, npcs, locations)
     quests = _canonicalize_quest_references(quests, npcs, locations)
     items = _canonicalize_item_references(items, npcs, scenes, locations)
@@ -141,9 +148,18 @@ def run_parsing_pipeline(
         "lore": lore_entries,
         "codex_entries": codex_entries,
         "relationships": relationships,
+        "clues": fused.get("clues", []),
+        "secrets": fused.get("secrets", []),
+        "rumors": fused.get("rumors", []),
+        "read_alouds": fused.get("read_alouds", []),
+        "consequences": fused.get("consequences", []),
+        "rewards": fused.get("rewards", []),
+        "hooks": fused.get("hooks", []),
+        "parse_candidates": candidates,
     }
     result = normalize_campaign_entities(result)
     result = annotate_campaign_confidence(result, sections)
+    result["coverage_report"] = audit_coverage(result, sections)
     return result
 
 
@@ -163,6 +179,15 @@ def _empty_result() -> dict[str, Any]:
         "lore": [],
         "codex_entries": [],
         "relationships": [],
+        "clues": [],
+        "secrets": [],
+        "rumors": [],
+        "read_alouds": [],
+        "consequences": [],
+        "rewards": [],
+        "hooks": [],
+        "parse_candidates": [],
+        "coverage_report": {"summary": {"total_gaps": 0}},
     }
 
 

@@ -33,6 +33,8 @@ interface RawNpcObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_scenes?: string[];
   related_locations?: string[];
   related_factions?: string[];
@@ -54,6 +56,8 @@ interface RawSceneObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_locations?: string[];
   related_quests?: string[];
   related_codex_entries?: string[];
@@ -70,6 +74,8 @@ interface RawLocationObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_npcs?: string[];
   related_scenes?: string[];
   related_factions?: string[];
@@ -88,6 +94,8 @@ interface RawCodexEntryObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_npcs?: string[];
   related_locations?: string[];
   related_scenes?: string[];
@@ -109,6 +117,8 @@ interface RawQuestObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_npcs?: string[];
   related_locations?: string[];
   related_scenes?: string[];
@@ -128,6 +138,8 @@ interface RawFactionObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_npcs?: string[];
   related_locations?: string[];
   related_scenes?: string[];
@@ -149,6 +161,8 @@ interface RawLoreObject {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
   related_npcs?: string[];
   related_locations?: string[];
   related_scenes?: string[];
@@ -162,6 +176,10 @@ interface RawEntityMeta {
   needs_review?: boolean;
   review_priority?: string;
   source?: Record<string, unknown>;
+  evidence?: Record<string, unknown>;
+  evidence_text?: string;
+  source_chunk_id?: string;
+  importance_score?: number;
 }
 
 type RawNpc = string | RawNpcObject;
@@ -232,18 +250,43 @@ export function parseResultToExtractionBatch(
   const makeSource = (
     section: string,
     excerpt?: string,
-    rawSource?: Record<string, unknown>
+    rawSource?: Record<string, unknown>,
+    rawEvidence?: Record<string, unknown>,
   ): ExtractionSourceRef => ({
     sourceType: "uploaded",
-    documentId: typeof rawSource?.document_id === "string" ? rawSource.document_id : docId,
+    documentId:
+      typeof rawEvidence?.source_document_id === "string"
+        ? rawEvidence.source_document_id
+        : typeof rawSource?.document_id === "string"
+          ? rawSource.document_id
+          : docId,
     documentName: docName,
-    chunkId: typeof rawSource?.chunk_id === "string" ? rawSource.chunk_id : undefined,
-    pageNumber: typeof rawSource?.page_number === "number" ? rawSource.page_number : undefined,
+    chunkId:
+      typeof rawEvidence?.source_chunk_id === "string"
+        ? rawEvidence.source_chunk_id
+        : typeof rawSource?.source_chunk_id === "string"
+          ? rawSource.source_chunk_id
+          : typeof rawSource?.chunk_id === "string"
+            ? rawSource.chunk_id
+            : undefined,
+    pageNumber:
+      typeof rawEvidence?.page_number === "number"
+        ? rawEvidence.page_number
+        : typeof rawSource?.page_number === "number"
+          ? rawSource.page_number
+          : undefined,
     sectionHeading:
-      typeof rawSource?.heading === "string" && rawSource.heading.trim()
-        ? rawSource.heading
+      typeof rawEvidence?.heading === "string" && rawEvidence.heading.trim()
+        ? rawEvidence.heading
+        : typeof rawSource?.heading === "string" && rawSource.heading.trim()
+          ? rawSource.heading
         : section,
-    excerpt: excerpt ? excerpt.slice(0, 200) : undefined,
+    excerpt:
+      typeof rawEvidence?.evidence_text === "string" && rawEvidence.evidence_text.trim()
+        ? rawEvidence.evidence_text.slice(0, 200)
+        : excerpt
+          ? excerpt.slice(0, 200)
+          : undefined,
   });
 
   const entities: ExtractionEntity[] = [];
@@ -276,7 +319,7 @@ export function parseResultToExtractionBatch(
         tags: Array.isArray(raw.tags) ? raw.tags : [],
         confidence: reviewMeta.confidence,
         reviewStatus: reviewMeta.reviewStatus,
-        source: makeSource("NPCs", raw.name, raw.source),
+        source: makeSource("NPCs", raw.evidence_text || raw.name, raw.source, raw.evidence),
       });
     } else if (typeof raw === "string" && raw.trim()) {
       entities.push({
@@ -328,7 +371,7 @@ export function parseResultToExtractionBatch(
       tags: Array.isArray(raw.tags) ? raw.tags : (raw.act ? [raw.act] : []),
       confidence: reviewMeta.confidence,
       reviewStatus: reviewMeta.reviewStatus,
-      source: makeSource("Scenes", raw.title, raw.source),
+      source: makeSource("Scenes", raw.read_aloud || raw.title, raw.source, raw.evidence),
     });
   }
 
@@ -359,7 +402,7 @@ export function parseResultToExtractionBatch(
         tags: Array.isArray(raw.tags) ? raw.tags : [],
         confidence: reviewMeta.confidence,
         reviewStatus: reviewMeta.reviewStatus,
-        source: makeSource("Locations", raw.name, raw.source),
+        source: makeSource("Locations", raw.evidence_text || raw.name, raw.source, raw.evidence),
       });
     } else if (typeof raw === "string" && raw.trim()) {
       entities.push({
@@ -408,7 +451,7 @@ export function parseResultToExtractionBatch(
       tags: Array.isArray(raw.tags) ? raw.tags : [],
       confidence: reviewMeta.confidence,
       reviewStatus: reviewMeta.reviewStatus,
-      source: makeSource("Codex Entries", raw.title, raw.source),
+      source: makeSource("Codex Entries", raw.evidence_text || raw.title, raw.source, raw.evidence),
     });
   }
 
@@ -437,7 +480,7 @@ export function parseResultToExtractionBatch(
       tags: Array.isArray(raw.tags) && raw.tags.length > 0 ? raw.tags : ["quest"],
       confidence: reviewMeta.confidence,
       reviewStatus: reviewMeta.reviewStatus,
-      source: makeSource("Quests", title, raw.source),
+      source: makeSource("Quests", raw.evidence_text || title, raw.source, raw.evidence),
     });
   }
 
@@ -467,7 +510,7 @@ export function parseResultToExtractionBatch(
       tags: Array.isArray(raw.tags) ? raw.tags : [],
       confidence: reviewMeta.confidence,
       reviewStatus: reviewMeta.reviewStatus,
-      source: makeSource("Factions", name, raw.source),
+      source: makeSource("Factions", raw.evidence_text || name, raw.source, raw.evidence),
     });
   }
 
@@ -496,7 +539,7 @@ export function parseResultToExtractionBatch(
       tags: Array.isArray(raw.tags) ? raw.tags : [],
       confidence: reviewMeta.confidence,
       reviewStatus: reviewMeta.reviewStatus,
-      source: makeSource("Lore", title, raw.source),
+      source: makeSource("Lore", raw.evidence_text || title, raw.source, raw.evidence),
     });
   }
 
