@@ -1,17 +1,89 @@
 """Post-parse coverage audit pass."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.services.parsing.models import SectionChunk
 
 
-def _count_named_mentions(chunks: list[SectionChunk]) -> int:
-    count = 0
+_PERSON_NAME_RE = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b")
+_NON_PERSON_TERMS = {
+    "Read Aloud",
+    "Quest Hook",
+    "Blackfen Marsh",
+    "Moonwell Chapel",
+    "Old Quarry",
+}
+_LOW_SIGNAL_AUDIT_TERMS = ("manifest", "inventory", "ledger", "supply list", "stock counts")
+_QUEST_LOGISTICS_TERMS = ("quest hook", "objective", "reward", "rewards", "mission", "goals")
+_CHARACTER_CONTEXT_TERMS = (
+    "npc",
+    "scene",
+    "encounter",
+    "speaks",
+    "says",
+    "introduces",
+    "captain",
+    "baron",
+    "priest",
+    "merchant",
+    "guard",
+)
+_PERSON_TITLE_PREFIXES = (
+    "captain",
+    "baron",
+    "lady",
+    "lord",
+    "sir",
+    "dame",
+    "priest",
+    "priestess",
+    "master",
+    "mistress",
+    "doctor",
+    "dr",
+)
+
+
+def _detect_named_people(chunks: list[SectionChunk]) -> set[str]:
+    people: set[str] = set()
     for chunk in chunks:
-        words = [token for token in str(chunk.body).split() if token.istitle()]
-        count += len(words)
-    return count
+        for match in _PERSON_NAME_RE.findall(str(chunk.body or "")):
+            if match in _NON_PERSON_TERMS:
+                continue
+            people.add(match)
+    return people
+
+
+def _normalize_person_name(name: str) -> str:
+    normalized = re.sub(r"[^A-Za-z\s]", " ", str(name or "")).strip().lower()
+    normalized = re.sub(r"\s+", " ", normalized)
+    parts = normalized.split()
+    if parts and parts[0] in _PERSON_TITLE_PREFIXES:
+        parts = parts[1:]
+    return " ".join(parts)
+
+
+def _is_low_signal_chunk(chunk: SectionChunk) -> bool:
+    text = " ".join(
+        part for part in (chunk.heading, chunk.subheading, chunk.body) if str(part).strip()
+    ).lower()
+    return any(term in text for term in _LOW_SIGNAL_AUDIT_TERMS)
+
+
+def _is_quest_logistics_chunk(chunk: SectionChunk) -> bool:
+    text = " ".join(
+        part for part in (chunk.heading, chunk.subheading, chunk.body) if str(part).strip()
+    ).lower()
+    return any(term in text for term in _QUEST_LOGISTICS_TERMS)
+
+
+def _has_character_context(chunk: SectionChunk) -> bool:
+    text = " ".join(
+        part for part in (chunk.heading, chunk.subheading, chunk.body) if str(part).strip()
+    ).lower()
+    return any(term in text for term in _CHARACTER_CONTEXT_TERMS)
 
 
 def audit_coverage(result: dict[str, Any], chunks: list[SectionChunk]) -> dict[str, Any]:
@@ -40,6 +112,7 @@ def audit_coverage(result: dict[str, Any], chunks: list[SectionChunk]) -> dict[s
             continue
         if chunk_hits.get(chunk.chunk_id(), 0) == 0:
             headings_without_entities.append(chunk.heading)
+    low_signal_heading_count = sum(1 for chunk in chunks if chunk.heading and _is_low_signal_chunk(chunk))
 
     scenes_without_npcs = [
         str(scene.get("title") or "")
@@ -61,24 +134,41 @@ def audit_coverage(result: dict[str, Any], chunks: list[SectionChunk]) -> dict[s
         for encounter in result.get("encounters", [])
         if not str(encounter.get("scene_id") or "").strip()
     ]
-    named_mentions = _count_named_mentions(chunks)
-    npc_count = len(result.get("npcs", []))
-    likely_unpromoted_people = max(0, named_mentions - npc_count * 4)
+    people_chunks = [chunk for chunk in chunks if not _is_quest_logistics_chunk(chunk) or _has_character_context(chunk)]
+    detected_people = _detect_named_people(people_chunks)
+    extracted_npcs = {
+        str(item.get("name") or "").strip()
+        for item in result.get("npcs", [])
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    }
+    detected_people_norm = {
+        _normalize_person_name(name)
+        for name in detected_people
+        if _normalize_person_name(name)
+    }
+    extracted_npcs_norm = {
+        _normalize_person_name(name)
+        for name in extracted_npcs
+        if _normalize_person_name(name)
+    }
+    likely_unpromoted_people = len(detected_people_norm - extracted_npcs_norm)
     lexical_cue_misses = 0
     if any("secret" in str(chunk.body).lower() for chunk in chunks) and not result.get("secrets"):
         lexical_cue_misses += 1
     if any("clue" in str(chunk.body).lower() for chunk in chunks) and not result.get("clues"):
         lexical_cue_misses += 1
 
-    total_gaps = (
-        len(headings_without_entities)
-        + len(scenes_without_npcs)
-        + len(locations_without_hooks)
-        + len(quests_missing_parts)
-        + len(encounter_without_scene)
-        + likely_unpromoted_people
-        + lexical_cue_misses
-    )
+    heading_confidence = "low" if low_signal_heading_count >= max(1, len(headings_without_entities) // 2) else "medium"
+    flags = [
+        ("heading_gaps", len(headings_without_entities), heading_confidence),
+        ("scene_npc_gaps", len(scenes_without_npcs), "medium"),
+        ("location_detail_gaps", len(locations_without_hooks), "medium"),
+        ("quest_detail_gaps", len(quests_missing_parts), "high"),
+        ("encounter_link_gaps", len(encounter_without_scene), "high"),
+        ("likely_unpromoted_people", likely_unpromoted_people, "low" if likely_unpromoted_people <= 2 else "medium"),
+        ("lexical_cue_gaps", lexical_cue_misses, "medium"),
+    ]
+    total_gaps = sum(value for _name, value, confidence in flags if confidence in {"high", "medium"})
     return {
         "summary": {
             "heading_gaps": len(headings_without_entities),
@@ -90,6 +180,7 @@ def audit_coverage(result: dict[str, Any], chunks: list[SectionChunk]) -> dict[s
             "lexical_cue_gaps": lexical_cue_misses,
             "total_gaps": total_gaps,
         },
+        "gap_confidence": {name: confidence for name, _value, confidence in flags},
         "headings_without_entities": headings_without_entities[:50],
         "scenes_without_npcs": scenes_without_npcs[:50],
         "locations_without_hooks_or_details": locations_without_hooks[:50],

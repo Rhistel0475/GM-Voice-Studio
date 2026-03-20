@@ -1,0 +1,730 @@
+{
+  "aggregate_score": 100.0,
+  "aggregate_hard_pass": true,
+  "documents": [
+    {
+      "document": "split_npc_details.txt",
+      "checks": [
+        {
+          "dimension": "entity",
+          "key": "npcs",
+          "pass": true,
+          "missing": []
+        },
+        {
+          "dimension": "entity",
+          "key": "scenes",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "entity",
+          "key": "locations",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "quests",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "factions",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "items",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "clues",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rumors",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "secrets",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "read_alouds",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "consequences",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "rewards",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "hooks",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "merge",
+          "key": "npc",
+          "canonical": "Captain Ilvara",
+          "pass": true,
+          "actual_matches": 1,
+          "max_duplicates": 1
+        },
+        {
+          "dimension": "importance",
+          "name": "Captain Ilvara",
+          "top_k": 5,
+          "pass": true
+        },
+        {
+          "dimension": "evidence",
+          "pass": true,
+          "complete": 5,
+          "total": 5,
+          "ratio": 1.0
+        },
+        {
+          "dimension": "coverage",
+          "pass": true,
+          "total_gaps": 0,
+          "max_allowed": 8
+        }
+      ],
+      "score": 100.0,
+      "dimension_scores": {
+        "entity": 1.0,
+        "high_value": 1.0,
+        "merge": 1.0,
+        "importance": 1.0,
+        "evidence": 1.0,
+        "coverage": 1.0
+      },
+      "hard_gates": {
+        "evidence_ratio": true,
+        "merge_quality": true,
+        "high_value_recall": true
+      },
+      "hard_pass": true,
+      "coverage_summary": {
+        "heading_gaps": 0,
+        "scene_npc_gaps": 0,
+        "location_detail_gaps": 0,
+        "quest_detail_gaps": 0,
+        "encounter_link_gaps": 0,
+        "likely_unpromoted_people": 1,
+        "lexical_cue_gaps": 0,
+        "total_gaps": 0
+      }
+    },
+    {
+      "document": "split_quest_hook_objective_reward.txt",
+      "checks": [
+        {
+          "dimension": "entity",
+          "key": "npcs",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "scenes",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "locations",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "quests",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 2
+        },
+        {
+          "dimension": "entity",
+          "key": "quests",
+          "pass": true,
+          "expected_max": 2,
+          "actual": 2
+        },
+        {
+          "dimension": "entity",
+          "key": "factions",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "items",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 2
+        },
+        {
+          "dimension": "entity",
+          "key": "items",
+          "pass": true,
+          "expected_max": 2,
+          "actual": 2
+        },
+        {
+          "dimension": "high_value",
+          "key": "clues",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rumors",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "secrets",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "read_alouds",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "consequences",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rewards",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "hooks",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 2
+        },
+        {
+          "dimension": "merge",
+          "key": "quest",
+          "canonical": "Find Surveyor Lysa Dorn",
+          "pass": true,
+          "actual_matches": 1,
+          "max_duplicates": 1
+        },
+        {
+          "dimension": "importance",
+          "name": "Find Surveyor Lysa Dorn",
+          "top_k": 5,
+          "pass": true,
+          "rank": 2,
+          "rank_max": 3
+        },
+        {
+          "dimension": "evidence",
+          "pass": true,
+          "complete": 7,
+          "total": 7,
+          "ratio": 1.0
+        },
+        {
+          "dimension": "coverage",
+          "pass": true,
+          "total_gaps": 0,
+          "max_allowed": 6
+        }
+      ],
+      "score": 100.0,
+      "dimension_scores": {
+        "entity": 1.0,
+        "high_value": 1.0,
+        "merge": 1.0,
+        "importance": 1.0,
+        "evidence": 1.0,
+        "coverage": 1.0
+      },
+      "hard_gates": {
+        "evidence_ratio": true,
+        "merge_quality": true,
+        "high_value_recall": true
+      },
+      "hard_pass": true,
+      "coverage_summary": {
+        "heading_gaps": 0,
+        "scene_npc_gaps": 0,
+        "location_detail_gaps": 0,
+        "quest_detail_gaps": 0,
+        "encounter_link_gaps": 0,
+        "likely_unpromoted_people": 1,
+        "lexical_cue_gaps": 0,
+        "total_gaps": 0
+      }
+    },
+    {
+      "document": "sidebar_secrets_clues.txt",
+      "checks": [
+        {
+          "dimension": "entity",
+          "key": "npcs",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "scenes",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "entity",
+          "key": "locations",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "quests",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "factions",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "items",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "clues",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "rumors",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "secrets",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "read_alouds",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "consequences",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rewards",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "hooks",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "importance",
+          "name": "Moonwell Chapel",
+          "top_k": 5,
+          "pass": true,
+          "rank": 2,
+          "rank_max": 3
+        },
+        {
+          "dimension": "evidence",
+          "pass": true,
+          "complete": 6,
+          "total": 6,
+          "ratio": 1.0
+        },
+        {
+          "dimension": "coverage",
+          "pass": true,
+          "total_gaps": 1,
+          "max_allowed": 4
+        }
+      ],
+      "score": 100.0,
+      "dimension_scores": {
+        "entity": 1.0,
+        "high_value": 1.0,
+        "importance": 1.0,
+        "evidence": 1.0,
+        "coverage": 1.0
+      },
+      "hard_gates": {
+        "evidence_ratio": true,
+        "merge_quality": true,
+        "high_value_recall": true
+      },
+      "hard_pass": true,
+      "coverage_summary": {
+        "heading_gaps": 0,
+        "scene_npc_gaps": 1,
+        "location_detail_gaps": 0,
+        "quest_detail_gaps": 0,
+        "encounter_link_gaps": 0,
+        "likely_unpromoted_people": 0,
+        "lexical_cue_gaps": 0,
+        "total_gaps": 1
+      }
+    },
+    {
+      "document": "implicit_named_npcs.txt",
+      "checks": [
+        {
+          "dimension": "entity",
+          "key": "npcs",
+          "pass": true,
+          "missing": []
+        },
+        {
+          "dimension": "entity",
+          "key": "scenes",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 1
+        },
+        {
+          "dimension": "entity",
+          "key": "locations",
+          "pass": true,
+          "expected_min": 1,
+          "actual": 3
+        },
+        {
+          "dimension": "entity",
+          "key": "quests",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "factions",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "items",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "clues",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rumors",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "secrets",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "read_alouds",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "consequences",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rewards",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 1
+        },
+        {
+          "dimension": "high_value",
+          "key": "hooks",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "importance",
+          "name": "Vexa Morn",
+          "top_k": 6,
+          "pass": true,
+          "rank": 3,
+          "rank_max": 4
+        },
+        {
+          "dimension": "evidence",
+          "pass": true,
+          "complete": 7,
+          "total": 7,
+          "ratio": 1.0
+        },
+        {
+          "dimension": "coverage",
+          "pass": true,
+          "total_gaps": 0,
+          "max_allowed": 3
+        }
+      ],
+      "score": 100.0,
+      "dimension_scores": {
+        "entity": 1.0,
+        "high_value": 1.0,
+        "importance": 1.0,
+        "evidence": 1.0,
+        "coverage": 1.0
+      },
+      "hard_gates": {
+        "evidence_ratio": true,
+        "merge_quality": true,
+        "high_value_recall": true
+      },
+      "hard_pass": true,
+      "coverage_summary": {
+        "heading_gaps": 0,
+        "scene_npc_gaps": 0,
+        "location_detail_gaps": 0,
+        "quest_detail_gaps": 0,
+        "encounter_link_gaps": 0,
+        "likely_unpromoted_people": 1,
+        "lexical_cue_gaps": 0,
+        "total_gaps": 0
+      }
+    },
+    {
+      "document": "audit_false_positive_control.txt",
+      "checks": [
+        {
+          "dimension": "entity",
+          "key": "npcs",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "scenes",
+          "pass": true,
+          "expected_max": 1,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "locations",
+          "pass": true,
+          "expected_min": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "quests",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "factions",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "entity",
+          "key": "items",
+          "pass": true,
+          "expected_max": 1,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "clues",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rumors",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "secrets",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "read_alouds",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "consequences",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "rewards",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "high_value",
+          "key": "hooks",
+          "pass": true,
+          "expected_max": 0,
+          "actual": 0
+        },
+        {
+          "dimension": "evidence",
+          "pass": true,
+          "complete": 1,
+          "total": 1,
+          "ratio": 1.0
+        },
+        {
+          "dimension": "coverage",
+          "pass": true,
+          "total_gaps": 0,
+          "max_allowed": 2
+        }
+      ],
+      "score": 100.0,
+      "dimension_scores": {
+        "entity": 1.0,
+        "high_value": 1.0,
+        "evidence": 1.0,
+        "coverage": 1.0
+      },
+      "hard_gates": {
+        "evidence_ratio": true,
+        "merge_quality": true,
+        "high_value_recall": true
+      },
+      "hard_pass": true,
+      "coverage_summary": {
+        "heading_gaps": 4,
+        "scene_npc_gaps": 0,
+        "location_detail_gaps": 0,
+        "quest_detail_gaps": 0,
+        "encounter_link_gaps": 0,
+        "likely_unpromoted_people": 0,
+        "lexical_cue_gaps": 0,
+        "total_gaps": 0
+      }
+    }
+  ]
+}

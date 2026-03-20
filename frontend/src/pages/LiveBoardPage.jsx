@@ -5,8 +5,6 @@ import SessionAssistantPanel from "../components/live-board/SessionAssistantPane
 import { FantasyButton } from "../components/shared";
 import { deriveNpcTone } from "../lib/sessionAssistant";
 
-const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
-
 /**
  * Live Board — 3-column session console.
  * LEFT (3/12): GMControlPanel — Active Scene + Party
@@ -81,16 +79,13 @@ export default function LiveBoardPage({
         <main className="xl:col-span-6 min-h-0 flex flex-col gap-3">
 
           {showSessionEmpty ? (
-            /* Empty state — faded artwork background with dark vignette */
+            /* Empty state — plain background */
             <div
               className="flex-1 flex flex-col items-center justify-center rounded-lg overflow-hidden relative"
               style={{
-                backgroundImage: `url('${BACKEND_URL}/static/img/gm_header.png')`,
-                backgroundSize: "cover",
-                backgroundPosition: "center 40%",
+                background: "linear-gradient(180deg, #1a1109, #130b06)",
               }}
             >
-              <div className="absolute inset-0" style={{ background: "rgba(8,4,2,0.82)" }} aria-hidden />
               <div className="relative z-10 flex flex-col items-center gap-4 py-14 text-center px-8">
                 <div className="w-14 h-14 rounded-full border border-[#3a2510] bg-[#0f0804]/80 flex items-center justify-center">
                   <ScrollText size={26} className="text-[var(--gold)] opacity-50" aria-hidden />

@@ -16,7 +16,8 @@ if load_dotenv is not None:
     load_dotenv(_ROOT_DIR / ".env")
 
 # TTS engine
-TTS_PROVIDER = (os.environ.get("TTS_PROVIDER", "kani") or "kani").strip().lower()
+# Hume is primary; Kani is fallback in dispatcher when Hume fails.
+TTS_PROVIDER = (os.environ.get("TTS_PROVIDER", "hume") or "hume").strip().lower()
 AUDIO_CACHE_SIZE = int(os.environ.get("AUDIO_CACHE_SIZE", "10"))
 HUME_API_KEY = os.environ.get("HUME_API_KEY", "").strip()
 HUME_SECRET_KEY = os.environ.get("HUME_SECRET_KEY", "").strip()

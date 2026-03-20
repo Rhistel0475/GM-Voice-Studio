@@ -330,6 +330,12 @@ def _sources_are_nearby(left: dict[str, Any], right: dict[str, Any]) -> bool:
     return abs(left_page - right_page) <= 1
 
 
+def _semantic_objective_overlap(left: dict[str, Any], right: dict[str, Any]) -> float:
+    left_tokens = _token_set(left.get("objective"), left.get("stakes"), left.get("description"))
+    right_tokens = _token_set(right.get("objective"), right.get("stakes"), right.get("description"))
+    return _jaccard(left_tokens, right_tokens)
+
+
 def _should_merge_quest_records(left: dict[str, Any], right: dict[str, Any]) -> bool:
     left_name = _normalize_text(left.get("name"))
     right_name = _normalize_text(right.get("name"))
@@ -365,10 +371,13 @@ def _should_merge_quest_records(left: dict[str, Any], right: dict[str, Any]) -> 
         _normalize_text(left.get("description")),
         _normalize_text(right.get("description")),
     ).ratio()
+    objective_overlap = _semantic_objective_overlap(left, right)
 
     if name_similarity >= 0.88 and (shared_anchor or token_overlap >= 0.2):
         return True
     if objective_similarity >= 0.66 and shared_anchor:
+        return True
+    if objective_overlap >= 0.45 and _sources_are_nearby(left, right):
         return True
     if description_similarity >= 0.78 and shared_anchor:
         return True

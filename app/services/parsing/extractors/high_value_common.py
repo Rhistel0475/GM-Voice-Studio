@@ -7,6 +7,10 @@ from typing import Any
 from app.services.parsing.models import SectionChunk
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
+_NEGATION_PATTERN = re.compile(
+    r"\b(?:no|none|not|without)\b.{0,24}\b(?:hook|hooks|secret|secrets|clue|clues|rumor|rumors|reward|rewards)\b",
+    re.IGNORECASE,
+)
 
 
 def _sentences(text: str) -> list[str]:
@@ -33,6 +37,8 @@ def extract_keyword_entries(
     entries: list[dict[str, Any]] = []
     for sentence in _sentences(chunk.full_text()):
         lowered_sentence = sentence.lower()
+        if _NEGATION_PATTERN.search(lowered_sentence):
+            continue
         if not any(keyword in lowered_sentence for keyword in keywords):
             continue
         entries.append(

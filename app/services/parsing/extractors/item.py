@@ -25,6 +25,15 @@ def extract_items(chunk: SectionChunk, model: str | None = None) -> List[dict[st
     """
     from app.core.config import AI_MODEL
 
+    lowered = chunk.full_text().lower()
+    inventory_like = any(token in lowered for token in ("inventory", "manifest", "ledger", "supply list", "stock counts"))
+    notable_item_cues = any(
+        token in lowered
+        for token in ("treasure", "reward", "artifact", "relic", "magic item", "key item", "heirloom", "loot")
+    )
+    if inventory_like and not notable_item_cues:
+        return []
+
     client = _get_client()
     effective_model = model or AI_MODEL
 
@@ -72,4 +81,14 @@ def extract_items(chunk: SectionChunk, model: str | None = None) -> List[dict[st
                 "confidence": float(obj.get("confidence", 0.8)),
             }
         )
+    if inventory_like:
+        # Extra guardrail for logistics-heavy chunks: keep only strongly notable items.
+        result = [
+            item
+            for item in result
+            if any(
+                token in f"{item.get('name', '')} {item.get('description', '')}".lower()
+                for token in ("artifact", "relic", "magic", "heirloom", "key")
+            )
+        ]
     return result

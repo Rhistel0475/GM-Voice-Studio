@@ -1,0 +1,149 @@
+{
+  "documents": [
+    {
+      "doc": "split_npc_details.txt",
+      "expected": {
+        "entities": {
+          "npcs": ["Captain Ilvara"],
+          "scenes_min": 1,
+          "locations_min": 0,
+          "quests_min": 0,
+          "factions_min": 0,
+          "items_min": 0
+        },
+        "high_value": {
+          "secrets_min": 1,
+          "consequences_min": 1,
+          "clues_min": 0,
+          "rumors_min": 0,
+          "read_alouds_min": 0,
+          "rewards_min": 0,
+          "hooks_min": 0
+        },
+        "merge_expectations": [
+          { "type": "npc", "canonical": "Captain Ilvara", "max_duplicates": 1 }
+        ],
+        "importance_expectations": [
+          { "name": "Captain Ilvara", "top_k": 5 }
+        ],
+        "coverage_expectations": {
+          "must_not_overflag_max": 8
+        }
+      }
+    },
+    {
+      "doc": "split_quest_hook_objective_reward.txt",
+      "expected": {
+        "entities": {
+          "npcs_min": 0,
+          "scenes_min": 0,
+          "locations_min": 0,
+          "quests_min": 1,
+          "quests_max": 2,
+          "factions_min": 0,
+          "items_min": 0,
+          "items_max": 2
+        },
+        "high_value": {
+          "rewards_min": 1,
+          "hooks_min": 1,
+          "secrets_min": 0,
+          "clues_min": 0,
+          "rumors_min": 0,
+          "read_alouds_min": 0,
+          "consequences_min": 0
+        },
+        "merge_expectations": [
+          { "type": "quest", "canonical": "Find Surveyor Lysa Dorn", "max_duplicates": 1 }
+        ],
+        "importance_expectations": [
+          { "name": "Find Surveyor Lysa Dorn", "top_k": 5, "rank_max": 3 }
+        ],
+        "coverage_expectations": {
+          "must_not_overflag_max": 6
+        }
+      }
+    },
+    {
+      "doc": "sidebar_secrets_clues.txt",
+      "expected": {
+        "entities": {
+          "npcs_min": 0,
+          "scenes_min": 1,
+          "locations_min": 0,
+          "quests_min": 0,
+          "factions_min": 0,
+          "items_min": 0
+        },
+        "high_value": {
+          "clues_min": 1,
+          "secrets_min": 1,
+          "rumors_min": 1,
+          "read_alouds_min": 1,
+          "consequences_min": 0,
+          "rewards_min": 0,
+          "hooks_min": 0
+        },
+        "importance_expectations": [
+          { "name": "Moonwell Chapel", "top_k": 5, "rank_max": 3 }
+        ],
+        "coverage_expectations": {
+          "must_not_overflag_max": 4
+        }
+      }
+    },
+    {
+      "doc": "implicit_named_npcs.txt",
+      "expected": {
+        "entities": {
+          "npcs": ["Vexa Morn", "Rook Dal"],
+          "scenes_min": 1,
+          "locations_min": 1,
+          "quests_min": 0,
+          "factions_min": 0,
+          "items_min": 0
+        },
+        "high_value": {
+          "hooks_min": 0,
+          "secrets_min": 0,
+          "clues_min": 0,
+          "rumors_min": 0,
+          "read_alouds_min": 0,
+          "consequences_min": 0,
+          "rewards_min": 0
+        },
+        "importance_expectations": [
+          { "name": "Vexa Morn", "top_k": 6, "rank_max": 4 }
+        ],
+        "coverage_expectations": {
+          "must_not_overflag_max": 3
+        }
+      }
+    },
+    {
+      "doc": "audit_false_positive_control.txt",
+      "expected": {
+        "entities": {
+          "npcs_max": 0,
+          "scenes_max": 1,
+          "locations_min": 0,
+          "quests_max": 0,
+          "factions_max": 0,
+          "items_max": 1
+        },
+        "high_value": {
+          "hooks_max": 0,
+          "secrets_max": 0,
+          "clues_max": 0,
+          "rumors_max": 0,
+          "read_alouds_max": 0,
+          "consequences_max": 0,
+          "rewards_max": 0
+        },
+        "coverage_expectations": {
+          "must_not_overflag_max": 2
+        }
+      }
+    }
+  ]
+}

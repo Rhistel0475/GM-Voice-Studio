@@ -2000,7 +2000,7 @@ button.tracker-row:hover:not(.is-active) {
 }
 
 .scene-watermark {
-  background-image: url('/static/img/gm_header.png');
+  background: linear-gradient(180deg, #1a1109, #130b06);
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
@@ -2017,7 +2017,7 @@ button.tracker-row:hover:not(.is-active) {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(10, 6, 4, 0.85);
+  background: transparent;
   z-index: 1;
 }
 .scene-watermark > * {

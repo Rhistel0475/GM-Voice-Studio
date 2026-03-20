@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+import logging
 from typing import Optional
 
 import soundfile as sf
@@ -30,6 +31,10 @@ def is_hume_provider() -> bool:
 
 def _provider_module():
     return tts_hume if is_hume_provider() else tts_kani
+
+
+def _fallback_provider_module():
+    return tts_kani if is_hume_provider() else None
 
 
 def _voice_capabilities(*, deletable: bool, editable: bool, clonable: bool) -> dict[str, bool]:
@@ -121,14 +126,33 @@ def generate(
     top_p: float = DEFAULT_TTS_TOP_P,
     repetition_penalty: float = DEFAULT_TTS_REPETITION_PENALTY,
 ):
-    return _provider_module().generate(
-        text,
-        language_tag=language_tag,
-        speaker_emb_path=speaker_emb_path,
-        temperature=temperature,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-    )
+    primary = _provider_module()
+    try:
+        return primary.generate(
+            text,
+            language_tag=language_tag,
+            speaker_emb_path=speaker_emb_path,
+            temperature=temperature,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+        )
+    except Exception as exc:
+        fallback = _fallback_provider_module()
+        if fallback is None:
+            raise
+        logging.warning(
+            "Primary TTS provider failed (%s). Falling back to Kani: %s",
+            get_tts_provider(),
+            exc,
+        )
+        return fallback.generate(
+            text,
+            language_tag=language_tag,
+            speaker_emb_path=speaker_emb_path,
+            temperature=temperature,
+            top_p=top_p,
+            repetition_penalty=repetition_penalty,
+        )
 
 
 def _evict_old_audio():
