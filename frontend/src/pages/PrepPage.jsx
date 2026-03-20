@@ -165,19 +165,14 @@ export default function PrepPage({
 
       {/* ── CENTER: Content list or injected view ──────────────────── */}
       <main className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden border-r border-[#3a2510]">
-        {centerMode === "upload" ? (
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            {libraryContent ?? (
-              <EmptyState message="Upload content not available." />
-            )}
-          </div>
-        ) : centerMode === "prep" ? (
-          <div className="flex-1 min-h-0 overflow-y-auto p-4">
-            {prepContent ?? (
-              <EmptyState message="Scene builder not available." />
-            )}
-          </div>
-        ) : (
+        {/* Upload and Prep panels stay mounted to preserve local state across mode switches */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ display: centerMode === "upload" ? "block" : "none" }}>
+          {libraryContent ?? <EmptyState message="Upload content not available." />}
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ display: centerMode === "prep" ? "block" : "none" }}>
+          {prepContent ?? <EmptyState message="Scene builder not available." />}
+        </div>
+        {centerMode === "codex" && (
           <>
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#3a2510] flex-shrink-0 bg-[#150e07]">

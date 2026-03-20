@@ -24,20 +24,29 @@ def extract_scene_seeds(chunk: SectionChunk, model: str | None = None) -> List[d
     effective_model = model or AI_MODEL
 
     prompt = (
-        "Extract scene or encounter data from this RPG chunk. Return ONLY a JSON array of objects. "
-        "Each object must have: title, act (optional), type (combat|social|exploration|mystery|travel|investigation), "
-        "read_aloud (≤40 words, boxed text to read to players), npcs (array of NPC names), "
-        "location (place name), difficulty (short descriptive label or empty string), rewards (brief), notes (brief), "
-        "confidence (0.0-1.0). Keep scene framing system-agnostic and do not assume combat math or challenge tiers "
-        "unless the text provides them. The chunk may describe a location, a set-piece scene, or boxed read-aloud text. "
-        "If no scene beat is described, return []. Keep strings short.\n\n"
+        "Extract scene or encounter data from this RPG chunk. Return ONLY a JSON array of objects.\n\n"
+        "Each object must have:\n"
+        "- title: scene name\n"
+        "- act: optional act/chapter label\n"
+        "- type: combat|social|exploration|mystery|travel|investigation\n"
+        "- read_aloud: the full boxed/atmospheric text to read aloud to players verbatim (up to 150 words). "
+        "Copy it exactly from the source if present; do not summarize or truncate it. Empty string if none.\n"
+        "- gm_notes: brief GM-facing instruction (what happens, triggers, cues). Not read to players. (≤40 words)\n"
+        "- npcs: array of ALL NPC names mentioned or present in this scene — include incidental characters too\n"
+        "- location: place name where the scene occurs\n"
+        "- difficulty: short label or empty string\n"
+        "- rewards: brief description or empty string\n"
+        "- confidence: 0.0–1.0\n\n"
+        "Keep scene framing system-agnostic. Do not invent combat math. "
+        "The chunk may describe a location, a set-piece, an NPC introduction, or boxed read-aloud text. "
+        "If no scene beat is described, return [].\n\n"
         f"Chunk:\n---\n{chunk.llm_context()}\n---"
     )
 
     try:
         response = client.messages.create(
             model=effective_model,
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
@@ -64,11 +73,11 @@ def extract_scene_seeds(chunk: SectionChunk, model: str | None = None) -> List[d
             "act": (obj.get("act") or "").strip(),
             "type": (obj.get("type") or "exploration").strip(),
             "read_aloud": (obj.get("read_aloud") or "").strip(),
+            "gm_notes": (obj.get("gm_notes") or obj.get("notes") or "").strip(),
             "npcs": npcs,
             "location": (obj.get("location") or "").strip(),
             "difficulty": (obj.get("difficulty") or "").strip(),
             "rewards": (obj.get("rewards") or "").strip(),
-            "notes": (obj.get("notes") or "").strip(),
             "confidence": float(obj.get("confidence", 0.8)),
         })
     return result

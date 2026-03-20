@@ -24,20 +24,32 @@ def extract_npcs(chunk: SectionChunk, model: str | None = None) -> List[dict[str
     effective_model = model or AI_MODEL
 
     prompt = (
-        "Extract NPC/character data from this RPG section. Return ONLY a JSON array of objects. "
-        "Each object must have: name, role (villain|ally|quest-giver|neutral), personality (short), "
-        "faction, description, motivation, secrets. Optional only when explicitly present in the text: "
-        "hp, ac, cr, and notable roleplaying cues. Add \"confidence\" (0.0-1.0) for each. "
-        "Use the section heading and subheading as source clues, but do not merge multiple unrelated people. "
-        "Do not invent system-specific combat stats for characters when the section does not provide them. "
-        "If no NPC is described, return []. Keep all string values brief (≤20 words each).\n\n"
+        "Extract NPC/character data from this RPG section. Return ONLY a JSON array of objects.\n\n"
+        "Each object must have:\n"
+        "- name: full name as written\n"
+        "- role: villain|ally|quest-giver|neutral\n"
+        "- personality: how this character acts and feels (≤25 words)\n"
+        "- description: physical appearance and notable features (≤50 words)\n"
+        "- motivation: what this character wants and why (≤50 words)\n"
+        "- secrets: hidden information about this character (≤50 words, empty string if none)\n"
+        "- faction: organization or group affiliation (short label or empty string)\n"
+        "- voice_notes: how to voice this character — accent, speech patterns, tone, mannerisms "
+        "(≤30 words). Examples: 'gruff gravelly voice, speaks in short sentences', "
+        "'formal archaic speech, condescending tone', 'nervous stutter, whispers'.\n"
+        "- read_aloud: the exact boxed/atmospheric text to read when players first meet this NPC, "
+        "copied verbatim if present in the chunk (up to 150 words). Empty string if none.\n"
+        "- confidence: 0.0–1.0\n\n"
+        "Optional fields (include only when explicitly in the text): hp, ac, cr.\n\n"
+        "Do not merge multiple unrelated characters into one entry. "
+        "Do not invent combat stats if the text does not provide them. "
+        "If no character is described, return [].\n\n"
         f"Chunk:\n---\n{chunk.llm_context()}\n---"
     )
 
     try:
         response = client.messages.create(
             model=effective_model,
-            max_tokens=1024,
+            max_tokens=2048,
             messages=[{"role": "user", "content": prompt}],
         )
         raw = response.content[0].text.strip()
@@ -64,6 +76,8 @@ def extract_npcs(chunk: SectionChunk, model: str | None = None) -> List[dict[str
             "description": (obj.get("description") or "").strip(),
             "motivation": (obj.get("motivation") or "").strip(),
             "secrets": (obj.get("secrets") or "").strip(),
+            "voice_notes": (obj.get("voice_notes") or "").strip(),
+            "read_aloud": (obj.get("read_aloud") or "").strip(),
             "hp": str(obj.get("hp") or ""),
             "ac": int(obj.get("ac")) if obj.get("ac") is not None else 0,
             "cr": (obj.get("cr") or "").strip(),

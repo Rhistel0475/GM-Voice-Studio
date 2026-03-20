@@ -50,7 +50,7 @@ export default function CodexPage({ campaignData: campaignDataProp, authFetch: a
           ? (entry) => campaignCtx.addCodexEntryToScene(entry?.id ?? entry?.title, campaignCtx.activeSceneIndex)
           : undefined
       }
-      codexEntriesFromStore={campaignCtx ? codexEntriesFromStore : undefined}
+      codexEntriesFromStore={codexEntriesFromStore}
     />
   );
 }

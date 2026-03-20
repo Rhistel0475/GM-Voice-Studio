@@ -173,6 +173,7 @@ const LiveBoard = ({
   const [wakeError, setWakeError] = useState("");
   const [liveTranscript, setLiveTranscript] = useState("");
   const [autoQueryOnVoice, setAutoQueryOnVoice] = useState(Boolean(defaultAutoQueryOnVoice));
+  const autoQueryOnVoiceRef = useRef(Boolean(defaultAutoQueryOnVoice));
   const [sessionTimer, setSessionTimer] = useState("0:00");
   const [audioStatus, setAudioStatus] = useState("idle");
   const [ambienceStatus, setAmbienceStatus] = useState("idle");
@@ -1388,6 +1389,10 @@ const LiveBoard = ({
   }, [isWakeArmed]);
 
   useEffect(() => {
+    autoQueryOnVoiceRef.current = autoQueryOnVoice;
+  }, [autoQueryOnVoice]);
+
+  useEffect(() => {
     assistantListeningRef.current = assistantListening;
   }, [assistantListening]);
 
@@ -1712,7 +1717,7 @@ const LiveBoard = ({
         setLiveTranscript("");
         if (transcript) {
           appendActionLog("player", transcript, "STT");
-          if (autoQueryOnVoice) {
+          if (autoQueryOnVoiceRef.current) {
             const ws = socketRef.current;
             if (ws && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "query", text: transcript }));
@@ -1751,7 +1756,7 @@ const LiveBoard = ({
     appendActionLog("assistant", content, parts.join(" • "));
     addSessionLogEntry({ type: "assistant", text: content });
     persistSessionEvent(authFetch, { type: "assistant", text: content });
-  }, [appendActionLog, authFetch, autoQueryOnVoice]);
+  }, [appendActionLog, authFetch]);
 
   const analyzeAssistantNow = useCallback(() => {
     const fallbackEntries = assistantContext.recentEvents
@@ -2330,7 +2335,11 @@ function CurrentView() {
       </ErrorBoundary>
     );
   } else if (view === "campaign") {
-    content = <CampaignPage />;
+    content = (
+      <ErrorBoundary>
+        <CampaignPage />
+      </ErrorBoundary>
+    );
   } else if (view === "settings") {
     // Backward-compat: direct /settings URL still works
     content = <SettingsPage />;

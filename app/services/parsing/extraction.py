@@ -23,9 +23,30 @@ from app.services.parsing.models import SectionChunk
 
 _SCENE_SIGNAL_RE = re.compile(
     r"\b(?:read aloud|boxed text|paraphrase|when the pcs|when the investigators|"
-    r"when the players|upon entering|as you enter|initiative|attack|ambush|"
-    r"social encounter|combat encounter|conversation|speaks|greets|"
+    r"when the players|when the party|upon entering|as you enter|as the players|"
+    r"the party arrives|you see|you notice|initiative|attack|ambush|"
+    r"social encounter|combat encounter|conversation|speaks|greets|addresses|"
     r"search check|spot hidden|perception check|survival check)\b",
+    re.IGNORECASE,
+)
+
+_STAT_SIGNAL_RE = re.compile(
+    r"\b(?:ac|armor class|hp|hit points|cr|challenge rating|str|dex|con|int|wis|cha|"
+    r"speed|initiative|saving throw|spell save)\b",
+    re.IGNORECASE,
+)
+
+_CHARACTER_DESC_RE = re.compile(
+    r"\b(?:personality|motivation|appearance|backstory|mannerisms|ideals|bonds|flaws|"
+    r"is a \w+|she is|he is|they are|speaks with|voice is|accent)\b",
+    re.IGNORECASE,
+)
+
+_PERSON_TITLE_RE = re.compile(
+    r"\b(?:captain|lord|lady|sir|dame|priest|merchant|guard|chief|baron|duke|"
+    r"professor|doctor|wizard|mage|sorcerer|warlock|cleric|druid|bard|rogue|thief|"
+    r"ranger|paladin|fighter|innkeeper|blacksmith|scholar|noble|bandit|spy|assassin|"
+    r"vampire|undead)\b",
     re.IGNORECASE,
 )
 
@@ -134,16 +155,37 @@ def _chunk_supports_scene_extraction(chunk: SectionChunk, labels: set[str]) -> b
         return True
     if "encounter" in labels and chunk.content_type == "encounter":
         return True
+    text = " ".join(
+        part for part in (chunk.subheading, chunk.raw_text[:1600]) if str(part).strip()
+    )
     if chunk.chunk_type_guess == "location_section":
-        text = " ".join(
-            part for part in (chunk.subheading, chunk.raw_text[:1600]) if str(part).strip()
-        )
         return bool(_SCENE_SIGNAL_RE.search(text))
     if "scene" in labels:
-        text = " ".join(
-            part for part in (chunk.subheading, chunk.raw_text[:1600]) if str(part).strip()
-        )
         return bool(_SCENE_SIGNAL_RE.search(text))
+    # NPC sections often contain a "read aloud when players meet this character" block
+    if "npc" in labels and bool(_SCENE_SIGNAL_RE.search(text)):
+        return True
+    return False
+
+
+def _chunk_supports_npc_extraction(chunk: SectionChunk, labels: set[str]) -> bool:
+    """Run NPC extraction even on non-NPC chunks if strong character signals are present."""
+    if "npc" in labels:
+        return True
+    if chunk.chunk_type_guess == "stat_block":
+        return True
+    text = " ".join(
+        part for part in (chunk.heading, chunk.subheading, chunk.raw_text[:1600]) if str(part).strip()
+    )
+    # Stat block signals (AC, HP, etc.) in any chunk type → likely has an NPC
+    if len(_STAT_SIGNAL_RE.findall(text)) >= 2:
+        return True
+    # Person-title in heading → named character
+    if chunk.heading and _PERSON_TITLE_RE.search(chunk.heading):
+        return True
+    # Character description cues in the text body → likely has an NPC writeup
+    if _CHARACTER_DESC_RE.search(text):
+        return True
     return False
 
 
@@ -187,7 +229,7 @@ def extract_typed_entities(
         extracted_any = False
         location_items: list[dict[str, Any]] = []
 
-        if "npc" in labels:
+        if _chunk_supports_npc_extraction(chunk, labels):
             npc_items = _attach_source(extract_npcs(chunk, model=model), chunk)
             results["npcs"].extend(npc_items)
             extracted_any = extracted_any or bool(npc_items)

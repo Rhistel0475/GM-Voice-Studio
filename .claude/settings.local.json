@@ -78,7 +78,13 @@
       "Bash(grep -l \"import.*PrepPage\\\\|import.*VoicePage\\\\|import.*CampaignPage\\\\|import.*CodexPage\" /home/brian/GM-Voice-Studio/frontend/src/**/*.jsx)",
       "Bash(python3 -:*)",
       "Bash(ls /home/brian/GM-Voice-Studio/frontend/src/pages/Voice*)",
-      "Bash(ls /home/brian/GM-Voice-Studio/frontend/src/components/voices/Voice*)"
+      "Bash(ls /home/brian/GM-Voice-Studio/frontend/src/components/voices/Voice*)",
+      "Bash(grep -n \"legacy mode\\\\|arguments ignored\\\\|use_ocr\\\\|ocr_language\" .venv/lib/python*/site-packages/pymupdf4llm/*.py)",
+      "Bash(ls /home/brian/GM-Voice-Studio/frontend/src/components/shared/ModalShell* /home/brian/GM-Voice-Studio/frontend/src/components/shared/FeatureEmptyStates*)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(''''deps:'''', list\\(d.get\\(''''dependencies'''',{}\\).keys\\(\\)\\)[:10]\\); print\\(''''devdeps:'''', list\\(d.get\\(''''devDependencies'''',{}\\).keys\\(\\)\\)\\)\")",
+      "Bash(find /home/brian/GM-Voice-Studio/frontend/src -name *LiveBoard* -o -name *liveboard*)",
+      "Bash(find /home/brian/GM-Voice-Studio -name types* -type f)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx|d\\\\.ts\\)$\")"
     ]
   }
 }

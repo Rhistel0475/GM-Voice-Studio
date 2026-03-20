@@ -7,9 +7,11 @@ import NPCWorkshopPage from "./NPCWorkshopPage";
  * VoicePage — container for voice management and NPC workshop.
  * Tabs: Voice Library (3-column console) | NPC Workshop
  */
-export default function VoicePage() {
+export default function VoicePage({ authFetch: authFetchProp, campaignData: campaignDataProp }) {
   const [tab, setTab] = useState("voices");
-  const { campaignData, authFetch } = useAppState();
+  const appState = useAppState();
+  const authFetch = authFetchProp ?? appState.authFetch;
+  const campaignData = campaignDataProp ?? appState.campaignData;
 
   return (
     <div className="flex flex-col min-h-0 h-full">

@@ -662,10 +662,38 @@ def _extract_pdf_text(data: bytes) -> tuple[str, int]:
     doc = pymupdf.open(stream=data, filetype="pdf")
     page_count = doc.page_count
     use_ocr = _has_tesseract_language_data("eng")
-    if not use_ocr:
-        logging.info("PDF OCR unavailable; falling back to embedded PDF text extraction only.")
-    md_text = pymupdf4llm.to_markdown(doc, use_ocr=use_ocr, ocr_language="eng")
-    return md_text, page_count
+
+    # Some pymupdf4llm versions run in a "legacy mode" and ignore OCR kwargs.
+    # Keep extraction resilient across versions and fall back to raw page text
+    # if markdown extraction is unexpectedly sparse.
+    try:
+        if use_ocr:
+            try:
+                md_text = pymupdf4llm.to_markdown(doc, use_ocr=True, ocr_language="eng")
+            except TypeError:
+                logging.debug("pymupdf4llm OCR kwargs unsupported; retrying without kwargs.")
+                md_text = pymupdf4llm.to_markdown(doc)
+        else:
+            logging.debug("Tesseract OCR unavailable; using embedded PDF text (sufficient for most published PDFs).")
+            md_text = pymupdf4llm.to_markdown(doc)
+    except Exception as e:
+        logging.warning("pymupdf4llm extraction failed; falling back to plain page text: %s", e)
+        md_text = ""
+
+    plain_text_parts: list[str] = []
+    for page in doc:
+        text = page.get_text("text")
+        if text:
+            plain_text_parts.append(text)
+    plain_text = "\n\n".join(plain_text_parts)
+
+    md_len = len((md_text or "").strip())
+    plain_len = len((plain_text or "").strip())
+    if md_len < 1200 and plain_len > md_len:
+        logging.info("PDF extraction fallback used: markdown=%d chars, plain=%d chars", md_len, plain_len)
+        return plain_text, page_count
+
+    return (md_text if md_len >= plain_len else plain_text), page_count
 
 
 def _has_tesseract_language_data(language: str = "eng") -> bool:

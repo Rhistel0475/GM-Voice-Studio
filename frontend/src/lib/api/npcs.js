@@ -53,25 +53,13 @@ export function getNPCs(campaignData, _authFetch) {
 }
 
 /**
- * Save NPC (create or update). Stub: call backend when endpoint exists; otherwise no-op or local toast.
- * @param {import("../../types/npc").NPCProfile} profile
- * @param {Function} authFetch
- * @returns {Promise<import("../../types/npc").NPCProfile | null>}
+ * Save NPC (create or update). Stub: backend endpoint not yet implemented.
+ * @param {import("../../types/npc").NPCProfile} _profile
+ * @param {Function} _authFetch
+ * @returns {Promise<null>}
  */
-export async function saveNPC(profile, authFetch) {
-  try {
-    const res = await authFetch("/api/npcs", {
-      method: profile.id && profile.id.startsWith("mock-") ? "POST" : "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data;
-    }
-  } catch {
-    // Backend may not have endpoint yet
-  }
+export async function saveNPC(_profile, _authFetch) {
+  // TODO: implement when POST/PUT /api/npcs exists on the backend
   return null;
 }
 
@@ -99,20 +87,12 @@ export async function suggestNpcVoice(npcId, authFetch) {
 }
 
 /**
- * Push NPC to Live Board. Stub: toast "Coming soon" until backend supports it.
- * @param {string} profileId
- * @param {Function} authFetch
- * @returns {Promise<boolean>}
+ * Push NPC to Live Board. Stub: backend endpoint not yet implemented.
+ * @param {string} _profileId
+ * @param {Function} _authFetch
+ * @returns {Promise<false>}
  */
-export async function pushToLiveBoard(profileId, authFetch) {
-  try {
-    const res = await authFetch("/api/live-board/npc", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ npc_id: profileId }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
+export async function pushToLiveBoard(_profileId, _authFetch) {
+  // TODO: implement when POST /api/live-board/npc exists on the backend
+  return false;
 }

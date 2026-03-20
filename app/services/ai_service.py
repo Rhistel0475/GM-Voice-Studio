@@ -198,11 +198,103 @@ def _finalize_parse_payload(payload: dict[str, Any], *, chunks: list[Any] | None
             scene.setdefault("rewards", "")
             scene.setdefault("notes", "")
 
+    result = _build_scene_scaffolds_if_missing(result)
+
     already_scored = isinstance(result.get("review_summary"), dict)
     if not already_scored:
         result = normalize_campaign_entities(result)
         result = annotate_campaign_confidence(result, chunks=chunks or [])
     return result
+
+
+def _build_scene_scaffolds_if_missing(payload: dict[str, Any]) -> dict[str, Any]:
+    scenes = payload.get("scenes")
+    if isinstance(scenes, list) and scenes:
+        return payload
+
+    locations = payload.get("locations") if isinstance(payload.get("locations"), list) else []
+    npcs = payload.get("npcs") if isinstance(payload.get("npcs"), list) else []
+    lore = payload.get("lore") if isinstance(payload.get("lore"), list) else []
+    quests = payload.get("quests") if isinstance(payload.get("quests"), list) else []
+
+    location_names = [
+        str(item.get("name") or "").strip()
+        for item in locations
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+    npc_names = [
+        str(item.get("name") or "").strip()
+        for item in npcs
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+    lore_summaries = [
+        str(item.get("summary") or item.get("content") or "").strip()
+        for item in lore
+        if isinstance(item, dict)
+    ]
+    quest_names = [
+        str(item.get("name") or "").strip()
+        for item in quests
+        if isinstance(item, dict) and str(item.get("name") or "").strip()
+    ]
+
+    generated: list[dict[str, Any]] = []
+
+    if location_names:
+        for idx, location_name in enumerate(location_names[:6]):
+            scene_npcs = npc_names[idx * 2:(idx * 2) + 2] if npc_names else []
+            note = lore_summaries[idx] if idx < len(lore_summaries) else ""
+            generated.append(
+                {
+                    "title": f"Arrive at {location_name}",
+                    "act": f"Act {min(idx + 1, 3)}",
+                    "type": "exploration",
+                    "read_aloud": "",
+                    "gm_notes": note[:180],
+                    "npcs": scene_npcs,
+                    "location": location_name,
+                    "difficulty": "",
+                    "rewards": "",
+                    "notes": "",
+                }
+            )
+
+    if not generated and quest_names:
+        for idx, quest_name in enumerate(quest_names[:4]):
+            generated.append(
+                {
+                    "title": f"Quest: {quest_name}",
+                    "act": f"Act {min(idx + 1, 3)}",
+                    "type": "investigation",
+                    "read_aloud": "",
+                    "gm_notes": "",
+                    "npcs": npc_names[:2],
+                    "location": location_names[0] if location_names else "",
+                    "difficulty": "",
+                    "rewards": "",
+                    "notes": "",
+                }
+            )
+
+    if not generated and (npc_names or lore_summaries):
+        generated = [
+            {
+                "title": "Opening Hook",
+                "act": "Act 1",
+                "type": "social",
+                "read_aloud": "",
+                "gm_notes": (lore_summaries[0] if lore_summaries else "")[:180],
+                "npcs": npc_names[:2],
+                "location": location_names[0] if location_names else "",
+                "difficulty": "",
+                "rewards": "",
+                "notes": "",
+            }
+        ]
+
+    if generated:
+        payload["scenes"] = generated
+    return payload
 
 
 def _salvage_image_assignments(
@@ -462,25 +554,102 @@ def extract_text_from_file(path: str, suffix: str) -> str:
 
 def ai_full_parse(text: str) -> dict:
     """
-    Use the staged parsing pipeline to extract a complete campaign data object from adventure text.
-    Falls back to single-shot Claude extraction if the pipeline fails.
-    Returns structured data for universal campaign structures plus compatibility fields.
+    Extract a complete campaign data object from adventure text.
+    Uses single-shot Claude extraction as the primary path (reliable for all adventure formats).
+    If the primary extraction yields sparse results, attempts pipeline enhancement.
     """
+    logging.info("ai_full_parse: starting on %d chars of text", len(text))
     try:
-        from app.services.parsing.pipeline import run_parsing_pipeline
-        result = run_parsing_pipeline(text)
-        return _finalize_parse_payload(result)
-    except Exception as e:
-        logging.warning("Parsing pipeline failed, falling back to single-shot parse: %s", e)
-        return _ai_full_parse_fallback(text)
+        result = _ai_full_parse_fallback(text)
+    except RuntimeError as e:
+        logging.warning("ai_full_parse: single-shot failed (%s); falling back to pipeline", e)
+        try:
+            from app.services.parsing.pipeline import run_parsing_pipeline
+
+            pipeline_result = run_parsing_pipeline(text)
+            return _finalize_parse_payload(pipeline_result)
+        except Exception:
+            logging.exception("ai_full_parse: pipeline fallback failed after single-shot failure")
+            # Return a safe empty payload instead of surfacing a hard 503 to the UI.
+            return _finalize_parse_payload({})
+    npcs = len(result.get("npcs") or [])
+    scenes = len(result.get("scenes") or [])
+    locations = len(result.get("locations") or [])
+    lore = len(result.get("lore") or [])
+    logging.info(
+        "ai_full_parse: single-shot result — npcs=%d scenes=%d locations=%d lore=%d",
+        npcs,
+        scenes,
+        locations,
+        lore,
+    )
+
+    # Single-shot remains the source of truth. The section pipeline is only used to
+    # patch obvious gaps when the baseline output is sparse.
+    if _is_sparse_primary_parse(result):
+        try:
+            from app.services.parsing.pipeline import run_parsing_pipeline
+
+            pipeline_result = run_parsing_pipeline(text)
+            result = _merge_pipeline_enhancements(result, pipeline_result)
+            logging.info("ai_full_parse: pipeline enhancement pass applied")
+        except Exception:
+            logging.exception("ai_full_parse: pipeline enhancement failed; keeping single-shot result")
+
+    return result
+
+
+def _is_sparse_primary_parse(payload: dict[str, Any]) -> bool:
+    return (
+        len(payload.get("npcs") or []) == 0
+        or len(payload.get("scenes") or []) == 0
+        or len(payload.get("locations") or []) == 0
+    )
+
+
+def _merge_pipeline_enhancements(primary: dict[str, Any], pipeline: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(primary)
+    if not merged.get("title") and pipeline.get("title"):
+        merged["title"] = pipeline["title"]
+    if not merged.get("summary") and pipeline.get("summary"):
+        merged["summary"] = pipeline["summary"]
+
+    # Fill only empty collections; never append to non-empty primary arrays.
+    for key in (
+        "npcs",
+        "party",
+        "scenes",
+        "locations",
+        "encounters",
+        "reveals",
+        "items",
+        "quests",
+        "factions",
+        "lore",
+        "codex_entries",
+        "relationships",
+        "clues",
+        "secrets",
+        "rumors",
+        "read_alouds",
+        "consequences",
+        "rewards",
+        "hooks",
+        "parse_candidates",
+    ):
+        if not merged.get(key) and pipeline.get(key):
+            merged[key] = pipeline[key]
+
+    return _finalize_parse_payload(merged)
 
 
 def _ai_full_parse_fallback(text: str) -> dict:
     """Legacy single-shot Claude extraction when pipeline is unavailable or fails."""
     from app.infrastructure.llm.anthropic_client import get_client
     client = get_client()
-    # Cap at 60k chars to leave ample room for the large JSON response within 8192 tokens
-    truncated = text[:min(MAX_ADVENTURE_CHARS, 60_000)]
+    # Keep source text bounded so the model can finish a complete JSON object.
+    # Very large excerpts increase truncation/malformed JSON risk.
+    truncated = text[:min(MAX_ADVENTURE_CHARS, 30_000)]
 
     system_prompt = (
         "You are a tabletop RPG game prep assistant. "
@@ -490,24 +659,43 @@ def _ai_full_parse_fallback(text: str) -> dict:
 
     user_prompt = (
         "Extract GM prep data from this adventure text. "
-        "Return ONLY compact JSON — no markdown, no prose. "
-        "Keep ALL string values short (≤15 words each). "
-        "Keep the parser system-agnostic: extract only what the text supports, and do not assume D&D, Pathfinder, "
-        "or any other ruleset unless the source explicitly states it. "
-        "Limits: max 10 npcs, max 10 scenes, max 8 locations, max 8 quests, max 8 items, max 8 factions, max 12 lore entries.\n\n"
-        'JSON keys required:\n'
-        '"title": adventure title\n'
-        '"summary": 2-sentence premise\n'
-        '"npcs": [{"name","role"(villain|ally|quest-giver|neutral),"personality","faction","description","motivation","secrets","hp"(optional if explicit),"ac"(optional int if explicit),"cr"(optional if explicit)}]\n'
-        '"party": [{"name","role","description","class_"(optional),"race"(optional),"level"(optional int),"hp"(optional),"ac"(optional int)}] or []\n'
-        '"scenes": [{"title","act","type"(combat|social|exploration|mystery|travel|investigation),"read_aloud"(≤30 words),"npcs":[str],"location","difficulty"(short label or empty),"rewards"(≤15 words),"notes"(≤20 words)}]\n'
-        '"locations": [{"name","description"}]\n'
-        '"quests": [{"name","description","objective","stakes","related_npcs":[str],"related_locations":[str],"tags":[str]}]\n'
-        '"items": [{"name","description"(≤15 words),"scene"(scene title or ""),"magical"(true|false),"rarity"(optional),"owner"(optional)}]\n'
-        '"factions": [{"name","description","tags":[str]}]\n'
-        '"lore": [{"title","summary","content","type"(lore|rule),"tags":[str]}]\n'
-        '"reveals": [{"name","when","type"(hook|secret|clue|twist)}] or []\n'
-        '"codex_entries": [{"id"(optional),"type"(lore|rule|faction),"title","summary","content","tags":[str]}] or []\n'
+        "Return ONLY valid JSON — no markdown, no prose, no preamble. "
+        "Keep the parser system-agnostic: extract only what the text supports, do not invent stats or details. "
+        "Capture ALL named characters as NPCs. Capture ALL read-aloud / boxed text verbatim.\n\n"
+        'Required JSON keys:\n'
+        '"title": adventure or module title\n'
+        '"summary": 2-sentence overview of the adventure premise\n'
+        '"npcs": array — every named character, villain, ally, merchant, innkeeper, monster with a name. Each object:\n'
+        '  {"name": full name,\n'
+        '   "role": villain|ally|quest-giver|neutral,\n'
+        '   "description": physical appearance (≤40 words),\n'
+        '   "personality": how they act and feel (≤25 words),\n'
+        '   "motivation": what they want and why (≤40 words),\n'
+        '   "secrets": hidden info (≤40 words, empty string if none),\n'
+        '   "faction": org/group affiliation (short label or empty string),\n'
+        '   "voice_notes": accent, speech pattern, tone — how to voice them at the table (≤30 words),\n'
+        '   "read_aloud": the exact boxed/atmospheric text to read when players first meet this NPC, copied verbatim if present (≤150 words, empty string if none),\n'
+        '   "hp": hit point value as string if given (e.g. "45" or "3d8"), else empty string,\n'
+        '   "ac": armor class as integer if given, else 0,\n'
+        '   "cr": challenge rating string if given (e.g. "CR 3"), else empty string}\n'
+        '"party": player characters found in the text, or []\n'
+        '"scenes": every scene, encounter, room, or narrative beat. Each object:\n'
+        '  {"title": scene name,\n'
+        '   "act": chapter or act label (empty string if none),\n'
+        '   "type": combat|social|exploration|mystery|travel|investigation,\n'
+        '   "read_aloud": the FULL verbatim boxed/read-aloud text for this scene (≤200 words, empty string if none),\n'
+        '   "gm_notes": GM-only instructions not read aloud (≤40 words, empty string if none),\n'
+        '   "npcs": [list of NPC names present in this scene],\n'
+        '   "location": place name where this scene occurs,\n'
+        '   "difficulty": easy|medium|hard|deadly or empty string,\n'
+        '   "rewards": treasure or XP summary (≤20 words, empty string if none)}\n'
+        '"locations": [{"name": place name, "description": brief description ≤30 words}]\n'
+        '"quests": [{"name", "description", "objective", "stakes", "related_npcs": [str], "related_locations": [str], "tags": [str]}]\n'
+        '"items": [{"name", "description" (≤20 words), "scene" (scene title or ""), "magical": true|false, "rarity": optional, "owner": NPC name or ""}]\n'
+        '"factions": [{"name", "description", "tags": [str]}]\n'
+        '"lore": [{"title", "summary", "content", "type": lore|rule, "tags": [str]}]\n'
+        '"reveals": [{"name", "when", "type": hook|secret|clue|twist}] or []\n'
+        '"codex_entries": [] \n'
         '"relationships": []\n\n'
         "Adventure text:\n---\n"
         f"{truncated}\n---"
@@ -536,11 +724,30 @@ def _ai_full_parse_fallback(text: str) -> dict:
             raw = raw[:raw.rfind(",")].rstrip() + "\n}"
             logging.warning("ai_full_parse: JSON was truncated; attempted auto-close.")
 
-        result = json.loads(raw)
+        try:
+            result = _parse_json_payload(raw)
+        except json.JSONDecodeError as first_error:
+            logging.warning("ai_full_parse: malformed JSON from primary pass; attempting repair call: %s", first_error)
+            repair_prompt = (
+                "Repair this malformed JSON into a valid JSON object.\n"
+                "Rules:\n"
+                "- Return ONLY JSON\n"
+                "- Preserve original values when possible\n"
+                "- Keep top-level shape as an object with the same keys\n"
+                "- Do not add markdown or commentary\n\n"
+                f"Malformed JSON:\n---\n{raw}\n---"
+            )
+            repair_response = client.messages.create(
+                model=AI_MODEL,
+                max_tokens=8192,
+                messages=[{"role": "user", "content": repair_prompt}],
+            )
+            repaired_raw = repair_response.content[0].text.strip()
+            result = _parse_json_payload(repaired_raw)
         return _finalize_parse_payload(result)
     except json.JSONDecodeError as e:
-        logging.error("Claude returned non-JSON for ai_full_parse: %s", e)
-        raise RuntimeError("Claude returned invalid JSON. Try a shorter or cleaner text input.") from e
+        logging.error("Claude returned non-JSON for ai_full_parse after repair: %s", e)
+        raise RuntimeError("Claude returned invalid JSON. Try again (or upload a smaller chunk).") from e
     except anthropic.APIConnectionError as e:
         raise RuntimeError("Could not reach Anthropic API.") from e
     except anthropic.AuthenticationError as e:

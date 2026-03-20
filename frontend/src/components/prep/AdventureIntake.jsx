@@ -1,9 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAppState } from "../../context/AppStateContext";
-import { useExtractionReviewQueueStore } from "../../store/extractionReview";
-import { parseResultToExtractionBatch } from "../../lib/parseResultToExtractionBatch";
 import { importParseResultToStore } from "../../lib/campaignImport";
-import { getBackendCampaignId, setBackendCampaignId } from "../../lib/campaignPersistence";
+import { setBackendCampaignId } from "../../lib/campaignPersistence";
 import {
   DEFAULT_GAME_SYSTEM_ID,
   listGameSystemPlugins,
@@ -12,7 +10,6 @@ import {
   resolveGameSystemPlugin,
 } from "../../lib/gameSystemPlugins";
 import { getScenePlaceholder } from "../../lib/placeholders";
-import ExtractionReviewQueue from "../intake/ExtractionReviewQueue";
 import PrepPanel from "./PrepPanel";
 import { Map, Upload, Zap, Save, CheckCircle, Trash2 } from "lucide-react";
 
@@ -141,28 +138,10 @@ const DetailDrawer = ({ item, onClose, onLightbox }) => {
   );
 };
 
-// Review tab button — shows a live count badge from the review queue store.
-const ReviewTabButton = ({ activePanel, setActivePanel }) => {
-  const items = useExtractionReviewQueueStore((s) => s.items);
-  const pendingCount = items.filter(
-    (i) => i.reviewStatus === "pending" || i.reviewStatus === "needs_review"
-  ).length;
-  return (
-    <button
-      type="button"
-      className={activePanel === "review" ? "tab-active" : ""}
-      onClick={() => setActivePanel("review")}
-    >
-      Review{items.length > 0 ? ` (${items.length}${pendingCount > 0 ? ` · ${pendingCount} pending` : ""})` : ""}
-    </button>
-  );
-};
-
 // LEGACY — still injected into PrepPage as libraryContent (Upload Adventure mode).
 // IntakeHeader suppressed when embedded to avoid duplicate nav inside PrepPage.
 const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authFetch, embedded = false }) => {
   const { clearCampaignData } = useAppState();
-  const { enqueueBatch } = useExtractionReviewQueueStore();
   const [files, setFiles] = useState([]);
   const [isParsing, setIsParsing] = useState(false);
   const [isExtractingImages, setIsExtractingImages] = useState(false);
@@ -331,19 +310,11 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       if (!res.ok) throw new Error((payload?.detail) || raw || `Parse failed (${res.status})`);
       if (!payload) throw new Error("Parse returned no data.");
       setParseResult(payload);
+      // Immediately push to both stores so data survives navigation without a manual save
+      onSaveCampaign(payload);
+      try { importParseResultToStore(payload); } catch { /* non-fatal */ }
       // Persist backend campaign ID for sync operations
       if (payload.campaign_id) setBackendCampaignId(payload.campaign_id);
-      // Enqueue extracted entities into review queue
-      try {
-        const batch = parseResultToExtractionBatch(
-          payload,
-          files.length === 1 ? files[0].name : (payload.title || undefined)
-        );
-        if (batch.entities.length > 0) {
-          enqueueBatch(batch);
-          setActivePanel("review");
-        }
-      } catch { /* non-fatal — review queue is optional */ }
       // Refresh saved campaigns list (new campaign was just persisted to DB)
       authFetch("/api/campaigns")
         .then(r => r.ok ? r.json() : [])
@@ -352,10 +323,8 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       // Auto-expand the first act/chapter in the outline
       const firstAct = payload?.scenes?.[0]?.act || (payload?.acts?.[0]?.title);
       if (firstAct) setExpandedActs(new Set([firstAct]));
-      // Auto-switch to images tab if AI parse returned images
-      if (payload?.images?.length > 0) {
-        setActivePanel("images");
-      }
+      // Navigate to Campaign page so the user sees all extracted data immediately
+      onNavigate("campaign");
     } catch (err) {
       setParseError(err.message || "Unable to parse documents.");
     } finally {
@@ -412,9 +381,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
       try { importParseResultToStore(normalized); } catch { /* non-fatal */ }
       setBackendCampaignId(id);            // persist backend ID for sync operations
       setSaved(true);
-      setActivePanel("outline");
-      const firstAct = data?.scenes?.[0]?.act;
-      if (firstAct) setExpandedActs(new Set([firstAct]));
+      onNavigate("campaign");
     } finally {
       setLoadingCampaignId(null);
     }
@@ -584,7 +551,7 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
               <label className="intake-file-pick">
                 <Upload size={16} className="inline mr-1" />
                 <span>Select Files</span>
-                <input type="file" multiple accept=".txt,.md,.pdf" onChange={onFileChange} />
+                <input type="file" multiple accept="text/plain,text/markdown,application/pdf,.txt,.md,.pdf" onChange={onFileChange} />
               </label>
             </div>
 
@@ -632,16 +599,25 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
             </div>
 
             {parseResult && (
-              <button
-                type="button"
-                className={`nav-glyph-btn intake-parse-btn mt-4 ${saved ? "is-active" : ""}`}
-                onClick={saveToSession}
-              >
-                {saved
-                  ? <><CheckCircle size={14} className="inline mr-1" />Saved to Campaign</>
-                  : <><Save size={14} className="inline mr-1" />Save to Campaign</>
-                }
-              </button>
+              <div className="flex flex-col gap-2 mt-4">
+                <button
+                  type="button"
+                  className={`nav-glyph-btn intake-parse-btn ${saved ? "is-active" : ""}`}
+                  onClick={saveToSession}
+                >
+                  {saved
+                    ? <><CheckCircle size={14} className="inline mr-1" />Saved to Campaign</>
+                    : <><Save size={14} className="inline mr-1" />Save to Campaign</>
+                  }
+                </button>
+                <button
+                  type="button"
+                  className="nav-glyph-btn intake-parse-btn is-active"
+                  onClick={() => onNavigate("campaign")}
+                >
+                  View Campaign →
+                </button>
+              </div>
             )}
 
             {parseResult?.files?.length && (
@@ -673,7 +649,6 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
               <button type="button" className={activePanel === "images" ? "tab-active" : ""} onClick={() => setActivePanel("images")}>
                 Images {(images.embedded.length + images.pages.length) > 0 ? `(${images.embedded.length + images.pages.length})` : ""}
               </button>
-              <ReviewTabButton activePanel={activePanel} setActivePanel={setActivePanel} />
             </div>
 
             {parseResult?.summary && activePanel !== "images" && (
@@ -1006,11 +981,6 @@ const AdventureIntake = ({ view, onNavigate, campaignData, onSaveCampaign, authF
               </div>
             )}
 
-            {activePanel === "review" && (
-              <ExtractionReviewQueue
-                documentName={parseResult?.title || (files.length === 1 ? files[0].name : undefined)}
-              />
-            )}
           </PrepPanel>
         </div>
 

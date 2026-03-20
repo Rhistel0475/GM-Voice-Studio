@@ -27,6 +27,41 @@ _TYPE_KEYWORDS = {
         "stat block",
         "armor class",
         "hit points",
+        "wizard",
+        "mage",
+        "sorcerer",
+        "warlock",
+        "cleric",
+        "druid",
+        "ranger",
+        "rogue",
+        "thief",
+        "fighter",
+        "paladin",
+        "bard",
+        "innkeeper",
+        "blacksmith",
+        "spy",
+        "assassin",
+        "bandit",
+        "goblin",
+        "orc",
+        "undead",
+        "vampire",
+        "werewolf",
+        "noble",
+        "king",
+        "queen",
+        "duke",
+        "baron",
+        "lord",
+        "is a",
+        "she is",
+        "he is",
+        "they are",
+        "personality",
+        "motivation",
+        "appearance",
     ),
     "location": (
         "location",
@@ -131,7 +166,9 @@ _STAT_SIGNAL_RE = re.compile(
     re.IGNORECASE,
 )
 _PERSON_TITLE_RE = re.compile(
-    r"\b(?:captain|lord|lady|sir|dame|priest|merchant|guard|chief|baron|duke|professor|doctor)\b",
+    r"\b(?:captain|lord|lady|sir|dame|priest|merchant|guard|chief|baron|duke|professor|doctor|"
+    r"wizard|mage|sorcerer|warlock|ranger|rogue|thief|paladin|cleric|druid|bard|fighter|"
+    r"innkeeper|blacksmith|scholar|noble|bandit|spy|assassin|vampire|undead)\b",
     re.IGNORECASE,
 )
 _SCENE_CUE_RE = re.compile(
@@ -278,6 +315,71 @@ def _heuristic_classification(chunk: SectionChunk) -> dict[str, Any]:
     }
 
 
+_CLASSIFY_BATCH_SIZE = 25  # chunks per LLM call to stay within response token budget
+
+
+def _classify_batch_with_llm(
+    chunks: List[SectionChunk],
+    heuristics: list[dict[str, Any]],
+    effective_model: str,
+    client: Any,
+    start_index: int,
+) -> list[dict[str, Any]] | None:
+    payload_lines: list[str] = []
+    for local_idx, chunk in enumerate(chunks):
+        heuristic = heuristics[local_idx]
+        preview = chunk.raw_text[:400].strip()
+        payload_lines.append(
+            "\n".join(
+                [
+                    f"[{local_idx}]",
+                    f"Heading: {chunk.heading or '(none)'}",
+                    f"Subheading: {chunk.subheading or '(none)'}",
+                    f"Chunk type guess: {chunk.chunk_type_guess}",
+                    f"Heuristic types: {', '.join(heuristic['content_types']) or 'lore'}",
+                    preview,
+                ]
+            )
+        )
+
+    prompt = (
+        "Classify each RPG adventure chunk into one primary type and optional additional types.\n\n"
+        "Allowed types: npc, location, scene, encounter, quest, lore, item, faction, mixed.\n"
+        "- Prefer npc for named character writeups, stat blocks, or any named person description.\n"
+        "- Prefer scene for read-aloud, boxed text, social, exploration, or narrative beats.\n"
+        "- Prefer encounter for hostile or set-piece conflicts; add scene as an additional type.\n"
+        "- Prefer quest for hooks, objectives, mysteries, clues, rumors, or mission structure.\n"
+        "- Prefer location for named places, rooms, areas, or geographic descriptions.\n"
+        "- Prefer lore only for pure background/setting context with no characters or scenes.\n"
+        "- Prefer mixed only when a chunk contains multiple equally important entity types.\n\n"
+        "Return ONLY a JSON array. One object per chunk in order.\n"
+        "Each object: {\"primary_type\": \"...\", \"additional_types\": [\"...\", ...]}.\n\n"
+        "Chunks:\n---\n"
+        + "\n---\n".join(payload_lines)
+        + "\n---"
+    )
+
+    response = client.messages.create(
+        model=effective_model,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    items = json.loads(raw)
+    if not isinstance(items, list) or len(items) != len(chunks):
+        logging.warning(
+            "LLM classification batch [%d:%d] returned %s items for %d chunks; discarding.",
+            start_index, start_index + len(chunks), len(items) if isinstance(items, list) else "?", len(chunks),
+        )
+        return None
+    return items
+
+
 def _classify_chunks_with_llm(
     chunks: List[SectionChunk],
     heuristics: list[dict[str, Any]],
@@ -291,57 +393,25 @@ def _classify_chunks_with_llm(
     client = _get_client()
     effective_model = model or AI_MODEL
 
-    payload_lines: list[str] = []
-    for index, chunk in enumerate(chunks):
-        heuristic = heuristics[index]
-        preview = chunk.raw_text[:900].strip()
-        payload_lines.append(
-            "\n".join(
-                [
-                    f"[{index}]",
-                    f"Document: {chunk.document_id}",
-                    f"Page: {chunk.page_number}",
-                    f"Heading: {chunk.heading or '(none)'}",
-                    f"Subheading: {chunk.subheading or '(none)'}",
-                    f"Chunk type guess: {chunk.chunk_type_guess}",
-                    f"Heuristic types: {', '.join(heuristic['content_types']) or 'lore'}",
-                    preview,
-                ]
-            )
+    all_results: list[dict[str, Any]] = []
+    for batch_start in range(0, len(chunks), _CLASSIFY_BATCH_SIZE):
+        batch_chunks = chunks[batch_start:batch_start + _CLASSIFY_BATCH_SIZE]
+        batch_heuristics = heuristics[batch_start:batch_start + _CLASSIFY_BATCH_SIZE]
+        batch_results = _classify_batch_with_llm(
+            batch_chunks, batch_heuristics, effective_model, client, batch_start
         )
+        if batch_results is None:
+            # Partial failure — fill with None so caller can fall back per-chunk
+            all_results.extend([None] * len(batch_chunks))
+        else:
+            all_results.extend(batch_results)
 
-    prompt = (
-        "Classify each RPG adventure chunk into one primary type and optional additional types.\n\n"
-        "Allowed types: npc, location, scene, encounter, quest, lore, item, faction, mixed.\n"
-        "- Use only generic campaign semantics. Do not infer game-system-specific mechanics.\n"
-        "- Prefer npc for named character writeups or stat blocks.\n"
-        "- Prefer scene for read-aloud, social, exploration, or narrative beats.\n"
-        "- Prefer encounter for hostile or set-piece conflicts; add scene as an additional type when useful.\n"
-        "- Prefer quest for hooks, objectives, mysteries, clues, rumors, or mission structure.\n"
-        "- Prefer lore for background and setting context.\n"
-        "- Prefer mixed only when a chunk genuinely contains multiple equally important entity types.\n\n"
-        "Return ONLY a JSON array. One object per chunk in order.\n"
-        "Each object must be: {\"primary_type\": \"...\", \"additional_types\": [\"...\", ...]}.\n\n"
-        "Chunks:\n---\n"
-        + "\n---\n".join(payload_lines)
-        + "\n---"
-    )
-
-    response = client.messages.create(
-        model=effective_model,
-        max_tokens=2048,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = response.content[0].text.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    items = json.loads(raw)
-    if not isinstance(items, list) or len(items) != len(chunks):
+    if len(all_results) != len(chunks):
         return None
-    return items
+    # Return None if ALL batches failed (all None), else return partial results
+    if all(r is None for r in all_results):
+        return None
+    return all_results
 
 
 def _merge_classification(
@@ -405,6 +475,7 @@ def classify_chunks(chunks: List[SectionChunk], model: str | None = None) -> Lis
     if not chunks:
         return chunks
 
+    logging.info("classify_chunks: classifying %d chunks", len(chunks))
     heuristics = [_heuristic_classification(chunk) for chunk in chunks]
 
     llm_results: list[dict[str, Any]] | None = None
@@ -431,4 +502,8 @@ def classify_chunks(chunks: List[SectionChunk], model: str | None = None) -> Lis
         chunk.classification_confidence = float(merged.get("classification_confidence") or 0.0)
         chunk.classification_method = str(merged.get("classification_method") or "heuristic")
 
+    type_counts: dict[str, int] = defaultdict(int)
+    for chunk in chunks:
+        type_counts[chunk.content_type] += 1
+    logging.info("classify_chunks: result — %s", dict(type_counts))
     return chunks

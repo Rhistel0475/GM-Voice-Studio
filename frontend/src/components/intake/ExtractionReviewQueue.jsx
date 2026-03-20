@@ -5,6 +5,7 @@
  * campaign context store via applyApprovedEntities.
  */
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useExtractionReviewQueueStore } from "../../store/extractionReview";
 import { useCampaignContextStore } from "../../store/campaignContext";
 import { applyApprovedEntities } from "../../lib/applyApprovedEntities";
@@ -189,9 +190,10 @@ function ReviewItem({ item, onApprove, onReject, onEdit }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 /**
- * @param {{ documentName?: string }} props
+ * @param {{ documentName?: string, onNavigate?: (view: string) => void }} props
  */
-export default function ExtractionReviewQueue({ documentName }) {
+export default function ExtractionReviewQueue({ documentName, onNavigate }) {
+  const navigate = useNavigate();
   const {
     items,
     autoApproveHighConfidence,
@@ -329,10 +331,27 @@ export default function ExtractionReviewQueue({ documentName }) {
       {/* Apply result / error feedback */}
       {applyResult && (
         <div className="rq-apply-result">
-          Applied to campaign: {applyResult.npcCount} NPC{applyResult.npcCount !== 1 ? "s" : ""},
-          {" "}{applyResult.sceneCount} scene{applyResult.sceneCount !== 1 ? "s" : ""},
-          {" "}{applyResult.codexCount} codex entr{applyResult.codexCount !== 1 ? "ies" : "y"}.
-          {" "}Total: {applyResult.totalApplied}.
+          <div>
+            Applied to campaign: {applyResult.npcCount} NPC{applyResult.npcCount !== 1 ? "s" : ""},
+            {" "}{applyResult.sceneCount} scene{applyResult.sceneCount !== 1 ? "s" : ""},
+            {" "}{applyResult.codexCount} codex entr{applyResult.codexCount !== 1 ? "ies" : "y"}.
+          </div>
+          <div className="rq-apply-nav">
+            <button
+              type="button"
+              className="rq-btn rq-btn--nav"
+              onClick={() => onNavigate ? onNavigate("codex") : navigate("/codex")}
+            >
+              View in Campaign Codex →
+            </button>
+            <button
+              type="button"
+              className="rq-btn rq-btn--nav"
+              onClick={() => onNavigate ? onNavigate("live") : navigate("/")}
+            >
+              Go to Live Board →
+            </button>
+          </div>
         </div>
       )}
       {applyError && (
