@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Clipboard, GripVertical, Upload } from "lucide-react";
+import { GripVertical, Upload } from "lucide-react";
 import PrepPanel from "../components/prep/PrepPanel";
+import LibraryPdfViewer from "../components/library/LibraryPdfViewer";
 import { createId } from "../lib/utils/ids";
 import { persistSceneContent, setBackendCampaignId } from "../lib/campaignPersistence";
 import { useCampaignContextStore } from "../store/campaignContext";
@@ -27,36 +28,52 @@ function findRawNpc(rawNpcs, name) {
   return null;
 }
 
-function splitDocumentParagraphs(text) {
-  if (!text || typeof text !== "string") return [];
-  return text
-    .split(/\n\n+/)
-    .map((p) => p.trim())
-    .filter(Boolean);
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-function escapeRegExp(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** @param {string} line */
+function boldSegments(line) {
+  const parts = String(line).split(/\*\*/);
+  return parts.map((p, i) => (i % 2 === 1 ? `<strong>${escapeHtml(p)}</strong>` : escapeHtml(p))).join("");
 }
 
-/** @param {string} text @param {string} query */
-function highlightParagraphContent(text, query) {
-  const q = (query || "").trim();
-  if (!q) return text;
-  const re = new RegExp(`(${escapeRegExp(q)})`, "gi");
-  const parts = text.split(re);
-  return parts.map((part, i) =>
-    i % 2 === 1 ? (
-      <mark
-        key={`m-${i}-${part.slice(0, 24)}`}
-        className="text-amber-300 bg-amber-950/50 rounded px-0.5"
-      >
-        {part}
-      </mark>
-    ) : (
-      <span key={`t-${i}`}>{part}</span>
-    )
-  );
+/** @param {string} input */
+function markdownLiteToHtml(input) {
+  const lines = String(input || "").split(/\n/);
+  const out = [];
+  for (const line of lines) {
+    if (/^---\s*$/.test(line.trim())) {
+      out.push('<hr class="library-md-hr" />');
+      continue;
+    }
+    const hm = /^(#{1,6})\s+(.+)$/.exec(line);
+    if (hm) {
+      out.push(`<div class="library-md-heading">${escapeHtml(hm[2])}</div>`);
+      continue;
+    }
+    if (!line.trim()) {
+      out.push('<div class="library-md-spacer" aria-hidden="true"></div>');
+      continue;
+    }
+    out.push(`<p class="library-md-p">${boldSegments(line)}</p>`);
+  }
+  return out.join("");
+}
+
+/** @param {File | null | undefined} file */
+function getDocKind(file) {
+  if (!file) return null;
+  const name = (file.name || "").toLowerCase();
+  const mime = file.type || "";
+  if (name.endsWith(".pdf") || mime === "application/pdf") return "pdf";
+  if (name.endsWith(".md") || mime === "text/markdown") return "md";
+  if (name.endsWith(".txt") || mime === "text/plain") return "txt";
+  return "unknown";
 }
 
 /**
@@ -128,16 +145,33 @@ export default function LibraryPage() {
   const [parseError, setParseError] = useState("");
   const [documentName, setDocumentName] = useState("");
 
-  /** Full raw text from POST /adventure/extract-text (first selected file) */
-  const [documentText, setDocumentText] = useState("");
-  const [isExtractingText, setIsExtractingText] = useState(false);
-  const [extractTextError, setExtractTextError] = useState("");
-  const extractAbortRef = useRef(null);
-  const extractGenRef = useRef(0);
-  const [docSearchQuery, setDocSearchQuery] = useState("");
+  /** First selected file — kept for Step 2 viewer (PDF.js / text) */
+  const [uploadedFile, setUploadedFile] = useState(null);
+  /** URL from POST /adventure/upload-doc (optional; PDF uses local File + ArrayBuffer) */
+  const [uploadedDocUrl, setUploadedDocUrl] = useState("");
+  const [textFileContent, setTextFileContent] = useState("");
+  const [uploadDocLoading, setUploadDocLoading] = useState(false);
+  const [uploadDocError, setUploadDocError] = useState("");
+
+  const docScrollRef = useRef(null);
+  const leftPaneRef = useRef(null);
+  const pdfViewerRef = useRef(null);
+  const libraryFileInputRef = useRef(null);
+  const selectionReadTimerRef = useRef(null);
+  const [leftPaneWidth, setLeftPaneWidth] = useState(0);
+  const [pdfNumPages, setPdfNumPages] = useState(0);
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfScale, setPdfScale] = useState(1);
+  const [pdfFitScale, setPdfFitScale] = useState(1);
+  const [pdfUseFit, setPdfUseFit] = useState(true);
   const [libraryImageUrls, setLibraryImageUrls] = useState([]);
   const [imageCopyToast, setImageCopyToast] = useState("");
   const imageToastTimerRef = useRef(null);
+  const [selectionText, setSelectionText] = useState("");
+  const [showToolbar, setShowToolbar] = useState(false);
+  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
+  const [sendToast, setSendToast] = useState("");
+  const sendToastTimerRef = useRef(null);
 
   /** Raw parse JSON — workflow scenes from Parse Document */
   const [parsePayload, setParsePayload] = useState(null);
@@ -196,12 +230,7 @@ export default function LibraryPage() {
     };
   }, [apiKey]);
 
-  const documentParagraphs = useMemo(() => splitDocumentParagraphs(documentText), [documentText]);
-  const searchLower = docSearchQuery.trim().toLowerCase();
-  const visibleParagraphs = useMemo(() => {
-    if (!searchLower) return documentParagraphs;
-    return documentParagraphs.filter((p) => p.toLowerCase().includes(searchLower));
-  }, [documentParagraphs, searchLower]);
+  const docKind = useMemo(() => getDocKind(uploadedFile), [uploadedFile]);
 
   const authFetch = useCallback(
     (input, init = {}) => {
@@ -242,47 +271,65 @@ export default function LibraryPage() {
   useEffect(() => {
     return () => {
       if (imageToastTimerRef.current) clearTimeout(imageToastTimerRef.current);
+      if (sendToastTimerRef.current) clearTimeout(sendToastTimerRef.current);
+      if (selectionReadTimerRef.current) clearTimeout(selectionReadTimerRef.current);
     };
   }, []);
 
+  useEffect(() => {
+    const measurePane = () => {
+      const w = leftPaneRef.current?.offsetWidth || 0;
+      if (w > 0) setLeftPaneWidth(w);
+    };
+    measurePane();
+    window.addEventListener("resize", measurePane);
+    return () => window.removeEventListener("resize", measurePane);
+  }, []);
+
+  useEffect(() => {
+    if (docKind === "pdf" && pdfUseFit) {
+      setPdfScale(pdfFitScale);
+    }
+  }, [docKind, pdfUseFit, pdfFitScale]);
+
+  useEffect(() => {
+    if (step === 2 && files.length > 0 && !uploadedFile) {
+      setUploadedFile(files[0]);
+    }
+  }, [step, files, uploadedFile]);
+
   const onFileChange = useCallback(
     async (e) => {
-      const gen = ++extractGenRef.current;
       const list = Array.from(e.target.files || []);
       setFiles(list);
       setParseError("");
-      setExtractTextError("");
-
-      extractAbortRef.current?.abort();
-      extractAbortRef.current = null;
+      setUploadDocError("");
+      setUploadedDocUrl("");
+      setTextFileContent("");
+      setPdfNumPages(0);
+      setPdfPage(1);
+      setPdfScale(1);
+      setPdfFitScale(1);
+      setPdfUseFit(true);
 
       if (!list.length) {
-        setDocumentText("");
-        if (gen === extractGenRef.current) setIsExtractingText(false);
+        setUploadedFile(null);
         return;
       }
 
       const first = list[0];
-      setIsExtractingText(true);
+      setUploadedFile(first);
 
       if (requireApiKey && !apiKey.trim()) {
-        setDocumentText("");
-        setExtractTextError("Enter your API key to load document text.");
-        if (gen === extractGenRef.current) setIsExtractingText(false);
+        setUploadDocError("Enter your API key to upload the document.");
         return;
       }
 
-      const ac = new AbortController();
-      extractAbortRef.current = ac;
-
+      setUploadDocLoading(true);
       try {
-        const formData = new FormData();
-        formData.append("files", first);
-        const res = await authFetch("/adventure/extract-text", {
-          method: "POST",
-          body: formData,
-          signal: ac.signal,
-        });
+        const fd = new FormData();
+        fd.append("file", first);
+        const res = await authFetch("/adventure/upload-doc", { method: "POST", body: fd });
         const raw = await res.text();
         let payload = null;
         try {
@@ -291,32 +338,39 @@ export default function LibraryPage() {
           payload = null;
         }
         if (!res.ok) {
-          throw new Error(payload?.detail || raw || `Extract failed (${res.status})`);
+          throw new Error(payload?.detail || raw || `Upload failed (${res.status})`);
         }
-        const text = typeof payload?.text === "string" ? payload.text : "";
-        if (gen !== extractGenRef.current) return;
-        setDocumentText(text);
-        setExtractTextError("");
+        const url = typeof payload?.file_url === "string" ? payload.file_url : "";
+        if (url) setUploadedDocUrl(url);
+
+        const name = (first.name || "").toLowerCase();
+        const mime = first.type || "";
+        const isTextLike =
+          /\.(txt|md)$/i.test(name) || mime === "text/plain" || mime === "text/markdown";
+        if (isTextLike) {
+          const text = await new Promise((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(typeof fr.result === "string" ? fr.result : "");
+            fr.onerror = () => reject(new Error("Could not read file"));
+            fr.readAsText(first);
+          });
+          setTextFileContent(text);
+        } else {
+          setTextFileContent("");
+        }
+        setUploadDocError("");
       } catch (err) {
-        if (err?.name === "AbortError") return;
-        if (gen !== extractGenRef.current) return;
-        setDocumentText("");
         const isUnreachable =
           err?.name === "TypeError" ||
           (typeof err?.message === "string" &&
             (err.message.includes("NetworkError") || err.message.includes("Failed to fetch")));
-        setExtractTextError(
+        setUploadDocError(
           isUnreachable
             ? "Could not reach the API. Start the backend (e.g. python server.py on port 7862), restart npm run dev after proxy changes, and use http://localhost:5173/preview/"
-            : err.message || "Could not extract text from file."
+            : err.message || "Upload failed."
         );
       } finally {
-        if (extractAbortRef.current === ac) {
-          extractAbortRef.current = null;
-        }
-        if (gen === extractGenRef.current) {
-          setIsExtractingText(false);
-        }
+        setUploadDocLoading(false);
       }
     },
     [authFetch, requireApiKey, apiKey]
@@ -371,6 +425,8 @@ export default function LibraryPage() {
       if (!res.ok) throw new Error(payload?.detail || raw || `Parse failed (${res.status})`);
       if (!payload) throw new Error("Parse returned no data.");
 
+      if (files[0]) setUploadedFile(files[0]);
+
       if (payload.campaign_id != null) setBackendCampaignId(payload.campaign_id);
 
       const docName = deriveDocumentName(payload);
@@ -391,30 +447,59 @@ export default function LibraryPage() {
   };
 
   const handleStartOver = () => {
-    extractAbortRef.current?.abort();
-    extractAbortRef.current = null;
     setStep(1);
     setParseError("");
     setDocumentName("");
-    setDocumentText("");
-    setExtractTextError("");
-    setIsExtractingText(false);
+    setFiles([]);
+    setUploadedFile(null);
+    setUploadedDocUrl("");
+    setTextFileContent("");
+    setUploadDocError("");
+    setPdfNumPages(0);
+    setPdfPage(1);
+    setPdfScale(1);
+    setPdfFitScale(1);
+    setPdfUseFit(true);
+    if (libraryFileInputRef.current) libraryFileInputRef.current.value = "";
     setParsePayload(null);
     setWorkflowScenes([]);
     setActiveSceneIndex(0);
     setBuilderError("");
-    setDocSearchQuery("");
     setLibraryImageUrls([]);
     setImageCopyToast("");
+    setSelectionText("");
+    setShowToolbar(false);
+    setToolbarPos({ x: 0, y: 0 });
+    setSendToast("");
+    window.setTimeout(() => {
+      if (libraryFileInputRef.current) libraryFileInputRef.current.value = "";
+    }, 0);
   };
 
-  const activeWorkflow = workflowScenes[activeSceneIndex] ?? null;
-
-  const copyParagraphToClipboard = useCallback((para) => {
-    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-      void navigator.clipboard.writeText(para);
+  const handleClearDocumentData = useCallback(() => {
+    setFiles([]);
+    setUploadedFile(null);
+    setUploadedDocUrl("");
+    setTextFileContent("");
+    setUploadDocError("");
+    setUploadDocLoading(false);
+    setPdfNumPages(0);
+    setPdfPage(1);
+    setPdfScale(1);
+    setPdfFitScale(1);
+    setPdfUseFit(true);
+    setLibraryImageUrls([]);
+    setSelectionText("");
+    setShowToolbar(false);
+    if (typeof window !== "undefined") {
+      window.getSelection()?.removeAllRanges();
     }
+    window.setTimeout(() => {
+      if (libraryFileInputRef.current) libraryFileInputRef.current.value = "";
+    }, 0);
   }, []);
+
+  const activeWorkflow = workflowScenes[activeSceneIndex] ?? null;
 
   const copyImageUrlWithToast = useCallback((url) => {
     if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) return;
@@ -427,6 +512,100 @@ export default function LibraryPage() {
       }, 2000);
     });
   }, []);
+
+  const clearSelectionToolbar = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.getSelection()?.removeAllRanges();
+    }
+    setSelectionText("");
+    setShowToolbar(false);
+  }, []);
+
+  const emitSentToast = useCallback((label) => {
+    setSendToast(`✓ Sent to ${label}`);
+    if (sendToastTimerRef.current) clearTimeout(sendToastTimerRef.current);
+    sendToastTimerRef.current = setTimeout(() => {
+      setSendToast("");
+      sendToastTimerRef.current = null;
+    }, 1500);
+  }, []);
+
+  const handleDocumentMouseUp = useCallback((e) => {
+    if (selectionReadTimerRef.current) clearTimeout(selectionReadTimerRef.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    selectionReadTimerRef.current = window.setTimeout(() => {
+      const selected = window.getSelection()?.toString().trim() || "";
+      if (selected.length > 3) {
+        setSelectionText(selected);
+        setToolbarPos({ x: rect.left, y: rect.top });
+        setShowToolbar(true);
+        return;
+      }
+      setSelectionText("");
+      setShowToolbar(false);
+    }, 10);
+  }, []);
+
+  const upsertSceneFromWorkflow = useCallback(
+    (sceneDraft) => {
+      if (!sceneDraft) return;
+      const existing = storeScenes.find((s) => s.id === sceneDraft.id);
+      const campaignId = existing?.campaignId || activeCampaignId || "";
+      upsertScene({
+        ...(existing || {}),
+        id: sceneDraft.id,
+        campaignId,
+        title: sceneDraft.title || "Scene",
+        name: sceneDraft.title || "Scene",
+        summary: (sceneDraft.readAloud || sceneDraft.title || "Scene").trim().slice(0, 280) || "Scene",
+        readAloud: sceneDraft.readAloud,
+        read_aloud: sceneDraft.readAloud,
+        notes: sceneDraft.gmNotes,
+        npcIds: (sceneDraft.npcs || [])
+          .filter((n) => String(n.name || "").trim())
+          .map((n) => n.id),
+        codexEntryIds: existing?.codexEntryIds ?? [],
+        actionLogIds: existing?.actionLogIds ?? [],
+        narrationClipIds: existing?.narrationClipIds ?? [],
+        tags: existing?.tags,
+      });
+    },
+    [storeScenes, activeCampaignId, upsertScene]
+  );
+
+  const sendSelectionToField = useCallback(
+    (field) => {
+      if (!activeWorkflow || !selectionText.trim()) return;
+      const raw = selectionText.trim();
+      let next = { ...activeWorkflow, saved: false };
+
+      if (field === "readAloud") {
+        next = { ...next, readAloud: raw };
+        emitSentToast("Read-aloud");
+      } else if (field === "gmNotes") {
+        next = { ...next, gmNotes: raw };
+        emitSentToast("GM notes");
+      } else if (field === "sceneTitle") {
+        next = { ...next, title: raw.slice(0, 60) };
+        emitSentToast("Scene title");
+      } else if (field === "newNpc") {
+        const firstLine = raw.split(/\r?\n/)[0]?.trim() || "";
+        const npcName = firstLine.split(/\s*[—-]\s*/)[0].trim() || firstLine.slice(0, 60).trim();
+        if (npcName) {
+          next = {
+            ...next,
+            npcs: [...(next.npcs || []), { id: createId("import_npc"), name: npcName, role: "" }],
+          };
+          emitSentToast("New NPC");
+        }
+      }
+
+      setWorkflowScenes((prev) => prev.map((w, i) => (i === activeSceneIndex ? next : w)));
+      upsertSceneFromWorkflow(next);
+      clearSelectionToolbar();
+    },
+    [activeWorkflow, selectionText, activeSceneIndex, upsertSceneFromWorkflow, clearSelectionToolbar, emitSentToast]
+  );
 
   const allScenesSaved = workflowScenes.length > 0 && workflowScenes.every((w) => w.saved);
 
@@ -611,7 +790,8 @@ export default function LibraryPage() {
         <div className="max-w-xl mx-auto shrink-0">
           <PrepPanel title="Upload adventure docs">
             <p className="intake-hint">
-              Drop in session notes, module PDFs, or campaign text, then parse to extract campaign data.
+              Drop in session notes, module PDFs, or campaign text, then parse to extract campaign data. Supports PDF,
+              .txt, and .md files.
             </p>
 
             <div className="mb-4">
@@ -649,24 +829,30 @@ export default function LibraryPage() {
                 <Upload size={16} className="inline mr-1" />
                 <span>Select files</span>
                 <input
+                  ref={libraryFileInputRef}
                   type="file"
                   multiple
                   accept="text/plain,text/markdown,application/pdf,.txt,.md,.pdf"
                   onChange={onFileChange}
                 />
               </label>
-              {isExtractingText && (
+              {uploadDocLoading && (
                 <p className="text-[11px] text-[#9c7a3a] font-heading mt-2 mb-0 animate-pulse">
-                  Loading document text…
+                  Uploading document…
                 </p>
               )}
-              {extractTextError && !isExtractingText && (
-                <p className="text-[11px] text-amber-700/90 mt-2 mb-0">{extractTextError}</p>
+              {uploadDocError && !uploadDocLoading && (
+                <p className="text-[11px] text-amber-700/90 mt-2 mb-0">{uploadDocError}</p>
               )}
-              {!isExtractingText && !extractTextError && documentText && files.length > 0 && (
+              {!uploadDocLoading && !uploadDocError && uploadedFile && (
                 <p className="text-[11px] text-[#6b8f6b]/90 mt-2 mb-0">
-                  Document text loaded ({documentText.length.toLocaleString()} characters). Continue to Parse when
-                  ready.
+                  File ready
+                  {textFileContent
+                    ? ` — ${textFileContent.length.toLocaleString()} characters loaded for text preview.`
+                    : uploadedDocUrl
+                      ? " — uploaded to server."
+                      : "."}{" "}
+                  Continue to Parse when ready.
                 </p>
               )}
             </div>
@@ -718,66 +904,200 @@ export default function LibraryPage() {
             className="flex flex-1 min-h-0 min-w-0 gap-0 border border-[#5a3e1b] rounded-lg overflow-hidden bg-[#120a04]"
             style={{ minHeight: "min(70dvh, 720px)", maxHeight: "calc(100dvh - 12rem)" }}
           >
-            {/* Left — document paragraphs, search, images */}
-            <section className="flex flex-1 min-w-0 min-h-0 flex-col border-r border-[#5a3e1b]">
+            {/* Left — PDF / text viewer, selection toolbar, images */}
+            <section ref={leftPaneRef} className="flex flex-1 min-w-0 min-h-0 flex-col border-r border-[#5a3e1b]">
               <div className="shrink-0 border-b border-[#3a2510] bg-[#1a1008]">
-                <div className="px-3 py-2">
+                <div className="px-3 py-2 flex flex-wrap items-center gap-2 justify-between">
                   <h2 className="font-heading text-sm text-[#e7c27a] tracking-wide m-0">Document content</h2>
-                </div>
-                <div className="px-3 pb-3">
-                  <label className="sr-only" htmlFor="library-doc-search">
-                    Filter paragraphs by keyword
-                  </label>
-                  <input
-                    id="library-doc-search"
-                    type="search"
-                    value={docSearchQuery}
-                    onChange={(e) => setDocSearchQuery(e.target.value)}
-                    placeholder="Search paragraphs…"
-                    className="w-full bg-[#130c06] border border-solid border-[#2a1a08] rounded-md px-3 py-2 text-sm text-[#e8d4a8] placeholder:text-[#5c4a38] focus:outline-none focus:ring-1 focus:ring-[#9b7440]"
-                  />
-                </div>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-                {!documentText ? (
-                  <p className="text-xs text-[#b89a62] leading-relaxed m-0">
-                    No document text yet. Go back to step 1 and select a file — text loads automatically from the first
-                    file. You can still use Parse Document to pre-fill scenes on the right.
-                  </p>
-                ) : (
-                  <>
-                    {searchLower && visibleParagraphs.length === 0 ? (
-                      <p className="text-xs text-[#9b7440] m-0">No paragraphs match your search.</p>
-                    ) : null}
-                    {visibleParagraphs.map((para, vi) => (
-                      <div
-                        key={`vp-${vi}-${para.length}-${para.slice(0, 24)}`}
-                        className="relative rounded-[6px] border border-solid border-[#2a1a08] bg-[#130c06] pl-3 pr-12 py-2.5"
+                  <div className="flex items-center gap-2">
+                    {uploadedFile && docKind === "pdf" && (
+                      <span className="text-[10px] font-heading uppercase tracking-wider px-2 py-0.5 rounded border border-amber-700/50 bg-amber-950/30 text-amber-300">
+                        PDF
+                      </span>
+                    )}
+                    {uploadedFile && docKind === "md" && (
+                      <span className="text-[10px] font-heading uppercase tracking-wider px-2 py-0.5 rounded border border-blue-700/50 bg-blue-950/30 text-blue-300">
+                        Markdown
+                      </span>
+                    )}
+                    {uploadedFile && docKind === "txt" && (
+                      <span className="text-[10px] font-heading uppercase tracking-wider px-2 py-0.5 rounded border border-[#4a4a4a] bg-[#1a1a1a]/50 text-[#b0b0b0]">
+                        Text
+                      </span>
+                    )}
+                    {uploadedFile && docKind === "unknown" && (
+                      <span className="text-[10px] font-heading uppercase tracking-wider px-2 py-0.5 rounded border border-[#4a4a4a] bg-[#1a1a1a]/50 text-[#b0b0b0]">
+                        File
+                      </span>
+                    )}
+                    {uploadedFile && (
+                      <button
+                        type="button"
+                        className="text-[10px] font-heading uppercase tracking-wider px-2 py-1 rounded border border-red-800/70 bg-red-950/40 text-red-300 hover:bg-red-900/50"
+                        onClick={handleClearDocumentData}
                       >
-                        <button
-                          type="button"
-                          className="absolute top-2 right-2 p-1.5 rounded border border-[#3a2818] bg-[#1a0f06] text-[#d8b36f] hover:border-[#9b7440] hover:text-[#e7c27a]"
-                          title="Copy paragraph"
-                          aria-label="Copy paragraph to clipboard"
-                          onClick={() => copyParagraphToClipboard(para)}
-                        >
-                          <Clipboard size={16} strokeWidth={1.75} aria-hidden />
-                        </button>
-                        <p
-                          className="m-0 text-sm text-[#e8d4a8] pr-1"
-                          style={{ whiteSpace: "pre-wrap", lineHeight: 1.7 }}
-                        >
-                          {highlightParagraphContent(para, docSearchQuery)}
-                        </p>
-                      </div>
-                    ))}
-                  </>
+                        Clear data
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {uploadedFile && docKind === "pdf" && pdfNumPages > 0 ? (
+                  <div className="px-3 pb-2 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
+                      disabled={pdfPage <= 1}
+                      onClick={() => {
+                        const n = Math.max(1, pdfPage - 1);
+                        setPdfPage(n);
+                        pdfViewerRef.current?.scrollToPage(n);
+                      }}
+                    >
+                      ← Prev
+                    </button>
+                    <span className="text-xs font-heading text-[#d8b36f]">
+                      Page {pdfPage} of {pdfNumPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440]"
+                      onClick={() => {
+                        setPdfUseFit(false);
+                        setPdfScale((s) => Math.max(0.5, Number((s - 0.25).toFixed(2))));
+                      }}
+                      title="Zoom out"
+                    >
+                      -
+                    </button>
+                    <span className="text-xs font-heading text-[#d8b36f] min-w-[3.5rem] text-center">
+                      {Math.round((pdfScale || 1) * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440]"
+                      onClick={() => {
+                        setPdfUseFit(false);
+                        setPdfScale((s) => Math.min(3, Number((s + 0.25).toFixed(2))));
+                      }}
+                      title="Zoom in"
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440]"
+                      onClick={() => {
+                        setPdfUseFit(true);
+                        setPdfScale(pdfFitScale);
+                      }}
+                    >
+                      Fit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
+                      disabled={pdfPage >= pdfNumPages}
+                      onClick={() => {
+                        const n = Math.min(pdfNumPages, pdfPage + 1);
+                        setPdfPage(n);
+                        pdfViewerRef.current?.scrollToPage(n);
+                      }}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+              <div
+                ref={docScrollRef}
+                className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3"
+                onMouseUp={handleDocumentMouseUp}
+              >
+                {showToolbar && (
+                  <div
+                    className="sticky top-0 z-20 -mx-3 mb-3 px-3 py-2 bg-[#1a0f06] border-b border-[#2a1a08] flex flex-wrap items-center gap-2"
+                    data-toolbar-anchor={toolbarPos.x}
+                  >
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-green-700/60 bg-green-950/40 text-green-300 hover:bg-green-900/50"
+                      onClick={() => sendSelectionToField("readAloud")}
+                    >
+                      Read-aloud
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-blue-700/60 bg-blue-950/40 text-blue-300 hover:bg-blue-900/50"
+                      onClick={() => sendSelectionToField("gmNotes")}
+                    >
+                      GM notes
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-red-700/60 bg-red-950/40 text-red-300 hover:bg-red-900/50"
+                      onClick={() => sendSelectionToField("newNpc")}
+                    >
+                      New NPC
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-heading px-2 py-1 rounded border border-amber-700/60 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50"
+                      onClick={() => sendSelectionToField("sceneTitle")}
+                    >
+                      Scene title
+                    </button>
+                  </div>
+                )}
+                {!uploadedFile ? (
+                  <div className="border-2 border-dashed border-[#4f341f] rounded-md p-4 text-center">
+                    <p className="text-xs text-[#b89a62] leading-relaxed m-0 mb-3">
+                      No file loaded. Select a document to view it here. Supports PDF, .txt, and .md files.
+                    </p>
+                    <button
+                      type="button"
+                      className="nav-glyph-btn intake-parse-btn text-sm"
+                      onClick={() => libraryFileInputRef.current?.click()}
+                    >
+                      <Upload size={16} className="inline mr-1" />
+                      Choose file
+                    </button>
+                    <input
+                      ref={libraryFileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept="text/plain,text/markdown,application/pdf,.txt,.md,.pdf"
+                      onChange={onFileChange}
+                    />
+                  </div>
+                ) : docKind === "pdf" ? (
+                  <LibraryPdfViewer
+                    ref={pdfViewerRef}
+                    file={uploadedFile}
+                    scale={pdfScale}
+                    containerWidth={leftPaneWidth}
+                    scrollRootRef={docScrollRef}
+                    onMeta={setPdfNumPages}
+                    onVisiblePageChange={setPdfPage}
+                    onFitScaleChange={(nextFit) => {
+                      const safeFit = Math.min(3, Math.max(0.5, nextFit || 1));
+                      setPdfFitScale(safeFit);
+                    }}
+                  />
+                ) : docKind === "md" || docKind === "txt" ? (
+                  <div
+                    className="library-md-view max-w-none rounded-[6px] border border-solid border-[#2a1a08] bg-[#130c06] p-3"
+                    dangerouslySetInnerHTML={{ __html: markdownLiteToHtml(textFileContent) }}
+                  />
+                ) : (
+                  <p className="text-xs text-[#b89a62] leading-relaxed m-0">
+                    Unsupported type for preview. Parsing may still work on the right.
+                  </p>
                 )}
 
                 {libraryImageUrls.length > 0 ? (
                   <div className="pt-4 border-t border-[#2a1a08] mt-2">
                     <h3 className="font-heading text-xs text-[#e7c27a] tracking-wide uppercase mb-3 m-0">
-                      Document images
+                      Extracted images — drag to scene
                     </h3>
                     <div className="grid grid-cols-3 gap-2">
                       {libraryImageUrls.map((url) => (
@@ -822,6 +1142,14 @@ export default function LibraryPage() {
                     role="status"
                   >
                     {imageCopyToast}
+                  </div>
+                ) : null}
+                {sendToast ? (
+                  <div
+                    className="sticky bottom-0 left-0 right-0 mt-2 py-2 px-3 rounded-md border border-[#2a1a08] bg-[#130c06] text-center text-xs font-heading text-[#9dd08d]"
+                    role="status"
+                  >
+                    {sendToast}
                   </div>
                 ) : null}
               </div>

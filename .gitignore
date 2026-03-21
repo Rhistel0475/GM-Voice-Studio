@@ -36,6 +36,9 @@ htmlcov/
 # React preview workspace
 preview-react/node_modules/
 
+# Temp uploaded adventure docs (served at /uploads)
+uploads/
+
 # Optional: large generated files (uncomment if you don't want them in repo)
 # test.wav
 *.pdf

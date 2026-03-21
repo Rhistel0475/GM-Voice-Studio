@@ -2291,3 +2291,57 @@ button.tracker-row:hover:not(.is-active) {
 .dm-ghost-row {
   min-height: 2.5rem;
 }
+
+/* ── Library PDF.js text layer (PDF.js 3.x) ───────────────────────────────── */
+
+.library-pdf-page-wrap .textLayer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  overflow: hidden;
+  line-height: 1;
+  opacity: 1;
+}
+
+.library-pdf-page-wrap .textLayer span,
+.library-pdf-page-wrap .textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0 0;
+}
+
+.library-pdf-page-wrap .textLayer span::selection,
+.library-pdf-page-wrap .textLayer br::selection {
+  background: rgba(202, 167, 75, 0.35);
+}
+
+/* Library markdown-lite (regex → HTML) */
+.library-md-view .library-md-heading {
+  font-family: "Cinzel", serif;
+  font-weight: 700;
+  color: #e7c27a;
+  font-size: 1.125rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.library-md-view .library-md-p {
+  font-size: 0.875rem;
+  color: #e8d4a8;
+  line-height: 1.65;
+  margin: 0.25rem 0;
+}
+
+.library-md-view .library-md-hr {
+  border: 0;
+  border-top: 1px solid #5a3e1b;
+  margin: 0.75rem 0;
+}
+
+.library-md-view .library-md-spacer {
+  height: 0.5rem;
+}

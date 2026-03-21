@@ -866,6 +866,36 @@ async def extract_adventure_text(
     return {"text": text}
 
 
+_UPLOADS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "uploads"
+
+
+@router.post("/adventure/upload-doc")
+@limiter.limit("30/minute")
+async def upload_adventure_document(
+    request: Request,
+    file: UploadFile = File(...),
+    _auth: None = Depends(verify_api_key),
+):
+    """Save one uploaded document under uploads/ and return a URL for static serving."""
+    if not file.filename:
+        raise HTTPException(400, "Uploaded file has no filename.")
+    suffix = Path(file.filename).suffix.lower()
+    if suffix not in {".txt", ".md", ".pdf"}:
+        raise HTTPException(400, "Unsupported file type. Use .txt, .md, or .pdf.")
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, f"{file.filename} is empty.")
+    if len(raw) > _MAX_ADVENTURE_FILE_BYTES:
+        raise HTTPException(
+            413, f"File too large. Max size is {_MAX_ADVENTURE_FILE_BYTES // (1024 * 1024)}MB.",
+        )
+    _UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = f"{uuid.uuid4().hex}{suffix}"
+    dest = _UPLOADS_DIR / safe_name
+    dest.write_bytes(raw)
+    return {"file_url": f"/uploads/{safe_name}"}
+
+
 def _scene_like(line: str) -> bool:
     words = line.split()
     if len(words) < 2 or len(words) > 10:
@@ -1088,7 +1118,7 @@ async def parse_adventure_docs(
     if pdf_raws and parsed.get("campaign_id") is not None:
         cid = int(parsed["campaign_id"])
         embedded_dir = _ASSETS_DIR / str(cid) / "embedded"
-        embedded_dir.mkdir(parents=True, parents=True)
+        embedded_dir.mkdir(parents=True)
         img_counter = 0
         for raw_pdf in pdf_raws:
             try:
@@ -1203,7 +1233,7 @@ async def ai_parse_adventure_docs(
     _cleanup_old_sessions(_ASSETS_DIR)
     session_dir = _ASSETS_DIR / asset_key
     embedded_dir = session_dir / "embedded"
-    embedded_dir.mkdir(parents=True, parents=True)
+    embedded_dir.mkdir(parents=True)
 
     raw_images: list[dict] = []
     total_pages = 0

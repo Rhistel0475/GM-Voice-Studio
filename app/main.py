@@ -153,6 +153,10 @@ def create_app() -> FastAPI:
     audio_dir.mkdir(parents=True, exist_ok=True)
     app.mount("/static/audio", StaticFiles(directory=str(audio_dir)), name="static_audio")
 
+    uploads_dir = _REPO_ROOT / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
+
     @app.on_event("startup")
     def startup():
         init_db()

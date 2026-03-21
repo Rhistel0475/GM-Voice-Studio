@@ -52,6 +52,7 @@ export default defineConfig({
       "/jobs": API_DEV,
       "/campaign-assets": API_DEV,
       "/static": API_DEV,
+      "/uploads": API_DEV,
       "/ws": {
         target: "ws://127.0.0.1:7862",
         ws: true,
