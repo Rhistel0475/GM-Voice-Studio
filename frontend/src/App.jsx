@@ -1,6 +1,5 @@
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
-import { AppStateProvider } from "./context/AppStateContext";
-import { CampaignProvider } from "./store/campaignContext";
+import { CampaignProvider } from "./store/CampaignProvider";
 import ImportPage from "./pages/ImportPage";
 import PrepPage from "./pages/PrepPage";
 import LiveBoardPage from "./pages/LiveBoardPage";
@@ -8,8 +7,6 @@ import LiveBoardPage from "./pages/LiveBoardPage";
 export default function App() {
   return (
     <CampaignProvider>
-      {/* AppStateProvider: shared API key / legacy hooks for routes that still need it */}
-      <AppStateProvider>
       <BrowserRouter>
         <div className="min-h-screen flex flex-col">
           <header className="border-b border-neutral-200 bg-white px-4 py-2">
@@ -34,7 +31,6 @@ export default function App() {
           </Routes>
         </div>
       </BrowserRouter>
-      </AppStateProvider>
     </CampaignProvider>
   );
 }

@@ -35,7 +35,7 @@ function mapVoiceToProfile(raw) {
 
 /**
  * Get voices for Voice Studio. Tries /voices/list; falls back to mock data.
- * @param {Function} authFetch - From AppStateContext
+ * @param {Function} authFetch - Fetch with auth headers (e.g. X-API-Key)
  * @returns {Promise<import("../../types/voice").VoiceProfile[]>}
  */
 export async function getVoices(authFetch) {

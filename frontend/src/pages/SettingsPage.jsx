@@ -1,10 +1,59 @@
 import { useState } from "react";
-import { useAppState } from "../context/AppStateContext";
+import { setBackendCampaignId } from "../lib/campaignPersistence";
 import SectionHeader from "../components/layout/SectionHeader";
 import { ParchmentCard } from "../components/shared";
+import { useCampaignContextStore } from "../store/campaignContext";
+import { useExtractionReviewQueueStore } from "../store/extractionReview";
+
+const CAMPAIGN_STORAGE_KEYS = [
+  "gm_campaign_data",
+  "gm_parse_result",
+  "gm_parse_images",
+];
+
+async function clearCampaignData({ deleteBackendCampaigns = false } = {}) {
+  const store = useCampaignContextStore.getState();
+  const apiKey = store.apiKey;
+
+  const authFetch = (input, init = {}) => {
+    const headers = new Headers(init.headers || {});
+    const key = (apiKey || "").trim();
+    if (key) headers.set("X-API-Key", key);
+    return fetch(input, { ...init, headers });
+  };
+
+  if (deleteBackendCampaigns) {
+    try {
+      const listResponse = await authFetch("/api/campaigns");
+      const campaigns = listResponse.ok ? await listResponse.json() : [];
+      if (Array.isArray(campaigns)) {
+        for (const campaign of campaigns) {
+          if (campaign?.id == null || campaign.id === "") continue;
+          await authFetch(`/api/campaigns/${campaign.id}`, { method: "DELETE" });
+        }
+      }
+    } catch {
+      /* ignore backend cleanup errors during local reset */
+    }
+  }
+
+  CAMPAIGN_STORAGE_KEYS.forEach((key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  });
+  setBackendCampaignId(null);
+
+  store.resetCampaignContext();
+  useExtractionReviewQueueStore.getState().clearQueue();
+}
 
 export default function SettingsPage() {
-  const { apiKey, setApiKey, requireApiKey, clearCampaignData } = useAppState();
+  const apiKey = useCampaignContextStore((s) => s.apiKey);
+  const setApiKey = useCampaignContextStore((s) => s.setApiKey);
+  const requireApiKey = useCampaignContextStore((s) => s.requireApiKey);
   const [cleared, setCleared] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
 

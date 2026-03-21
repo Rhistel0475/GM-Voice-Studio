@@ -27,6 +27,10 @@ export interface CampaignContextState {
   codexEntries: CodexEntry[];
   actionLog: ActionLogEvent[];
   narrationClips: NarrationClip[];
+  /** In-memory API key for X-API-Key (not persisted). */
+  apiKey: string;
+  /** Mirrors server /config require_api_key. */
+  requireApiKey: boolean;
 }
 
 const emptyState: CampaignContextState = {
@@ -41,6 +45,8 @@ const emptyState: CampaignContextState = {
   codexEntries: [],
   actionLog: [],
   narrationClips: [],
+  apiKey: "",
+  requireApiKey: false,
 };
 
 export interface AddActionLogEventInput {
@@ -82,8 +88,18 @@ export const useCampaignContextStore = create<CampaignContextState & {
   setVoices: (voices: Voice[]) => void;
   hydrateFromSeed: () => void;
   resetCampaignContext: () => void;
+  setApiKey: (key: string) => void;
+  setRequireApiKey: (required: boolean) => void;
 }>((set) => ({
   ...emptyState,
+
+  setApiKey(key) {
+    set({ apiKey: key });
+  },
+
+  setRequireApiKey(required) {
+    set({ requireApiKey: required });
+  },
 
   setActiveCampaign(id) {
     set((state) => {
@@ -369,17 +385,21 @@ export const useCampaignContextStore = create<CampaignContextState & {
   },
 
   hydrateFromSeed() {
-    set({
+    set((state) => ({
       ...seedCampaignContext,
       activeCampaignId: seedCampaignContext.campaigns[0]?.id ?? null,
       activeSessionId: seedCampaignContext.sessions[0]?.id ?? null,
       activeSceneId: seedCampaignContext.sessions[0]?.activeSceneId ?? seedCampaignContext.scenes[0]?.id ?? null,
-    });
+      apiKey: state.apiKey,
+      requireApiKey: state.requireApiKey,
+    }));
   },
 
   resetCampaignContext() {
-    set(emptyState);
+    set((state) => ({
+      ...emptyState,
+      apiKey: state.apiKey,
+      requireApiKey: state.requireApiKey,
+    }));
   },
 }));
-
-export { CampaignProvider } from "./CampaignProvider";

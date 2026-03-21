@@ -29,6 +29,8 @@ export interface CampaignKnowledgeRecord {
 export interface Campaign {
   id: string;
   name: string;
+  /** Optional display title (legacy / import payloads). */
+  title?: string;
   setting?: string;
   activeSessionId?: string;
   systemId?: string;

@@ -39,7 +39,7 @@ function campaignNpcToProfile(n, i, campaign) {
 
 /**
  * Get NPCs for the Workshop. Uses campaign npcs when present and non-empty; otherwise mock profiles.
- * @param {Object|null} campaignData - From AppStateContext
+ * @param {Object|null} campaignData - Legacy campaign payload (e.g. parsed JSON)
  * @param {Function} [authFetch] - Optional; for future GET /api/npcs
  * @returns {import("../../types/npc").NPCProfile[]}
  */

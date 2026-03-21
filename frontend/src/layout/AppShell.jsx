@@ -1,7 +1,14 @@
 import { Outlet, useLocation } from "react-router-dom";
-import { useAppState } from "../context/AppStateContext";
+import { useCampaignContextStore } from "../store/campaignContext";
+import { useActiveCampaign } from "../store/selectors";
 import TopBanner from "../components/layout/TopBanner";
 import SidebarNav from "../components/layout/SidebarNav";
+
+const DEFAULT_BANNER_STATE = {
+  sessionTime: "0:00",
+  activeScene: "—",
+  audioStatus: "idle",
+};
 
 function pathToView(path) {
   let p = (path || "/").replace(/\/+$/, "").replace(/^\/preview\/?/, "").trim() || "/";
@@ -18,7 +25,12 @@ function pathToView(path) {
 }
 
 export default function AppShell() {
-  const { campaignData, bannerState, requireApiKey, apiKey, setApiKey } = useAppState();
+  const requireApiKey = useCampaignContextStore((s) => s.requireApiKey);
+  const apiKey = useCampaignContextStore((s) => s.apiKey);
+  const setApiKey = useCampaignContextStore((s) => s.setApiKey);
+  const activeCampaign = useActiveCampaign();
+  const campaignDisplayName = activeCampaign?.title ?? activeCampaign?.name ?? "";
+
   const location = useLocation();
   const path = (location.pathname || "").replace(/^\/preview\/?/, "") || "/";
   const view = pathToView(path);
@@ -57,10 +69,10 @@ export default function AppShell() {
         </div>
       )}
       <TopBanner
-        campaignName={campaignData?.title}
-        activeScene={bannerState.activeScene}
-        sessionTime={bannerState.sessionTime}
-        audioStatus={bannerState.audioStatus}
+        campaignName={campaignDisplayName}
+        activeScene={DEFAULT_BANNER_STATE.activeScene}
+        sessionTime={DEFAULT_BANNER_STATE.sessionTime}
+        audioStatus={DEFAULT_BANNER_STATE.audioStatus}
         nav={<SidebarNav inBanner />}
       />
       <div className="flex flex-1 min-h-0 gap-4 mt-1">

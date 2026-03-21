@@ -7,7 +7,7 @@ import { MOCK_CODEX_ITEMS } from "../utils/mockData";
 
 /**
  * Map campaignData (scenes, npcs, locations) to CodexItem shape.
- * @param {Object} campaignData - From AppStateContext
+ * @param {Object} campaignData - Legacy campaign payload (e.g. parsed JSON)
  * @returns {import("../../types/codex").CodexItem[]}
  */
 function campaignToCodexItems(campaignData) {
