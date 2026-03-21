@@ -297,26 +297,163 @@ export default function LiveBoardPage() {
 
   if (!activeCampaign) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 px-6 text-center">
-        <p className="text-sm text-neutral-600">No active campaign.</p>
-        <Link to="/import" className="text-sm font-medium text-amber-800 hover:text-amber-950 underline">
-          Import a campaign →
-        </Link>
-      </div>
+      <WorkspaceContainer className="live-board dm-ghost-shell">
+        <div className="min-h-0 flex-1 flex flex-col gap-4 pb-4">
+          <section className="panel-ornate rounded-lg overflow-hidden flex-shrink-0 border-[#2a1a08] bg-[#120c08]/90">
+            <div className="panel-head panel-head--row flex-wrap gap-2 border-[#2a1a08]">
+              <div className="plaque text-[#e7c27a]/80">Active scene</div>
+              <span className="text-[10px] uppercase tracking-[0.12em] text-[#5c4a38]">Waiting for campaign</span>
+            </div>
+            <div className="panel-body space-y-2 border-[#2a1a08]">
+              <div className="dm-ghost-border min-h-[100px] px-3 py-3">
+                <p className="dm-ghost-hint text-xs leading-relaxed">
+                  Scene title and read-aloud will show here once you load a campaign and select a scene.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 flex-1">
+            <section className="panel-ornate rounded-lg overflow-hidden flex flex-col min-h-[200px] border-[#2a1a08] bg-[#120c08]/90">
+              <div className="panel-head border-[#2a1a08]">
+                <div className="plaque text-[#e7c27a]/80">Party roster</div>
+              </div>
+              <div className="panel-body flex-1 flex flex-col gap-2 border-[#2a1a08]">
+                <div className="dm-ghost-border dm-ghost-row px-2 shrink-0" />
+                <div className="dm-ghost-border dm-ghost-row px-2 shrink-0" />
+                <p className="dm-ghost-hint text-xs mt-auto pt-1">
+                  Party members will appear here when you track them in session.
+                </p>
+              </div>
+            </section>
+
+            <section className="panel-ornate rounded-lg overflow-hidden flex flex-col min-h-[200px] border-[#2a1a08] bg-[#120c08]/90">
+              <div className="panel-head border-[#2a1a08]">
+                <div className="plaque text-[#e7c27a]/80">NPCs in scene</div>
+              </div>
+              <div className="panel-body flex-1 flex flex-col gap-2 border-[#2a1a08]">
+                <div className="dm-ghost-border min-h-[88px] px-3 py-2 flex items-center">
+                  <p className="dm-ghost-hint text-xs">NPCs will appear when a scene is active.</p>
+                </div>
+              </div>
+            </section>
+
+            <section className="panel-ornate rounded-lg overflow-hidden flex flex-col min-h-[200px] border-[#2a1a08] bg-[#120c08]/90">
+              <div className="panel-head panel-head--row border-[#2a1a08]">
+                <div className="plaque text-[#e7c27a]/80">Initiative</div>
+              </div>
+              <div className="panel-body flex-1 flex flex-col gap-2 border-[#2a1a08]">
+                <div className="dm-ghost-border min-h-[100px] px-3 py-3">
+                  <p className="dm-ghost-hint text-xs mb-2">Add combatants to start initiative.</p>
+                  <div className="dm-ghost-border border-[#2a2014] bg-[rgba(14,10,6,0.5)] h-8 rounded opacity-70" />
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <section className="panel-ornate rounded-lg overflow-hidden flex flex-col max-h-[280px] border-[#2a1a08] bg-[#120c08]/90">
+            <div className="panel-head border-[#2a1a08]">
+              <div className="plaque text-[#e7c27a]/80">Encounters &amp; stat blocks</div>
+            </div>
+            <div className="panel-body overflow-y-auto space-y-2 border-[#2a1a08]">
+              <div className="dm-ghost-border min-h-[72px] px-3 py-2">
+                <p className="dm-ghost-hint text-xs">
+                  Linked codex encounters and stat blocks will populate here for the active scene.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="panel-ornate rounded-lg overflow-hidden flex flex-col min-h-[140px] max-h-[220px] border-[#2a1a08] bg-[#120c08]/90">
+            <div className="panel-head flex-shrink-0 border-[#2a1a08]">
+              <div className="plaque text-[#e7c27a]/80">Session log</div>
+            </div>
+            <div className="panel-body flex-1 border-[#2a1a08]">
+              <div className="dm-ghost-border min-h-[72px] px-3 py-2 h-full">
+                <p className="dm-ghost-hint text-xs">Narration and dialogue log will stream here during play.</p>
+              </div>
+            </div>
+          </section>
+
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2 pb-4">
+            <Link
+              to="/library"
+              className="text-sm font-heading text-[#e7c27a] border border-dashed border-[#5c4a38] rounded px-4 py-2 hover:border-[#9b7440] hover:bg-[#1a1208]/80 transition-colors"
+            >
+              Load a campaign from Library →
+            </Link>
+          </div>
+        </div>
+      </WorkspaceContainer>
     );
   }
 
   if (!scenes.length || !activeScene) {
     return (
-      <WorkspaceContainer className="live-board">
-        <div className="flex flex-col items-center justify-center flex-1 gap-4 py-16 text-center px-6">
-          <p className="text-sm text-[var(--text-2)]">No scenes in this campaign yet.</p>
-          <Link
-            to="/prep"
-            className="text-sm font-medium text-[var(--gold)] underline"
-          >
-            Open Prep →
-          </Link>
+      <WorkspaceContainer className="live-board dm-ghost-shell">
+        <div className="min-h-0 flex-1 flex flex-col gap-4 pb-4">
+          <section className="panel-ornate rounded-lg overflow-hidden flex-shrink-0 border-[#2a1a08] bg-[#120c08]/90">
+            <div className="panel-head panel-head--row border-[#2a1a08]">
+              <div className="plaque text-[#e7c27a]/80">Active scene</div>
+            </div>
+            <div className="panel-body border-[#2a1a08]">
+              <div className="dm-ghost-border min-h-[80px] px-3 py-3">
+                <p className="dm-ghost-hint text-xs">
+                  No scenes in this campaign yet. Add scenes in Prep or build them from the Library.
+                </p>
+              </div>
+            </div>
+          </section>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1">
+            <section className="panel-ornate rounded-lg overflow-hidden min-h-[160px] border-[#2a1a08] bg-[#120c08]/90">
+              <div className="panel-head border-[#2a1a08]">
+                <div className="plaque text-[#e7c27a]/80">Party roster</div>
+              </div>
+              <div className="panel-body border-[#2a1a08]">
+                <div className="dm-ghost-border min-h-[64px] px-2 py-2">
+                  <p className="dm-ghost-hint text-xs">Party slots will appear here.</p>
+                </div>
+              </div>
+            </section>
+            <section className="panel-ornate rounded-lg overflow-hidden min-h-[160px] border-[#2a1a08] bg-[#120c08]/90">
+              <div className="panel-head border-[#2a1a08]">
+                <div className="plaque text-[#e7c27a]/80">NPCs in scene</div>
+              </div>
+              <div className="panel-body border-[#2a1a08]">
+                <div className="dm-ghost-border min-h-[64px] px-2 py-2">
+                  <p className="dm-ghost-hint text-xs">NPCs will appear when a scene is active.</p>
+                </div>
+              </div>
+            </section>
+            <section className="panel-ornate rounded-lg overflow-hidden min-h-[160px] border-[#2a1a08] bg-[#120c08]/90">
+              <div className="panel-head border-[#2a1a08]">
+                <div className="plaque text-[#e7c27a]/80">Initiative</div>
+              </div>
+              <div className="panel-body border-[#2a1a08]">
+                <div className="dm-ghost-border min-h-[64px] px-2 py-2">
+                  <p className="dm-ghost-hint text-xs">Add combatants to start initiative.</p>
+                </div>
+              </div>
+            </section>
+          </div>
+          <section className="panel-ornate rounded-lg overflow-hidden border-[#2a1a08] bg-[#120c08]/90">
+            <div className="panel-head border-[#2a1a08]">
+              <div className="plaque text-[#e7c27a]/80">Encounters &amp; stat blocks</div>
+            </div>
+            <div className="panel-body border-[#2a1a08]">
+              <div className="dm-ghost-border min-h-[56px] px-2 py-2">
+                <p className="dm-ghost-hint text-xs">Encounters show here when linked to a scene.</p>
+              </div>
+            </div>
+          </section>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link to="/prep" className="text-sm font-heading text-[#e7c27a] underline underline-offset-2">
+              Open Prep →
+            </Link>
+            <Link to="/library" className="text-sm font-heading text-[#9b7440] hover:text-[#e7c27a] underline underline-offset-2">
+              Library →
+            </Link>
+          </div>
         </div>
       </WorkspaceContainer>
     );

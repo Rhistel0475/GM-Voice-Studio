@@ -19,6 +19,7 @@ function pathToView(path) {
   if (p === "/voices") return "voice-studio";
   if (p === "/settings") return "settings";
   if (p === "/prep") return "prep";
+  if (p === "/library") return "library";
   if (p === "/intake") return "intake";
   if (p === "/campaign") return "campaign";
   return "live";

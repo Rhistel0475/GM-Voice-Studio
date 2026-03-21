@@ -146,14 +146,65 @@ export default function PrepPage() {
 
   if (!activeCampaign) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 px-6 text-center">
-        <p className="text-sm text-neutral-600">No active campaign in the workspace.</p>
-        <Link
-          to="/import"
-          className="text-sm font-medium text-amber-800 hover:text-amber-950 underline"
+      <div className="dm-ghost-shell flex h-full min-h-[min(70vh,640px)] min-w-0 overflow-hidden gap-0 border border-[#2a1a08] rounded-lg">
+        <aside
+          className="flex-shrink-0 flex flex-col border-r border-[#2a1a08] overflow-y-auto bg-[#0e0a05]"
+          style={{ width: "260px" }}
         >
-          Import or apply a campaign →
-        </Link>
+          <div className="p-3 border-b border-[#2a1a08]">
+            <div className="dm-ghost-label">Scenes</div>
+            <div className="font-heading text-sm text-[#e7c27a] mt-2 opacity-60">No campaign loaded</div>
+          </div>
+          <div className="flex-1 p-2 space-y-2">
+            <div className="dm-ghost-border dm-ghost-row px-3 py-2 flex items-center">
+              <span className="dm-ghost-hint text-xs">Scene list</span>
+            </div>
+            <div className="dm-ghost-border dm-ghost-row px-3 py-2 flex items-center">
+              <span className="dm-ghost-hint text-xs opacity-80">···</span>
+            </div>
+            <div className="dm-ghost-border dm-ghost-row px-3 py-2 flex items-center">
+              <span className="dm-ghost-hint text-xs opacity-80">···</span>
+            </div>
+            <p className="text-[11px] text-[#5c4a38] px-1 pt-2 leading-relaxed">
+              Import from Library to populate scenes and NPCs.
+            </p>
+            <Link
+              to="/library"
+              className="inline-block mt-2 mx-1 text-xs font-heading text-[#c9a227] hover:text-[#e7c27a] underline underline-offset-2"
+            >
+              Open Library →
+            </Link>
+          </div>
+        </aside>
+
+        <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-[#0e0a05]">
+          <div className="flex-shrink-0 px-4 py-3 border-b border-[#2a1a08]">
+            <p className="text-sm text-[#e7c27a] font-heading">Prep</p>
+            <p className="dm-ghost-hint text-xs mt-1">Select a scene to begin</p>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+            <section>
+              <div className="dm-ghost-label mb-2">Read-aloud</div>
+              <div className="dm-ghost-border min-h-[140px] px-3 py-3 flex items-start">
+                <span className="dm-ghost-hint text-xs">Paste or edit read-aloud text here once a campaign is active.</span>
+              </div>
+            </section>
+            <section>
+              <div className="dm-ghost-label mb-2">NPC roster &amp; voices</div>
+              <div className="dm-ghost-border min-h-[100px] px-3 py-3 space-y-2">
+                <div className="dm-ghost-row dm-ghost-border border-[#2a2014] bg-[rgba(18,12,6,0.4)] px-2" />
+                <div className="dm-ghost-row dm-ghost-border border-[#2a2014] bg-[rgba(18,12,6,0.4)] px-2" />
+                <span className="dm-ghost-hint text-xs block pt-1">NPCs appear when linked to a scene.</span>
+              </div>
+            </section>
+            <section>
+              <div className="dm-ghost-label mb-2">GM notes</div>
+              <div className="dm-ghost-border min-h-[100px] px-3 py-3">
+                <span className="dm-ghost-hint text-xs">Private notes for the active scene.</span>
+              </div>
+            </section>
+          </div>
+        </main>
       </div>
     );
   }

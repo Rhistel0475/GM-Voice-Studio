@@ -1,4 +1,4 @@
-const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
+const BACKEND_URL = import.meta.env.DEV ? "http://127.0.0.1:7862" : "";
 
 export const QUICK_TOOLS = [
   { id: "dice", name: "Roll Dice", img: `${BACKEND_URL}/static/img/Dices.png` },

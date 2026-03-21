@@ -113,6 +113,19 @@ except ImportError:
 _ASSETS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "static" / "campaign_assets"
 
 
+def _list_campaign_embedded_image_urls(campaign_id: int) -> list[str]:
+    """List image files under static/campaign_assets/{id}/embedded/ as /campaign-assets URLs."""
+    embedded = _ASSETS_DIR / str(int(campaign_id)) / "embedded"
+    if not embedded.is_dir():
+        return []
+    exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+    urls: list[str] = []
+    for p in sorted(embedded.iterdir()):
+        if p.is_file() and p.suffix.lower() in exts:
+            urls.append(f"/campaign-assets/{int(campaign_id)}/embedded/{p.name}")
+    return urls
+
+
 def _lang_tags():
     return get_supported_language_tags()
 
@@ -147,10 +160,17 @@ def _audio_to_wav_base64(audio, sample_rate: int) -> str:
 
 
 def _cleanup_old_sessions(assets_dir: Path, max_age_seconds: int = 3600) -> None:
-    """Remove session dirs older than max_age_seconds to prevent disk bloat."""
+    """Remove session dirs older than max_age_seconds to prevent disk bloat.
+
+    Skips numeric folder names (DB campaign ids) so embedded PDF images are not purged.
+    """
     now = time.time()
     for child in assets_dir.iterdir():
-        if child.is_dir() and (now - child.stat().st_mtime) > max_age_seconds:
+        if not child.is_dir():
+            continue
+        if child.name.isdigit():
+            continue
+        if (now - child.stat().st_mtime) > max_age_seconds:
             import shutil as _shutil
             _shutil.rmtree(child, ignore_errors=True)
 
@@ -762,6 +782,90 @@ async def _read_adventure_upload(upload: UploadFile) -> tuple[str, dict]:
     }
 
 
+def _extract_pdf_text_pdfplumber_or_pypdf(data: bytes) -> str:
+    """
+    Plain PDF text extraction for /adventure/extract-text.
+    Prefer pdfplumber when installed; otherwise use pypdf. Pages joined with \\n\\n.
+    """
+    try:
+        import pdfplumber  # type: ignore
+    except ImportError:
+        pdfplumber = None
+
+    if pdfplumber is not None:
+        try:
+            parts: list[str] = []
+            with pdfplumber.open(io.BytesIO(data)) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t and str(t).strip():
+                        parts.append(str(t).strip())
+            if parts:
+                return "\n\n".join(parts)
+        except Exception as e:
+            logging.warning("pdfplumber text extraction failed, trying pypdf: %s", e)
+
+    try:
+        from pypdf import PdfReader
+    except ImportError as e:
+        raise RuntimeError(
+            "PDF text extraction requires pypdf. Install with: pip install pypdf"
+        ) from e
+
+    reader = PdfReader(io.BytesIO(data))
+    parts2: list[str] = []
+    for page in reader.pages:
+        t = page.extract_text()
+        if t and str(t).strip():
+            parts2.append(str(t).strip())
+    return "\n\n".join(parts2)
+
+
+def _extract_raw_document_text(filename: str, raw: bytes) -> str:
+    """UTF-8 text from .txt/.md, or pdfplumber/pypdf for .pdf. No truncation."""
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".txt", ".md", ".pdf"}:
+        raise HTTPException(400, f"Unsupported file type: {filename}. Use .txt, .md, or .pdf.")
+    if not raw:
+        raise HTTPException(400, f"{filename} is empty.")
+    if len(raw) > _MAX_ADVENTURE_FILE_BYTES:
+        raise HTTPException(
+            413, f"{filename} is too large. Max size is {_MAX_ADVENTURE_FILE_BYTES // (1024 * 1024)}MB."
+        )
+
+    if suffix in (".txt", ".md"):
+        text = raw.decode("utf-8", errors="ignore")
+    else:
+        try:
+            text = _extract_pdf_text_pdfplumber_or_pypdf(raw)
+        except RuntimeError as e:
+            raise HTTPException(503, str(e)) from e
+
+    text = re.sub(r"\r\n?", "\n", text or "").strip()
+    if not text:
+        raise HTTPException(400, f"{filename} has no extractable text.")
+    return text
+
+
+@router.post("/adventure/extract-text")
+@limiter.limit("30/minute")
+async def extract_adventure_text(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    _auth: None = Depends(verify_api_key),
+):
+    """Upload one adventure document; return raw extracted text (no AI / no parse)."""
+    if not files:
+        raise HTTPException(400, "Upload at least one document.")
+    upload = files[0]
+    if not upload.filename:
+        raise HTTPException(400, "Uploaded file has no filename.")
+
+    raw = await upload.read()
+    text = await run_in_threadpool(_extract_raw_document_text, upload.filename, raw)
+    return {"text": text}
+
+
 def _scene_like(line: str) -> bool:
     words = line.split()
     if len(words) < 2 or len(words) > 10:
@@ -939,10 +1043,16 @@ async def parse_adventure_docs(
 
     all_text_parts: list[str] = []
     uploaded_files: list[dict] = []
+    pdf_raws: list[bytes] = []
     for upload in files:
+        raw_peek = await upload.read()
+        await upload.seek(0)
         text, meta = await _read_adventure_upload(upload)
         all_text_parts.append(text)
         uploaded_files.append(meta)
+        suffix = Path(upload.filename or "").suffix.lower()
+        if suffix == ".pdf":
+            pdf_raws.append(raw_peek)
 
     merged = "\n\n".join(all_text_parts)
     parsed = _parse_adventure_text(merged)
@@ -950,6 +1060,45 @@ async def parse_adventure_docs(
     parsed["system_id"] = system_id
     parsed["systemId"] = system_id
     parsed["system"] = get_campaign_system_preset(system_id)
+
+    # normalize_campaign_entities expects NPCs/locations as dicts, not plain strings
+    if isinstance(parsed.get("npcs"), list):
+        coerced_npcs: list[dict] = []
+        for n in parsed["npcs"]:
+            if isinstance(n, str) and n.strip():
+                coerced_npcs.append({"name": n.strip(), "summary": "", "description": ""})
+            elif isinstance(n, dict):
+                coerced_npcs.append(n)
+        parsed["npcs"] = coerced_npcs
+    if isinstance(parsed.get("locations"), list):
+        coerced_locs: list[dict] = []
+        for loc in parsed["locations"]:
+            if isinstance(loc, str) and loc.strip():
+                coerced_locs.append({"name": loc.strip(), "description": ""})
+            elif isinstance(loc, dict):
+                coerced_locs.append(loc)
+        parsed["locations"] = coerced_locs
+
+    try:
+        cid = campaign_repository.create_from_parse_result(parsed)
+        parsed["campaign_id"] = cid
+    except Exception as e:
+        logging.warning("Failed to persist fast-parse campaign to DB: %s", e)
+
+    if pdf_raws and parsed.get("campaign_id") is not None:
+        cid = int(parsed["campaign_id"])
+        embedded_dir = _ASSETS_DIR / str(cid) / "embedded"
+        embedded_dir.mkdir(parents=True, parents=True)
+        img_counter = 0
+        for raw_pdf in pdf_raws:
+            try:
+                _new_imgs, _pages = await run_in_threadpool(
+                    _extract_embedded_images, raw_pdf, embedded_dir, img_counter, str(cid)
+                )
+                img_counter += len(_new_imgs)
+            except Exception as ex:
+                logging.warning("PDF image extraction (fast parse) failed: %s", ex)
+
     return {"files": uploaded_files, **parsed}
 
 
@@ -1042,12 +1191,19 @@ async def ai_parse_adventure_docs(
     result["systemId"] = system_id
     result["system"] = get_campaign_system_preset(system_id)
 
-    # --- Auto-extract meaningful images and assign them to campaign entities ---
+    # --- Persist first so embedded images land under campaign_id ---
+    campaign_id: int | None = None
+    try:
+        campaign_id = campaign_repository.create_from_parse_result(result)
+        result["campaign_id"] = campaign_id
+    except Exception as e:
+        logging.warning("Failed to persist campaign to DB: %s", e)
+
+    asset_key = str(campaign_id) if campaign_id is not None else str(uuid.uuid4())
     _cleanup_old_sessions(_ASSETS_DIR)
-    session_id = str(uuid.uuid4())
-    session_dir = _ASSETS_DIR / session_id
+    session_dir = _ASSETS_DIR / asset_key
     embedded_dir = session_dir / "embedded"
-    embedded_dir.mkdir(parents=True)
+    embedded_dir.mkdir(parents=True, parents=True)
 
     raw_images: list[dict] = []
     total_pages = 0
@@ -1055,7 +1211,7 @@ async def ai_parse_adventure_docs(
 
     for raw_pdf in pdf_raws:
         new_images, pages = await run_in_threadpool(
-            _extract_embedded_images, raw_pdf, embedded_dir, img_counter, session_id
+            _extract_embedded_images, raw_pdf, embedded_dir, img_counter, asset_key
         )
         raw_images.extend(new_images)
         total_pages += pages
@@ -1066,12 +1222,6 @@ async def ai_parse_adventure_docs(
         result["images"] = assigned
     else:
         result["images"] = []
-
-    # --- Persist to database ---
-    try:
-        result["campaign_id"] = campaign_repository.create_from_parse_result(result)
-    except Exception as e:
-        logging.warning("Failed to persist campaign to DB: %s", e)
 
     return {"files": uploaded_files, **result}
 
@@ -1101,6 +1251,19 @@ async def get_campaign(campaign_id: int, request: Request, _auth: None = Depends
     if data is None:
         raise HTTPException(404, "Campaign not found")
     return data
+
+
+@router.get("/api/campaigns/{campaign_id}/images")
+@limiter.limit("60/minute")
+async def list_campaign_images(
+    campaign_id: int,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """List embedded image URLs under static/campaign_assets/{campaign_id}/embedded/."""
+    if campaign_repository.get_by_id(campaign_id) is None:
+        raise HTTPException(404, "Campaign not found")
+    return {"images": _list_campaign_embedded_image_urls(campaign_id)}
 
 
 @router.delete("/api/campaigns/{campaign_id}")

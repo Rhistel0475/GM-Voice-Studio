@@ -2232,3 +2232,62 @@ button.tracker-row:hover:not(.is-active) {
 .camp-badge--faction  { background: rgba(20,20,50,0.5); border: 1px solid #3040a0; color: #8090e0; }
 .camp-badge--lore     { background: rgba(30,20,10,0.5); border: 1px solid #6a4a20; color: #c09050; }
 .camp-badge--item     { background: rgba(10,30,40,0.5); border: 1px solid #205060; color: #50a0c0; }
+
+/* ── App.jsx minimal top nav (dark parchment) ─────────────────────────────── */
+
+.app-root-nav {
+  background: #0e0a05;
+  color: #e7c27a;
+}
+
+.app-top-nav {
+  background: #0e0a05;
+  border-color: #2a1a08;
+}
+
+.app-top-nav-link {
+  color: #9b7440;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.app-top-nav-link:hover {
+  color: #e7c27a;
+}
+
+.app-top-nav-link.is-active {
+  color: #e7c27a;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* ── DM screen ghost / skeleton placeholders ───────────────────────────────── */
+
+.dm-ghost-shell {
+  background: #0e0a05;
+  color: #e7c27a;
+}
+
+.dm-ghost-border {
+  border: 1px dashed #3a2818;
+  border-radius: 8px;
+  background: rgba(22, 14, 8, 0.45);
+}
+
+.dm-ghost-label {
+  color: #6b5840;
+  font-size: 0.65rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-family: "Cinzel", serif;
+}
+
+.dm-ghost-hint {
+  color: #5c4a38;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.dm-ghost-row {
+  min-height: 2.5rem;
+}

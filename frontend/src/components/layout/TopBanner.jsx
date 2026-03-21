@@ -1,4 +1,4 @@
-const BACKEND_URL = import.meta.env.DEV ? "http://localhost:7862" : "";
+const BACKEND_URL = import.meta.env.DEV ? "http://127.0.0.1:7862" : "";
 
 export default function TopBanner({ campaignName, activeScene, sessionTime, audioStatus, nav }) {
   const audioLabel =
