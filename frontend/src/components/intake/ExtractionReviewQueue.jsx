@@ -190,9 +190,13 @@ function ReviewItem({ item, onApprove, onReject, onEdit }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 /**
- * @param {{ documentName?: string, onNavigate?: (view: string) => void }} props
+ * @param {{
+ *   documentName?: string,
+ *   onNavigate?: (view: string) => void,
+ *   onApplied?: (result: { totalApplied: number }) => void,
+ * }} props
  */
-export default function ExtractionReviewQueue({ documentName, onNavigate }) {
+export default function ExtractionReviewQueue({ documentName, onNavigate, onApplied }) {
   const navigate = useNavigate();
   const {
     items,
@@ -259,6 +263,7 @@ export default function ExtractionReviewQueue({ documentName, onNavigate }) {
         documentName || "Imported Campaign"
       );
       setApplyResult(result);
+      if (onApplied) onApplied(result);
     } catch (err) {
       setApplyError(err?.message || "Failed to apply entities.");
     }

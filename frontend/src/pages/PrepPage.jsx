@@ -1,399 +1,325 @@
-import { useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
-import { useAppState } from "../context/AppStateContext";
-import { buildCodexIntelligence } from "../lib/codexIntelligence";
-import { CODEX_TABS } from "../components/live-board/constants";
-import { EmptyState, FantasyButton } from "../components/shared";
-import { BookOpen, Upload, Search, Scroll, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { Mic2 } from "lucide-react";
+import PrepVoiceCloneModal from "../components/prep/PrepVoiceCloneModal";
+import { getVoices } from "../lib/api/voices";
+import { persistNpcVoice, persistSceneContent } from "../lib/campaignPersistence";
+import { useCampaignContextStore } from "../store/campaignContext";
+import {
+  useActiveCampaign,
+  useScenesForActiveCampaign,
+  useSceneNpcs,
+  useVoices,
+} from "../store/selectors";
+
+function getReadAloud(scene) {
+  if (!scene) return "";
+  const v = scene.readAloud ?? scene.read_aloud;
+  return typeof v === "string" ? v : "";
+}
+
+function getGmNotes(scene) {
+  if (!scene) return "";
+  return typeof scene.notes === "string" ? scene.notes : "";
+}
 
 /**
- * PrepPage — 3-column campaign management interface.
- *
- * LEFT  (250px): search + category filters + action buttons
- * CENTER (flex): codex content list, or injected prep/library UI
- * RIGHT  (320px): selected entry detail with actions
- *
- * prepContent / libraryContent are injected from App.jsx because
- * PrepRoom and AdventureIntake are still defined inline there.
+ * Prep room: scenes from Zustand campaign context (selectors only).
+ * Left = scene list; right = read-aloud, NPC voices, GM notes. Saves → store + PATCH APIs.
  */
-export default function PrepPage({
-  prepContent,
-  libraryContent,
-  onNavigate,
-}) {
-  const { campaignData } = useAppState();
-  const { search: locationSearch } = useLocation();
-  const [activeCategory, setActiveCategory] = useState("npcs");
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(null);
-  const [centerMode, setCenterMode] = useState(() => {
-    const mode = new URLSearchParams(locationSearch).get("mode");
-    return mode === "upload" || mode === "prep" ? mode : "codex";
-  }); // "codex" | "upload" | "prep"
+export default function PrepPage() {
+  const activeCampaign = useActiveCampaign();
+  const scenes = useScenesForActiveCampaign();
+  const voices = useVoices();
 
-  const intelligence = useMemo(
-    () => buildCodexIntelligence(campaignData),
-    [campaignData]
+  const activeSceneId = useCampaignContextStore((s) => s.activeSceneId);
+  const setActiveScene = useCampaignContextStore((s) => s.setActiveScene);
+  const upsertScene = useCampaignContextStore((s) => s.upsertScene);
+  const assignVoiceToNpc = useCampaignContextStore((s) => s.assignVoiceToNpc);
+  const unassignVoiceFromNpc = useCampaignContextStore((s) => s.unassignVoiceFromNpc);
+  const upsertVoice = useCampaignContextStore((s) => s.upsertVoice);
+
+  const [requireApiKey, setRequireApiKey] = useState(false);
+  const [apiKey, setApiKey] = useState("");
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [readDraft, setReadDraft] = useState("");
+  const [notesDraft, setNotesDraft] = useState("");
+
+  const authFetch = useCallback(
+    (input, init = {}) => {
+      const headers = new Headers(init.headers || {});
+      const key = apiKey.trim();
+      if (key) headers.set("X-API-Key", key);
+      return fetch(input, { ...init, headers });
+    },
+    [apiKey]
   );
 
-  const entries = useMemo(() => {
-    const all = intelligence[activeCategory] || [];
-    if (!search.trim()) return all;
-    const q = search.toLowerCase();
-    return all.filter(
-      (e) =>
-        e.title.toLowerCase().includes(q) ||
-        (e.description || "").toLowerCase().includes(q)
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/config")
+      .then((r) => (r.ok ? r.json() : { require_api_key: false }))
+      .then((cfg) => {
+        if (!cancelled) setRequireApiKey(Boolean(cfg?.require_api_key));
+      })
+      .catch(() => {
+        if (!cancelled) setRequireApiKey(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** Hydrate voice library from API into the store for dropdowns. */
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const list = await getVoices(authFetch);
+      if (cancelled || !list.length) return;
+      const cid = useCampaignContextStore.getState().activeCampaignId;
+      for (const p of list) {
+        const id = String(p.voice_id || p.id || "");
+        if (!id) continue;
+        upsertVoice({
+          id,
+          campaignId: cid || undefined,
+          name: p.name || "Voice",
+          tags: Array.isArray(p.tags) ? p.tags : [],
+          assignedNpcIds: [],
+          tone: p.tone,
+          accent: p.accent,
+          status: p.status || "ready",
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, upsertVoice, activeCampaign?.id]);
+
+  useEffect(() => {
+    if (!scenes.length) return;
+    const valid = activeSceneId && scenes.some((s) => s.id === activeSceneId);
+    if (!valid) setActiveScene(scenes[0].id);
+  }, [scenes, activeSceneId, setActiveScene]);
+
+  const selectedScene = useMemo(
+    () => scenes.find((s) => s.id === activeSceneId) ?? null,
+    [scenes, activeSceneId]
+  );
+
+  const sceneNpcs = useSceneNpcs(selectedScene?.id);
+
+  useEffect(() => {
+    if (!selectedScene) {
+      setReadDraft("");
+      setNotesDraft("");
+      return;
+    }
+    setReadDraft(getReadAloud(selectedScene));
+    setNotesDraft(getGmNotes(selectedScene));
+  }, [selectedScene?.id]);
+
+  const flushSceneContent = useCallback(() => {
+    if (!selectedScene) return;
+    const title = (selectedScene.title || selectedScene.name || "").trim();
+    if (!title) return;
+    const read = readDraft;
+    const notes = notesDraft;
+    upsertScene({
+      ...selectedScene,
+      readAloud: read,
+      read_aloud: read,
+      notes,
+    });
+    persistSceneContent(authFetch, title, { readAloud: read, notes });
+  }, [selectedScene, readDraft, notesDraft, upsertScene, authFetch]);
+
+  const handleVoiceChange = useCallback(
+    (npc, voiceId) => {
+      if (voiceId) assignVoiceToNpc(npc.id, voiceId);
+      else unassignVoiceFromNpc(npc.id);
+      persistNpcVoice(authFetch, npc.name, voiceId || "");
+    },
+    [assignVoiceToNpc, unassignVoiceFromNpc, authFetch]
+  );
+
+  if (!activeCampaign) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 px-6 text-center">
+        <p className="text-sm text-neutral-600">No active campaign in the workspace.</p>
+        <Link
+          to="/import"
+          className="text-sm font-medium text-amber-800 hover:text-amber-950 underline"
+        >
+          Import or apply a campaign →
+        </Link>
+      </div>
     );
-  }, [intelligence, activeCategory, search]);
-
-  const handleCategoryChange = (cat) => {
-    setActiveCategory(cat);
-    setSelected(null);
-    setCenterMode("codex");
-  };
-
-  const handleOpenMode = (mode) => {
-    setSelected(null);
-    setCenterMode(mode);
-  };
-
-  const handleEntryClick = (entry) => {
-    setSelected((prev) => (prev?.id === entry.id ? null : entry));
-  };
-
-  const totalForCategory = intelligence[activeCategory]?.length ?? 0;
+  }
 
   return (
-    <div className="flex h-full min-h-0 overflow-hidden gap-0">
-
-      {/* ── LEFT: Filters + Actions ────────────────────────────────── */}
+    <div className="flex h-full min-h-0 overflow-hidden gap-0 bg-[#0d0804]">
       <aside
-        className="flex-shrink-0 flex flex-col gap-0 border-r border-[#3a2510] overflow-y-auto bg-[#0d0804]"
-        style={{ width: "210px" }}
+        className="flex-shrink-0 flex flex-col border-r border-[#3a2510] overflow-y-auto bg-[#0d0804]"
+        style={{ width: "260px" }}
       >
-        {/* Search */}
-        <div className="p-3 pb-4 border-b border-[#2a1a0a]">
-          <div className="sidebar-section-label">Search</div>
-          <div className="relative mt-1">
-            <Search
-              size={12}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-2)] pointer-events-none"
-            />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setCenterMode("codex");
-              }}
-              placeholder="Filter entries…"
-              className="w-full rounded-md border border-[#4a3018] bg-[#1c1008] pl-7 pr-3 py-1.5 text-xs text-[var(--text-1)] placeholder:text-[var(--text-2)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
-            />
+        <div className="p-3 border-b border-[#2a1a0a]">
+          <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] font-heading">
+            Scenes
+          </div>
+          <div className="font-heading text-sm text-[var(--gold)] mt-1 truncate" title={activeCampaign.name}>
+            {activeCampaign.name}
           </div>
         </div>
-
-        {/* Category filters */}
-        <div className="p-3 pb-4 flex-1 border-b border-[#2a1a0a]">
-          <div className="sidebar-section-label">Categories</div>
-          <div className="flex flex-col gap-0.5 mt-2">
-            {CODEX_TABS.map((tab) => {
-              const count = intelligence[tab.key]?.length ?? 0;
-              const isActive = activeCategory === tab.key && centerMode === "codex";
+        <div className="flex-1 p-2 space-y-0.5">
+          {scenes.length === 0 ? (
+            <p className="text-xs text-[var(--text-2)] px-2 py-4 text-center leading-relaxed">
+              No scenes yet. Import an adventure or add scenes from your workflow.
+            </p>
+          ) : (
+            scenes.map((scene) => {
+              const isActive = scene.id === activeSceneId;
               return (
                 <button
-                  key={tab.key}
+                  key={scene.id}
                   type="button"
-                  onClick={() => handleCategoryChange(tab.key)}
+                  onClick={() => setActiveScene(scene.id)}
                   className={[
-                    "flex items-center justify-between rounded px-2.5 py-2 text-xs text-left transition-all",
+                    "w-full text-left rounded px-3 py-2.5 border transition-all text-xs",
                     isActive
-                      ? "bg-[#2a1608] border border-[var(--gold)]/60 text-[var(--gold)] font-semibold shadow-[inset_0_0_8px_rgba(202,167,75,0.08)]"
-                      : "border border-transparent text-[var(--text-2)] hover:bg-[#181008] hover:text-[var(--text-1)] hover:border-[#3a2510]",
+                      ? "prep-entry-selected border-[var(--gold)]/60"
+                      : "bg-[#1a1008]/90 border-[#5c3e23] hover:border-[#8a6236]",
                   ].join(" ")}
                 >
-                  <span>{tab.label}</span>
-                  {count > 0 && (
-                    <span
-                      className={[
-                        "text-[9px] rounded-full px-1.5 py-0.5 min-w-[18px] text-center tabular-nums",
-                        isActive
-                          ? "bg-[var(--gold)] text-[#1a0e04] font-bold"
-                          : "bg-[#2a1a0a] text-[var(--text-2)]",
-                      ].join(" ")}
-                    >
-                      {count}
-                    </span>
+                  <div className="font-heading text-[13px] text-[var(--text-1)] truncate">
+                    {scene.title || scene.name || "Untitled scene"}
+                  </div>
+                  {(scene.act || scene.type || scene.location) && (
+                    <div className="text-[10px] text-[var(--text-2)] mt-0.5 truncate">
+                      {[scene.act, scene.type, scene.location].filter(Boolean).join(" · ")}
+                    </div>
                   )}
                 </button>
               );
-            })}
-          </div>
-        </div>
-
-        {/* Action buttons */}
-        <div className="p-3 pb-4 flex flex-col gap-1.5">
-          <div className="sidebar-section-label">Tools</div>
-          <button
-            type="button"
-            onClick={() => handleOpenMode("upload")}
-            className={[
-              "flex items-center gap-2 rounded px-2.5 py-2 text-xs text-left transition-colors",
-              centerMode === "upload"
-                ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
-                : "border border-[#4a3018] text-[var(--text-1)] hover:bg-[#1e1208]",
-            ].join(" ")}
-          >
-            <Upload size={12} className="shrink-0" />
-            Upload Adventure
-          </button>
-          <button
-            type="button"
-            onClick={() => handleOpenMode("prep")}
-            className={[
-              "flex items-center gap-2 rounded px-2.5 py-2 text-xs text-left transition-colors",
-              centerMode === "prep"
-                ? "bg-[#2e1c08] border border-[var(--gold)] text-[var(--gold)]"
-                : "border border-[#4a3018] text-[var(--text-1)] hover:bg-[#1e1208]",
-            ].join(" ")}
-          >
-            <BookOpen size={12} className="shrink-0" />
-            Scene Builder
-          </button>
+            })
+          )}
         </div>
       </aside>
 
-      {/* ── CENTER: Content list or injected view ──────────────────── */}
-      <main className="flex-1 min-h-0 min-w-0 flex flex-col overflow-hidden border-r border-[#3a2510]">
-        {/* Upload and Prep panels stay mounted to preserve local state across mode switches */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ display: centerMode === "upload" ? "block" : "none" }}>
-          {libraryContent ?? <EmptyState message="Upload content not available." />}
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4" style={{ display: centerMode === "prep" ? "block" : "none" }}>
-          {prepContent ?? <EmptyState message="Scene builder not available." />}
-        </div>
-        {centerMode === "codex" && (
-          <>
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#3a2510] flex-shrink-0 bg-[#150e07]">
-              <div className="font-heading text-sm text-[var(--gold)] tracking-wide uppercase">
-                {CODEX_TABS.find((t) => t.key === activeCategory)?.label ?? "Codex"}
-              </div>
-              <div className="text-[10px] text-[var(--text-2)] tabular-nums">
-                {entries.length !== totalForCategory
-                  ? `${entries.length} / ${totalForCategory}`
-                  : `${totalForCategory} entr${totalForCategory !== 1 ? "ies" : "y"}`}
-              </div>
-            </div>
+      <main className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden border-r border-[#3a2510]">
+        {requireApiKey && (
+          <div className="flex-shrink-0 px-4 py-2 border-b border-[#2a1a0a] bg-[#110b06]">
+            <label className="text-[10px] text-[var(--text-2)] uppercase tracking-wide block mb-1">
+              API key
+            </label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full max-w-md rounded border border-[#4a3018] bg-[#1c1008] px-2 py-1 text-xs text-[var(--text-1)]"
+              placeholder="Required for PATCH / voices API"
+              autoComplete="off"
+            />
+          </div>
+        )}
 
-            {/* Entry list */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2 space-y-0.5">
-              {entries.length === 0 ? (
-                search ? (
-                  /* Search no-results */
-                  <div className="flex flex-col items-center gap-3 mt-10 px-6 text-center">
-                    <Search size={28} className="text-[var(--text-2)] opacity-40" />
-                    <div>
-                      <p className="font-heading text-sm text-[var(--text-1)] tracking-wide">No Matches Found</p>
-                      <p className="text-xs text-[var(--text-2)] mt-1 leading-relaxed">
-                        No entries match <span className="text-[var(--gold)]">"{search}"</span>. Try a different term.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSearch("")}
-                      className="flex items-center gap-1.5 text-xs text-[var(--text-2)] hover:text-[var(--gold)] transition-colors"
-                    >
-                      <X size={11} /> Clear search
-                    </button>
-                  </div>
-                ) : (
-                  /* Category empty */
-                  <div className="flex flex-col items-center gap-4 mt-8 mx-2 px-5 py-7 rounded-lg border border-[#3a2510] bg-[#0f0804]/60 text-center">
-                    <Scroll size={30} className="text-[var(--gold)] opacity-35" />
-                    <div>
-                      <p className="font-heading text-sm text-[var(--text-1)] tracking-wide capitalize">
-                        No {activeCategory} in Your Codex
-                      </p>
-                      <p className="text-xs text-[var(--text-2)] mt-1.5 leading-relaxed max-w-[200px] mx-auto">
-                        Upload an adventure module or build scenes manually to populate this section.
-                      </p>
-                    </div>
-                    <div className="flex flex-col gap-2 w-full">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenMode("upload")}
-                        className="flex items-center justify-center gap-1.5 w-full rounded px-3 py-2 text-xs border border-[var(--gold)] text-[var(--gold)] bg-[#1e1208] hover:bg-[#2a1a0a] transition-colors font-heading tracking-wide"
-                      >
-                        <Upload size={11} /> Upload Adventure
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenMode("prep")}
-                        className="flex items-center justify-center gap-1.5 w-full rounded px-3 py-2 text-xs border border-[#4a3018] text-[var(--text-1)] hover:bg-[#1e1208] transition-colors"
-                      >
-                        <BookOpen size={11} /> Open Scene Builder
-                      </button>
-                    </div>
-                  </div>
-                )
-              ) : (
-                entries.map((entry) => {
-                  const isSelected = selected?.id === entry.id;
-                  return (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      onClick={() => handleEntryClick(entry)}
-                      className={[
-                        "w-full text-left rounded px-3 py-2.5 border transition-all",
-                        isSelected
-                          ? "prep-entry-selected"
-                          : "bg-[#1a1008]/90 border-[#5c3e23] hover:border-[#8a6236] hover:bg-[#1e1409]",
-                      ].join(" ")}
-                    >
-                      <div className="font-heading text-[13px] text-[var(--text-1)] truncate">
-                        {entry.title}
-                      </div>
-                      {entry.subtitle && (
-                        <div className="text-[11px] text-[var(--gold)] truncate mt-0.5">
-                          {entry.subtitle}
-                        </div>
-                      )}
-                      {entry.description && (
-                        <div className="text-[11px] text-[var(--text-2)] line-clamp-2 mt-0.5 leading-snug">
-                          {entry.description}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })
+        {!selectedScene ? (
+          <div className="flex-1 flex items-center justify-center text-sm text-[var(--text-2)] px-6 text-center">
+            Select a scene from the list.
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-5">
+            <header className="border-b border-[#3a2510] pb-3">
+              <h1 className="font-heading text-lg text-[var(--gold)] leading-tight">
+                {selectedScene.title || selectedScene.name || "Scene"}
+              </h1>
+              {(selectedScene.location || selectedScene.type) && (
+                <p className="text-xs text-[var(--text-2)] mt-1">
+                  {[selectedScene.location, selectedScene.type].filter(Boolean).join(" · ")}
+                </p>
               )}
-            </div>
-          </>
+            </header>
+
+            <section>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h2 className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] font-heading">
+                  Read-aloud
+                </h2>
+              </div>
+              <textarea
+                className="w-full min-h-[140px] rounded-md border border-[#4a3018] bg-[#1c1008] px-3 py-2 text-sm text-[var(--text-1)] leading-relaxed placeholder:text-[var(--text-2)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+                placeholder="Text to read to players…"
+                value={readDraft}
+                onChange={(e) => setReadDraft(e.target.value)}
+                onBlur={flushSceneContent}
+              />
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h2 className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] font-heading">
+                  NPC roster &amp; voices
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setCloneOpen(true)}
+                  className="inline-flex items-center gap-1 rounded border border-[#5c3e23] px-2 py-1 text-[10px] uppercase tracking-wide text-[var(--gold)] hover:bg-[#1e1208]"
+                >
+                  <Mic2 size={12} />
+                  Clone voice…
+                </button>
+              </div>
+              {sceneNpcs.length === 0 ? (
+                <p className="text-xs text-[var(--text-2)] italic">No NPCs linked to this scene.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {sceneNpcs.map((npc) => (
+                    <li
+                      key={npc.id}
+                      className="flex flex-wrap items-center gap-2 rounded border border-[#3a2510] bg-[#130c06] px-3 py-2"
+                    >
+                      <div className="flex-1 min-w-[120px]">
+                        <div className="font-heading text-sm text-[var(--text-1)]">{npc.name}</div>
+                        {npc.role && (
+                          <div className="text-[10px] text-[var(--text-2)]">{npc.role}</div>
+                        )}
+                      </div>
+                      <select
+                        className="flex-shrink-0 rounded border border-[#4a3018] bg-[#1c1008] px-2 py-1 text-xs text-[var(--text-1)] max-w-[200px]"
+                        value={npc.voiceId || ""}
+                        onChange={(e) => handleVoiceChange(npc, e.target.value)}
+                      >
+                        <option value="">— Voice —</option>
+                        {voices.map((v) => (
+                          <option key={v.id} value={v.id}>
+                            {v.name}
+                          </option>
+                        ))}
+                      </select>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            <section>
+              <h2 className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] font-heading mb-2">
+                GM notes
+              </h2>
+              <textarea
+                className="w-full min-h-[100px] rounded-md border border-[#4a3018] bg-[#1c1008] px-3 py-2 text-sm text-[var(--text-1)] leading-relaxed placeholder:text-[var(--text-2)] focus:outline-none focus:ring-1 focus:ring-[var(--gold)]"
+                placeholder="Private notes…"
+                value={notesDraft}
+                onChange={(e) => setNotesDraft(e.target.value)}
+                onBlur={flushSceneContent}
+              />
+            </section>
+          </div>
         )}
       </main>
 
-      {/* ── RIGHT: Detail panel ────────────────────────────────────── */}
-      <aside
-        className="flex-shrink-0 flex flex-col min-h-0 overflow-hidden detail-workspace"
-        style={{ width: "320px" }}
-      >
-        <div className="flex-shrink-0 px-4 py-2.5 border-b border-[#2a1a0a] bg-[#110b06]">
-          <div className="font-heading text-xs text-[var(--text-2)] uppercase tracking-[0.15em]">
-            {selected ? selected.title : "Detail"}
-          </div>
-        </div>
-        {selected ? (
-          <DetailPanel
-            entry={selected}
-            onNavigate={onNavigate}
-          />
-        ) : (
-          <div className="flex-1 flex flex-col items-center justify-center px-6 py-10 gap-5 text-center">
-            <div className="w-12 h-12 rounded-full border border-[#3a2510] bg-[#130c06] flex items-center justify-center">
-              <BookOpen size={20} className="text-[var(--text-2)] opacity-50" />
-            </div>
-            <div>
-              <p className="font-heading text-sm text-[var(--text-1)] tracking-wide">Entry Details</p>
-              <p className="text-xs text-[var(--text-2)] mt-1.5 leading-relaxed">
-                Select an entry from the list to view its description, relationships, and available actions.
-              </p>
-            </div>
-            {/* Ghosted action hints */}
-            <div className="w-full pt-4 border-t border-[#2a1a0a] flex flex-col gap-2">
-              <p className="text-[10px] uppercase tracking-[0.15em] text-[#4a3018] mb-1">Actions</p>
-              {["Narrate", "Open in Live", "Assign Voice"].map((label) => (
-                <button
-                  key={label}
-                  type="button"
-                  disabled
-                  className="w-full rounded px-3 py-1.5 text-xs border border-[#2a1a0a] text-[#3a2510] bg-transparent cursor-not-allowed font-heading tracking-wide"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </aside>
-
-    </div>
-  );
-}
-
-/* ─── Detail Panel ────────────────────────────────────────────────── */
-
-function DetailPanel({ entry, onNavigate }) {
-  return (
-    <div className="flex flex-col h-full min-h-0 overflow-y-auto p-3 gap-3">
-
-      {/* Header */}
-      <div className="border-b border-[#3a2510] pb-3">
-        <div className="font-heading text-[var(--gold)] text-base leading-tight">
-          {entry.title}
-        </div>
-        {entry.subtitle && (
-          <div className="text-xs text-[#d4b36a] mt-0.5">{entry.subtitle}</div>
-        )}
-        <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mt-1">
-          {entry.tab}
-        </div>
-      </div>
-
-      {/* Description */}
-      {entry.description && (
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mb-1.5">
-            Description
-          </div>
-          <p className="text-xs text-[var(--text-1)] leading-relaxed whitespace-pre-wrap">
-            {entry.description}
-          </p>
-        </div>
-      )}
-
-      {/* Relationships */}
-      {entry.relationships?.length > 0 && (
-        <div>
-          <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mb-1.5">
-            Related Entities
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {entry.relationships.map((rel) => (
-              <span
-                key={rel}
-                className="rounded-full border border-[#6b4a28] bg-[#24170b] px-2 py-0.5 text-[10px] uppercase tracking-[0.1em] text-[var(--text-2)]"
-              >
-                {rel}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="mt-auto pt-3 border-t border-[#3a2510] flex flex-col gap-2">
-        <div className="text-[10px] uppercase tracking-[0.15em] text-[var(--text-2)] mb-0.5">
-          Actions
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <FantasyButton
-            variant="secondary"
-            className="text-xs"
-            onClick={() => onNavigate?.("voice-studio")}
-          >
-            Assign Voice
-          </FantasyButton>
-          <FantasyButton
-            variant="ghost"
-            className="text-xs"
-            onClick={() => onNavigate?.("live")}
-          >
-            Open in Live
-          </FantasyButton>
-        </div>
-      </div>
+      <PrepVoiceCloneModal open={cloneOpen} onClose={() => setCloneOpen(false)} authFetch={authFetch} />
     </div>
   );
 }

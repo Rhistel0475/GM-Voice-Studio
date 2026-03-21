@@ -1,6 +1,9 @@
 """
 Voice store: persist voice files (.pt tensors for KaniTTS-2) and metadata for voice_id.
 Supports local directory (default) or optional S3 backend via VOICE_STORAGE_BACKEND=s3.
+
+NPC → voice_id assignments for gameplay live in the campaign SQLite DB (see
+PATCH /api/npcs/{npc_id}/voice and campaign_repository.patch_npc_voice_global), not here.
 """
 import json
 import logging

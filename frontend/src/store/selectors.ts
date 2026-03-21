@@ -93,6 +93,12 @@ export function getNpcsForActiveCampaign(state: CampaignContextState): Npc[] {
   return state.npcs.filter((n) => n.campaignId === cid);
 }
 
+export function getScenesForActiveCampaign(state: CampaignContextState): Scene[] {
+  const cid = state.activeCampaignId;
+  if (!cid) return [];
+  return state.scenes.filter((s) => s.campaignId === cid);
+}
+
 /** NPCs that have the given voice assigned. */
 export function getNpcsForVoice(state: CampaignContextState, voiceId: string): Npc[] {
   const voice = state.voices.find((v) => v.id === voiceId);
@@ -155,6 +161,10 @@ export function useCodexEntriesForActiveCampaign(): CodexEntry[] {
 
 export function useNpcsForActiveCampaign(): Npc[] {
   return useCampaignContextStore(useShallow(getNpcsForActiveCampaign));
+}
+
+export function useScenesForActiveCampaign(): Scene[] {
+  return useCampaignContextStore(useShallow(getScenesForActiveCampaign));
 }
 
 export function useNpcsForVoice(voiceId: string | null | undefined): Npc[] {

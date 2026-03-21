@@ -104,6 +104,17 @@ class SessionMemory(Base):
     tags = Column(Text, nullable=False, default="[]")
 
 
+class GameSession(Base):
+    """Client session pointer: active scene index for a play session (SQLite)."""
+
+    __tablename__ = "game_sessions"
+
+    session_id = Column(String, primary_key=True)
+    campaign_id = Column(Integer, ForeignKey("campaigns.id", ondelete="SET NULL"), nullable=True)
+    active_scene_index = Column(Integer, nullable=False, default=0)
+    updated_at = Column(String, nullable=False, default="")
+
+
 class CampaignDocument(Base):
     __tablename__ = "campaign_documents"
 

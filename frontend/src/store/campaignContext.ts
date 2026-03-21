@@ -381,3 +381,5 @@ export const useCampaignContextStore = create<CampaignContextState & {
     set(emptyState);
   },
 }));
+
+export { CampaignProvider } from "./CampaignProvider";

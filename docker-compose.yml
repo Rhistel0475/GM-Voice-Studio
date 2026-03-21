@@ -1,7 +1,5 @@
-# Optional: run API + Redis (for async clone when CELERY_BROKER_URL is set).
-# Start API only: docker compose up app
-# With Celery worker: set CELERY_BROKER_URL in app env and run worker separately:
-#   docker compose run --rm -e CELERY_BROKER_URL=redis://redis:6379/0 app celery -A celery_app worker --loglevel=info
+# API only (no Redis/Celery — async jobs not used yet).
+# Usage: docker compose up --build
 services:
   app:
     build: .
@@ -10,19 +8,10 @@ services:
     environment:
       - PORT=7862
       - SERVER_NAME=0.0.0.0
-      # Optional: CELERY_BROKER_URL=redis://redis:6379/0
-      # Optional: DATABASE_URL, VOICE_STORAGE_BACKEND, API_KEYS, etc.
+      # Optional: DATABASE_URL=postgresql://... for Postgres instead of default SQLite in the image
+      # Optional: API_KEYS, VOICE_STORAGE_BACKEND, etc.
     volumes:
       - voice_storage:/app/voice_storage
-    # Uncomment to use Redis for async clone/narrate:
-    # env_file: .env
-    # depends_on: [redis]
-
-  redis:
-    image: redis:7-alpine
-    # Only needed when using Celery
-    profiles:
-      - celery
 
 volumes:
   voice_storage: {}

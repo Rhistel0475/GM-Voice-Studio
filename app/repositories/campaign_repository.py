@@ -21,6 +21,7 @@ from app.infrastructure.database import SessionLocal
 from app.infrastructure.db_models import (
     Campaign,
     CampaignDocument,
+    GameSession,
     Location,
     NPC,
     Scene,
@@ -772,6 +773,253 @@ def assign_npc_voice(campaign_id: int, npc_name: str, voice_id: str) -> bool:
         if updated:
             db.commit()
         return updated
+    finally:
+        db.close()
+
+
+def patch_campaign_scene(
+    campaign_id: int,
+    scene_ref: str,
+    *,
+    read_aloud: Optional[str] = None,
+    gm_notes: Optional[str] = None,
+    npcs: Optional[list[str]] = None,
+) -> Optional[dict[str, Any]]:
+    """
+    Patch a scene by DB id (numeric string) or title / JSON id string.
+    Updates relational Scene row (read_aloud, notes) and matching entry in campaign data_json (read_aloud, notes, npcs).
+    Returns the updated scene as a dict, or None if not found.
+    """
+    from urllib.parse import unquote
+
+    key = unquote((scene_ref or "").strip())
+    if not key:
+        return None
+
+    db = SessionLocal()
+    try:
+        c = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+        if c is None:
+            return None
+
+        relational: Optional[Scene] = None
+        if key.isdigit():
+            relational = (
+                db.query(Scene)
+                .filter(Scene.campaign_id == campaign_id, Scene.id == int(key))
+                .first()
+            )
+        if relational is None:
+            relational = (
+                db.query(Scene)
+                .filter(Scene.campaign_id == campaign_id, Scene.title == key)
+                .first()
+            )
+
+        payload: dict[str, Any] = {}
+        raw = (c.data_json or "").strip()
+        if raw:
+            try:
+                payload = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                payload = {}
+
+        json_entry: Optional[dict[str, Any]] = None
+        scenes_list = payload.get("scenes") if isinstance(payload.get("scenes"), list) else []
+        if isinstance(scenes_list, list):
+            for entry in scenes_list:
+                if not isinstance(entry, dict):
+                    continue
+                matched = False
+                if relational is not None and entry.get("title") == relational.title:
+                    matched = True
+                if str(entry.get("id", "")) == key:
+                    matched = True
+                if relational is None and entry.get("title") == key:
+                    matched = True
+                if matched:
+                    json_entry = entry
+                    break
+
+        json_dirty = False
+        if npcs is not None and json_entry is None and relational is not None:
+            if not isinstance(payload.get("scenes"), list):
+                payload["scenes"] = []
+            found_json = False
+            for entry in payload["scenes"]:
+                if isinstance(entry, dict) and entry.get("title") == relational.title:
+                    entry["npcs"] = list(npcs)
+                    json_entry = entry
+                    json_dirty = True
+                    found_json = True
+                    break
+            if not found_json:
+                payload["scenes"].append(
+                    {
+                        "title": relational.title,
+                        "act": relational.act or "",
+                        "type": relational.type or "",
+                        "read_aloud": relational.read_aloud,
+                        "notes": relational.notes,
+                        "npcs": list(npcs),
+                    }
+                )
+                json_entry = payload["scenes"][-1]
+                json_dirty = True
+
+        if relational is None and json_entry is None:
+            return None
+
+        if relational is not None:
+            if read_aloud is not None:
+                relational.read_aloud = read_aloud
+            if gm_notes is not None:
+                relational.notes = gm_notes
+
+        if json_entry is not None:
+            if read_aloud is not None:
+                json_entry["read_aloud"] = read_aloud
+                json_dirty = True
+            if gm_notes is not None:
+                json_entry["notes"] = gm_notes
+                json_dirty = True
+            if npcs is not None:
+                json_entry["npcs"] = list(npcs)
+                json_dirty = True
+
+        if json_dirty and isinstance(payload.get("scenes"), list):
+            c.data_json = json.dumps(payload, ensure_ascii=False)
+
+        db.commit()
+
+        if relational is not None:
+            db.refresh(relational)
+
+        title = relational.title if relational is not None else (json_entry or {}).get("title") or ""
+        ra = (
+            relational.read_aloud
+            if relational is not None
+            else (json_entry or {}).get("read_aloud") or ""
+        )
+        notes_out = relational.notes if relational is not None else (json_entry or {}).get("notes") or ""
+        npcs_out: list[str] = []
+        if json_entry is not None and isinstance(json_entry.get("npcs"), list):
+            npcs_out = [str(x) for x in json_entry["npcs"]]
+        elif npcs is not None:
+            npcs_out = list(npcs)
+
+        sid = str(relational.id) if relational is not None else str((json_entry or {}).get("id") or key)
+
+        return {
+            "id": sid,
+            "campaign_id": campaign_id,
+            "title": title,
+            "read_aloud": ra,
+            "gm_notes": notes_out,
+            "notes": notes_out,
+            "npcs": npcs_out,
+        }
+    finally:
+        db.close()
+
+
+def update_scene_fields(
+    campaign_id: int,
+    scene_title: str,
+    *,
+    read_aloud: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> bool:
+    """
+    Patch read_aloud / notes for a scene matched by title (legacy).
+    Delegates to patch_campaign_scene.
+    """
+    from urllib.parse import unquote
+
+    ref = unquote((scene_title or "").strip())
+    if not ref:
+        return False
+    return patch_campaign_scene(campaign_id, ref, read_aloud=read_aloud, gm_notes=notes, npcs=None) is not None
+
+
+def patch_npc_voice_global(npc_identifier: str, voice_id: str) -> Optional[dict[str, Any]]:
+    """
+    Set voice_id on an NPC by integer primary key or by name (first match).
+    Updates relational row and data_json npcs list. Returns normalized NPC dict.
+    """
+    ident = (npc_identifier or "").strip()
+    if not ident:
+        return None
+
+    db = SessionLocal()
+    try:
+        npc: Optional[NPC] = None
+        if ident.isdigit():
+            npc = db.query(NPC).filter(NPC.id == int(ident)).first()
+        if npc is None:
+            npc = db.query(NPC).filter(NPC.name == ident).first()
+        if npc is None:
+            return None
+
+        vid = (voice_id or "").strip() or None
+        npc.voice_id = vid
+
+        c = db.query(Campaign).filter(Campaign.id == npc.campaign_id).first()
+        if c is not None and (c.data_json or "").strip():
+            try:
+                payload = json.loads(c.data_json)
+                if isinstance(payload, dict) and isinstance(payload.get("npcs"), list):
+                    for npc_entry in payload["npcs"]:
+                        if isinstance(npc_entry, dict) and npc_entry.get("name") == npc.name:
+                            if vid:
+                                npc_entry["voice_id"] = vid
+                            else:
+                                npc_entry.pop("voice_id", None)
+                    c.data_json = json.dumps(payload, ensure_ascii=False)
+            except (json.JSONDecodeError, TypeError):
+                logging.warning("Campaign %s data_json invalid during NPC voice patch", npc.campaign_id)
+
+        db.commit()
+        return get_npc_record(str(npc.id))
+    finally:
+        db.close()
+
+
+def upsert_session_active_scene(
+    session_id: str,
+    active_scene_index: int,
+    campaign_id: Optional[int] = None,
+) -> dict[str, Any]:
+    """Create or update game_sessions row. Returns the stored record."""
+    sid = (session_id or "").strip()
+    if not sid:
+        raise ValueError("session_id required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    db = SessionLocal()
+    try:
+        row = db.query(GameSession).filter(GameSession.session_id == sid).first()
+        if row is None:
+            row = GameSession(
+                session_id=sid,
+                campaign_id=campaign_id,
+                active_scene_index=max(0, int(active_scene_index)),
+                updated_at=now,
+            )
+            db.add(row)
+        else:
+            row.active_scene_index = max(0, int(active_scene_index))
+            row.updated_at = now
+            if campaign_id is not None:
+                row.campaign_id = campaign_id
+        db.commit()
+        db.refresh(row)
+        return {
+            "session_id": row.session_id,
+            "campaign_id": row.campaign_id,
+            "active_scene_index": row.active_scene_index,
+            "updated_at": row.updated_at,
+        }
     finally:
         db.close()
 

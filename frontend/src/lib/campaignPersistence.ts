@@ -42,16 +42,46 @@ type AuthFetch = (url: string, options?: RequestInit) => Promise<Response>;
 export async function persistNpcVoice(
   authFetch: AuthFetch,
   npcName: string,
-  voiceId: string
+  voiceId: string | null | undefined
 ): Promise<void> {
   const campaignId = getBackendCampaignId();
-  if (!campaignId || !npcName || !voiceId) return;
+  if (!campaignId || !npcName) return;
   try {
     await authFetch(`/api/campaigns/${campaignId}/npcs/${encodeURIComponent(npcName)}/voice`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ voice_id: voiceId }),
+      body: JSON.stringify({ voice_id: voiceId ?? "" }),
     });
+  } catch {
+    // Backend unavailable — store is source of truth
+  }
+}
+
+/**
+ * Persist scene read-aloud / GM notes to the backend (PATCH).
+ * Matches scene by title within the stored backend campaign id.
+ */
+export async function persistSceneContent(
+  authFetch: AuthFetch,
+  sceneTitle: string,
+  patch: { readAloud?: string; notes?: string }
+): Promise<void> {
+  const campaignId = getBackendCampaignId();
+  const title = (sceneTitle || "").trim();
+  if (!campaignId || !title) return;
+  const body: Record<string, string> = {};
+  if (patch.readAloud !== undefined) body.read_aloud = patch.readAloud;
+  if (patch.notes !== undefined) body.notes = patch.notes;
+  if (Object.keys(body).length === 0) return;
+  try {
+    await authFetch(
+      `/api/campaigns/${campaignId}/scenes/${encodeURIComponent(title)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
   } catch {
     // Backend unavailable — store is source of truth
   }

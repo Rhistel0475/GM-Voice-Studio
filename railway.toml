@@ -1,0 +1,17 @@
+# Railway config-as-code: https://docs.railway.com/guides/config-as-code
+#
+# Database: add a Railway **PostgreSQL** plugin and link it to this service.
+# Railway injects **DATABASE_URL** automatically (no need to paste in railway.toml).
+#
+# The app reads **PORT** from the environment (Railway sets this). **server.py** binds
+# **SERVER_NAME** (default 0.0.0.0) and **PORT** (default 7862 locally).
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "python server.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"

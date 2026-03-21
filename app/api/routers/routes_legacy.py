@@ -1171,6 +1171,24 @@ async def list_campaign_documents(
     return {"campaign_id": campaign_id, "documents": await run_in_threadpool(list_campaign_documents_service, campaign_id)}
 
 
+class SceneRecordPatchBody(BaseModel):
+    """PATCH scene: read_aloud, GM notes (notes or gm_notes), and npc name list."""
+
+    read_aloud: Optional[str] = None
+    notes: Optional[str] = None
+    gm_notes: Optional[str] = None
+    npcs: Optional[list[str]] = None
+
+
+class NpcGlobalVoiceBody(BaseModel):
+    voice_id: str = ""
+
+
+class SessionActiveSceneBody(BaseModel):
+    active_scene_index: int = Field(..., ge=0)
+    campaign_id: Optional[int] = None
+
+
 @router.patch("/api/campaigns/{campaign_id}/npcs/{npc_name}/voice")
 @limiter.limit("120/minute")
 async def assign_npc_voice(
@@ -1186,6 +1204,74 @@ async def assign_npc_voice(
         # Campaign may not be in DB yet; return 200 so frontend doesn't treat as hard error
         return {"ok": False, "reason": "campaign or npc not found in db"}
     return {"ok": True, "campaign_id": campaign_id, "npc_name": npc_name, "voice_id": body.voice_id}
+
+
+@router.patch("/api/campaigns/{campaign_id}/scenes/{scene_ref}")
+@router.patch("/campaigns/{campaign_id}/scenes/{scene_ref}")
+@limiter.limit("120/minute")
+async def patch_campaign_scene_record(
+    campaign_id: int,
+    scene_ref: str,
+    body: SceneRecordPatchBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """
+    Patch a scene by numeric DB id or title / JSON id (single path segment).
+    Updates read_aloud, gm_notes (via notes or gm_notes), and npcs list in SQLite + data_json.
+    Returns the updated scene record.
+    """
+    notes_eff = body.gm_notes if body.gm_notes is not None else body.notes
+    if body.read_aloud is None and notes_eff is None and body.npcs is None:
+        raise HTTPException(400, detail="no fields to update")
+    rec = await run_in_threadpool(
+        campaign_repository.patch_campaign_scene,
+        campaign_id,
+        scene_ref,
+        read_aloud=body.read_aloud,
+        gm_notes=notes_eff,
+        npcs=body.npcs,
+    )
+    if rec is None:
+        raise HTTPException(404, detail="campaign or scene not found")
+    return rec
+
+
+@router.patch("/api/npcs/{npc_id}/voice")
+@router.patch("/npcs/{npc_id}/voice")
+@limiter.limit("120/minute")
+async def patch_npc_voice_global(
+    npc_id: str,
+    body: NpcGlobalVoiceBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Assign voice_id to an NPC by integer id or name. Returns updated NPC record."""
+    rec = await run_in_threadpool(campaign_repository.patch_npc_voice_global, npc_id, body.voice_id)
+    if rec is None:
+        raise HTTPException(404, detail="NPC not found")
+    return rec
+
+
+@router.post("/api/sessions/{session_id}/scene")
+@router.post("/sessions/{session_id}/scene")
+@limiter.limit("120/minute")
+async def post_session_active_scene(
+    session_id: str,
+    body: SessionActiveSceneBody,
+    request: Request,
+    _auth: None = Depends(verify_api_key),
+):
+    """Persist active scene index for a client session (game_sessions table)."""
+    try:
+        return await run_in_threadpool(
+            campaign_repository.upsert_session_active_scene,
+            session_id,
+            body.active_scene_index,
+            body.campaign_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
 
 
 @router.post("/npc/suggest-voice")

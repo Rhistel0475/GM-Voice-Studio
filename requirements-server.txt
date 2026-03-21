@@ -10,3 +10,5 @@ pymupdf>=1.24.0
 anthropic>=0.50.0
 pdf2image>=1.17.0
 sqlalchemy>=2.0.0
+# DATABASE_URL=postgresql://... (e.g. Railway Postgres)
+psycopg2-binary>=2.9.0
