@@ -93,7 +93,7 @@ export default function VoiceConsole({ campaignData, authFetch }) {
 
   /* ── Library ─────────────────────────────────────────────────── */
   const [voices, setVoices] = useState([]);
-  const [ttsProvider, setTtsProvider] = useState("kani");
+  const [ttsProvider, setTtsProvider] = useState("hume");
   const [filterState, setFilterState] = useState(defaultVoiceFilterState());
   const [selectedPreset, setSelectedPreset] = useState("");
   const [viewMode, setViewMode] = useState("list");
@@ -204,7 +204,7 @@ export default function VoiceConsole({ campaignData, authFetch }) {
         if (!cancelled && cfg?.tts_provider) setTtsProvider(String(cfg.tts_provider));
       })
       .catch(() => {
-        if (!cancelled) setTtsProvider("kani");
+        if (!cancelled) setTtsProvider("hume");
       });
     return () => { cancelled = true; };
   }, [authFetch]);

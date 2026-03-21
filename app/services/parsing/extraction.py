@@ -96,7 +96,10 @@ def _build_encounters(scene_items: Iterable[dict[str, Any]], chunk: SectionChunk
 
 
 def _scene_has_distinct_detail(scene: dict[str, Any]) -> bool:
-    if any(str(scene.get(field) or "").strip() for field in ("read_aloud", "difficulty", "rewards", "notes", "act")):
+    if any(
+        str(scene.get(field) or "").strip()
+        for field in ("read_aloud", "difficulty", "rewards", "notes", "gm_notes", "act")
+    ):
         return True
 
     npcs = scene.get("npcs") or []
@@ -150,6 +153,17 @@ def _filter_location_echo_scenes(
 
 def _chunk_supports_scene_extraction(chunk: SectionChunk, labels: set[str]) -> bool:
     if chunk.chunk_type_guess in {"boxed_text", "encounter_section"}:
+        return True
+    # Subheading explicitly marks player readout (even if body is plain prose, not blockquote)
+    sub_l = (chunk.subheading or "").strip().lower()
+    if sub_l in {
+        "read aloud",
+        "boxed text",
+        "narration",
+        "flavor text",
+        "for the gm",
+        "gm reads",
+    } or sub_l.startswith(("read aloud", "boxed text")):
         return True
     if "scene" in labels and chunk.content_type == "scene":
         return True

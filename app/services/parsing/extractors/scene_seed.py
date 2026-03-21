@@ -29,8 +29,9 @@ def extract_scene_seeds(chunk: SectionChunk, model: str | None = None) -> List[d
         "- title: scene name\n"
         "- act: optional act/chapter label\n"
         "- type: combat|social|exploration|mystery|travel|investigation\n"
-        "- read_aloud: the full boxed/atmospheric text to read aloud to players verbatim (up to 150 words). "
-        "Copy it exactly from the source if present; do not summarize or truncate it. Empty string if none.\n"
+        "- read_aloud: the COMPLETE boxed / read-aloud / atmospheric text for players, copied verbatim from the chunk. "
+        "Include every sentence; do not summarize, paraphrase, or truncate. If the entire chunk is read-aloud prose, "
+        "put that full text here. Use empty string only if there is truly no read-aloud material.\n"
         "- gm_notes: brief GM-facing instruction (what happens, triggers, cues). Not read to players. (≤40 words)\n"
         "- npcs: array of ALL NPC names mentioned or present in this scene — include incidental characters too\n"
         "- location: place name where the scene occurs\n"
@@ -68,11 +69,20 @@ def extract_scene_seeds(chunk: SectionChunk, model: str | None = None) -> List[d
             npcs = [str(n).strip() for n in npcs if n]
         else:
             npcs = []
+        read_text = (
+            obj.get("read_aloud")
+            or obj.get("read_out")
+            or obj.get("readout")
+            or obj.get("boxed_text")
+            or obj.get("narration")
+            or obj.get("player_text")
+            or ""
+        )
         result.append({
             "title": title,
             "act": (obj.get("act") or "").strip(),
             "type": (obj.get("type") or "exploration").strip(),
-            "read_aloud": (obj.get("read_aloud") or "").strip(),
+            "read_aloud": str(read_text).strip(),
             "gm_notes": (obj.get("gm_notes") or obj.get("notes") or "").strip(),
             "npcs": npcs,
             "location": (obj.get("location") or "").strip(),

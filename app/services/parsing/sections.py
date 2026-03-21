@@ -20,7 +20,8 @@ _NUMBERED_SECTION_RE = re.compile(r"^(\d+(?:\.\d+)*)[.)]?\s+(.+?)\s*$")
 _DOCUMENT_MARKER_RE = re.compile(r"^\s*<<<\s*document\s*:\s*(.+?)\s*>>>\s*$", re.IGNORECASE)
 _PAGE_MARKER_RE = re.compile(r"^\s*(?:\[\s*page\s*(\d+)\s*\]|page\s*(\d+)|p\.\s*(\d+))\s*$", re.IGNORECASE)
 _SUBHEADING_RE = re.compile(
-    r"^\s*(read aloud|boxed text|development|quest hook|quest|objective|treasure|reward|"
+    r"^\s*(read aloud|boxed text|narration|flavor text|for the gm|gm reads|"
+    r"development|quest hook|quest|objective|treasure|reward|"
     r"lore|background|encounter|location|area|features?|npcs?|clues?|secrets?|rumors?|"
     r"stat block)\s*[:\-]\s*(.*)$",
     re.IGNORECASE,
@@ -520,7 +521,23 @@ def _is_stat_block(block: str) -> bool:
     return hits >= 2 and compact_lines >= 1
 
 
+_READ_ALOUD_SUBHEADING = frozenset(
+    {
+        "read aloud",
+        "boxed text",
+        "narration",
+        "flavor text",
+        "for the gm",
+        "gm reads",
+    }
+)
+
+
 def _guess_chunk_type(heading: str, subheading: str, text: str) -> str:
+    """Infer structural type. Read-aloud subheadings must stay boxed_text so scene/readout extraction runs."""
+    sub_norm = (subheading or "").strip().lower()
+    if sub_norm in _READ_ALOUD_SUBHEADING or sub_norm.startswith(("read aloud", "boxed text")):
+        return "boxed_text"
     context = " ".join(part for part in (heading, subheading, text) if part).lower()
     if _is_boxed_text(text):
         return "boxed_text"

@@ -76,8 +76,8 @@ class StorageSettings:
 
 @dataclass(frozen=True)
 class TTSSettings:
-    """TTS and voice clone constraints."""
-    provider: str = field(default_factory=lambda: (os.environ.get("TTS_PROVIDER", "kani") or "kani").strip().lower())
+    """TTS and voice clone constraints. Default provider is Hume (matches app.core.config.TTS_PROVIDER)."""
+    provider: str = field(default_factory=lambda: (os.environ.get("TTS_PROVIDER", "hume") or "hume").strip().lower())
     default_voice_id: str = field(default_factory=lambda: os.environ.get("DEFAULT_VOICE_ID", "").strip())
     audio_cache_size: int = field(default_factory=lambda: int(os.environ.get("AUDIO_CACHE_SIZE", "10")))
     clone_min_duration_sec: float = field(default_factory=lambda: float(os.environ.get("CLONE_MIN_DURATION_SEC", "3.0")))

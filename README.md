@@ -124,7 +124,7 @@ After `npm run build`, open **http://localhost:7862/preview**.
 | `VOICE_STORAGE_PATH` | `./voice_storage` | Directory for cloned voice files (.safetensors) and metadata |
 | `API_KEYS` | (empty) | Comma-separated API keys; header `X-API-Key` |
 | `REQUIRE_API_KEY` | (unset) | Set to `1`/`true`/`yes` to require key for TTS/clone |
-| `TTS_PROVIDER` | `kani` | TTS backend: `kani` for local Pocket/Kani TTS, or `hume` for Hume Octave |
+| `TTS_PROVIDER` | `hume` | **Voice provider:** `hume` (default) for Hume Octave TTS, or `kani` for local Kani TTS-2 |
 
 Optional features (see [app/core/config.py](app/core/config.py) for full list):
 
@@ -149,7 +149,7 @@ Optional features (see [app/core/config.py](app/core/config.py) for full list):
 - **GET /** – Web UI (TTS, voice clone from upload or mic, script narration, Export WAV).
 - **GET /health** – Liveness: `{"status":"ok","service":"kani-tts"}`.
 - **GET /ready** – Readiness: 503 until TTS model has been loaded (use for load balancer probe).
-- **GET /config** – Client config, e.g. `{"require_api_key": true}`.
+- **GET /config** – Client config, e.g. `require_api_key`, `tts_provider` (`hume` or `kani`).
 - **GET /voices** – Returns `language_tags` (e.g. `["en"]`) and `preset_voices` (e.g. `["alba", "marius", ...]`).
 - **GET /limits** – Narrate limits: `max_narrate_chars`, `max_narrate_chunks`.
 - **POST /tts** – Generate speech: form fields `text`, `language_tag` (ignored; English only), `voice_id` (preset name or cloned voice ID), optional `temperature`, `top_p`, `repetition_penalty`; optional file `reference_audio` for one-off clone. Returns WAV.
@@ -159,7 +159,7 @@ Optional features (see [app/core/config.py](app/core/config.py) for full list):
 - **GET /voices/list**, **GET /voices/{id}**, **PATCH /voices/{id}**, **DELETE /voices/{id}** – List and manage cloned voices.
 - **DELETE /admin/voices/{voice_id}** – Take-down (requires `X-Admin-Key` when `ADMIN_API_KEY` is set).
 
-When `TTS_PROVIDER=hume`, `/voices/list` returns Hume voice IDs in the form `hume:<provider>:<id>`, `/tts` and `/tts/narrate` synthesize through Hume, and local clone endpoints are intentionally unavailable from this server.
+**Default voice provider is Hume** (`TTS_PROVIDER=hume` unless overridden). With Hume, `/voices/list` returns voice IDs in the form `hume:<provider>:<id>`, `/tts` and `/tts/narrate` synthesize through Hume, and local reference-audio clone is not handled by this server (create voices in Hume first). Set `TTS_PROVIDER=kani` for local Kani TTS-2 and `.pt` voice cloning.
 
 Full request/response schemas: **http://localhost:7862/docs** (or your host/port).
 

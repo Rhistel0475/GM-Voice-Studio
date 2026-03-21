@@ -37,6 +37,48 @@ def _get_client():
     return get_client()
 
 
+def _source_chunk_id(entity: dict[str, Any]) -> str:
+    src = entity.get("source") or {}
+    return str(
+        entity.get("source_chunk_id")
+        or src.get("source_chunk_id")
+        or src.get("chunk_id")
+        or ""
+    ).strip()
+
+
+def _backfill_scene_read_aloud_from_read_alouds(
+    scenes: list[dict[str, Any]],
+    read_alouds: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """When scene seeds lack read_aloud but the same chunk produced a read_aloud entry, copy full content."""
+    if not read_alouds:
+        return scenes
+    by_chunk: dict[str, str] = {}
+    for ra in read_alouds:
+        if not isinstance(ra, dict):
+            continue
+        cid = _source_chunk_id(ra)
+        text = str(ra.get("content") or ra.get("summary") or "").strip()
+        if not cid or not text:
+            continue
+        prev = by_chunk.get(cid, "")
+        if len(text) > len(prev):
+            by_chunk[cid] = text
+
+    out: list[dict[str, Any]] = []
+    for scene in scenes:
+        if not isinstance(scene, dict):
+            continue
+        s = dict(scene)
+        if not str(s.get("read_aloud") or "").strip():
+            cid = _source_chunk_id(s)
+            if cid and cid in by_chunk:
+                s["read_aloud"] = by_chunk[cid]
+        out.append(s)
+    return out
+
+
 def _extract_title_summary(text: str, model: str | None = None) -> tuple[str, str]:
     """One short LLM call to get adventure title and 2-sentence summary."""
     from app.core.config import AI_MODEL
@@ -110,6 +152,7 @@ def run_parsing_pipeline(
     npcs = dedupe_npcs(fused["npcs"])
     locations = dedupe_locations(fused["locations"])
     scenes = dedupe_scenes(fused["scenes"])
+    scenes = _backfill_scene_read_aloud_from_read_alouds(scenes, fused.get("read_alouds", []))
     codex_entries = dedupe_codex_entries(fused["codex_entries"])
     quests = canonicalize_quests(fused["quests"])
     items = _dedupe_named_entries(fused["items"], ("id", "name"))
