@@ -146,6 +146,9 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
           renderTaskRef.current = null;
         }
       },
+      getCanvas() {
+        return canvasRef.current;
+      },
     }),
     []
   );

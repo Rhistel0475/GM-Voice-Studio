@@ -14,6 +14,11 @@ export default defineConfig({
       {
         name: "redirect-preview",
         configureServer(server) {
+          // Default Node HTTP server timeout (~2 min) drops long proxied requests (e.g. Claude + full PDF).
+          const noRequestTimeout = () => server.httpServer?.setTimeout(0);
+          server.httpServer?.once("listening", noRequestTimeout);
+          noRequestTimeout();
+
           server.middlewares.use((req, res, next) => {
             if (req.url === "/preview") {
               res.writeHead(301, { Location: "/preview/" });
@@ -33,7 +38,12 @@ export default defineConfig({
     ],
     proxy: {
       "/api": API_DEV,
-      "/adventure": API_DEV,
+      "/adventure": {
+        target: API_DEV,
+        changeOrigin: true,
+        timeout: 900_000,
+        proxyTimeout: 900_000,
+      },
       "/ai": API_DEV,
       "/rag": API_DEV,
       "/brain": API_DEV,

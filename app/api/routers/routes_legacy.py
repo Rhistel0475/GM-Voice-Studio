@@ -1271,25 +1271,86 @@ async def ai_parse_adventure_docs(
 
 
 class AnalyzePageBody(BaseModel):
-    page_text: str = Field(..., min_length=1)
+    page_text: str = ""
     page_number: int = Field(1, ge=1)
     campaign_system: str = DEFAULT_CAMPAIGN_SYSTEM_ID
+    image_url: str = ""
 
 
-_ANALYZE_PAGE_PROMPT = """You are analyzing a single page from a tabletop RPG adventure module.
-Extract ONLY what appears on this page. Do not invent or infer from other pages.
-Return ONLY valid JSON with these keys:
+_ANALYZE_PAGE_PROMPT = """You are analyzing a single page from a Pathfinder tabletop RPG adventure module (Kingmaker style).
+Extract ALL relevant content from this page. Do not skip anything.
+
+This module uses these specific formats — learn them:
+
+READ-ALOUD TEXT:
+- Opening descriptive paragraphs at the start of a location section
+- Text after a location header like "Oleg's Trading Post" or "Q. Rickety Bridge (Landmark)"
+- Any text describing what players see, hear, or experience
+- Example: "Oleg's trading post is surrounded by a wooden palisade that stands 10 feet high. At each corner of the palisade are 20-foot-square watchtowers..."
+
+GM NOTES:
+- Lettered/numbered location keys like "A5. Middens: Three 3-foot-deep composting pits"
+- Mechanical info: DCs, trap stats, locked doors, hidden items
+- Tactical notes the GM needs but players don't hear
+- Example: "A8. Office: This room is where Oleg keeps his ledgers. DC 15 Perception to notice the hidden compartment."
+
+NPCS:
+- Named characters with descriptions and personality
+- Format: Name (alignment, race, class, level) — any details given
+- Example: "Oleg Leveton (CG male human expert 2) — stern and unimaginative, owns the trading post"
+- Example: "Svetlana (NG female human expert 2) — Oleg's wife, pleaded with him to abandon the post"
+- Example: "Jhod Kavken — traveling priest, has a recurring dream about a temple"
+
+MONSTERS / VILLAINS:
+- Stat block headers like "HAPPS BYDON CR 1/2" or "BEAR TRAP CR 1"
+- Always include: name, CR, XP, AC, HP, type
+- Villains are NPCs with combat stat blocks (LE/CE/NE alignment usually)
+- Traps count as monsters — extract them with their trigger and effect
+- Example villain: "Happs Bydon, CR 1/2, XP 200, Male human ranger 1, LE, AC 14, touch 12"
+- Example trap: "Bear Trap, CR 1, XP 400, mechanical, Perception DC 15, Disable Device DC 20, Atk +10 melee"
+
+SCENE TITLE:
+- Major headings like "OLEG'S TRADING POST", "ARRIVAL AT OLEG'S", "C. TRAP-FILLED GLADE"
+- Landmark names like "Q. RICKETY BRIDGE (LANDMARK)"
+
+Return ONLY valid JSON — no markdown, no preamble:
 {
-  "scene_title": "title if this page starts a new scene or area, empty string if not",
-  "read_aloud": "any boxed, italicized, or read-aloud text meant to be read to players, copied verbatim, empty string if none",
-  "gm_notes": "GM-only tactical info, DCs, trap details, secret doors — not read to players, empty string if none",
-  "npcs": [{"name": "", "role": "ally|villain|neutral|quest-giver", "description": "", "personality": "", "hp": "", "ac": 0, "cr": ""}],
-  "monsters": [{"name": "", "hp": "", "ac": 0, "cr": "", "notes": ""}],
-  "is_new_scene": true or false,
-  "scene_type": "combat|social|exploration|trap|travel or empty string"
+  "scene_title": "the main heading or location name on this page, empty string if none",
+  "read_aloud": "the opening descriptive paragraph for the location, written as something the GM reads to players. If multiple locations on the page, use the first/main one.",
+  "gm_notes": "all lettered/numbered location keys and their descriptions, DCs, trap mechanics, tactical info. Preserve the A1/A2/Q format.",
+  "npcs": [
+    {
+      "name": "full name",
+      "role": "ally|villain|neutral|quest-giver",
+      "description": "physical description and stat info",
+      "personality": "how they act, what they want",
+      "hp": "hp value as string",
+      "ac": 0,
+      "cr": "CR value as string e.g. CR 1/2"
+    }
+  ],
+  "monsters": [
+    {
+      "name": "name",
+      "hp": "hp value",
+      "ac": 0,
+      "cr": "CR value",
+      "notes": "type, trigger if trap, key abilities"
+    }
+  ],
+  "is_new_scene": true,
+  "scene_type": "combat|social|exploration|trap|travel"
 }
-NPCs are named characters with personality. Monsters are combat stat blocks.
-If nothing relevant is on this page, return all empty strings and empty arrays."""
+
+EXTRACTION RULES:
+- A page with "ARRIVAL AT OLEG'S" is is_new_scene: true, scene_type: social
+- A page with "TRAP-FILLED GLADE" is is_new_scene: true, scene_type: trap
+- A page with only a map and location keys is is_new_scene: true, scene_type: exploration
+- Happs Bydon and similar bandit leaders are monsters (villains with stat blocks)
+- Bear Trap and similar are monsters (traps with stat blocks)
+- Oleg, Svetlana, Jhod are npcs (named characters without combat stat blocks)
+- If a page has ONLY a map image with no text, return empty strings and empty arrays
+- Never return empty read_aloud if there is any descriptive text on the page"""
 
 
 @router.post("/adventure/analyze-page")
@@ -1299,24 +1360,224 @@ async def analyze_single_page(
     body: AnalyzePageBody,
     _auth: None = Depends(verify_api_key),
 ):
-    """Send a single page of text to Claude for structured extraction."""
+    """Send a single page of text (or image) to Claude for structured extraction."""
     from app.core.config import ANTHROPIC_API_KEY
 
     if not ANTHROPIC_API_KEY:
         raise HTTPException(503, "ANTHROPIC_API_KEY is not set. Add it to .env.")
 
-    text = body.page_text.strip()
-    if not text:
-        raise HTTPException(400, "page_text is empty.")
+    text = (body.page_text or "").strip()
+    has_image = bool((body.image_url or "").strip())
+    logging.info(
+        "analyze-page: page=%d, text_len=%d, has_image=%s",
+        body.page_number, len(text), has_image,
+    )
 
+    if not text and not has_image:
+        return {"error": "No content to analyze — this page has no text and no image was provided."}
+
+    raw_text = ""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+
+        if text:
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1000,
+                messages=[
+                    {"role": "user", "content": f"{_ANALYZE_PAGE_PROMPT}\n\n--- PAGE {body.page_number} ---\n{text[:12000]}"}
+                ],
+            )
+        else:
+            image_raw = body.image_url.strip()
+            if "," in image_raw:
+                base64_data = image_raw.split(",", 1)[1]
+            else:
+                base64_data = image_raw
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1500,
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": base64_data,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": f"{_ANALYZE_PAGE_PROMPT}\n\nPage {body.page_number}: Analyze the image above.",
+                        },
+                    ],
+                }],
+            )
+
+        raw_text = message.content[0].text if message.content else ""
+        json_match = re.search(r"\{[\s\S]*\}", raw_text)
+        if json_match:
+            parsed = json.loads(json_match.group())
+        else:
+            parsed = json.loads(raw_text)
+        return parsed
+    except json.JSONDecodeError:
+        return {"error": "Could not parse Claude response as JSON", "raw": raw_text[:2000]}
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
+    except Exception as e:
+        logging.exception("analyze-page failed for page %d: %s", body.page_number, e)
+        return {"error": str(e), "raw": ""}
+
+
+# ── Chapter detection (regex only, no AI) ────────────────────────────────────
+
+_HEADING_ALL_CAPS = re.compile(r"^([A-Z][A-Z\s'''\-:,]{5,})$")
+_HEADING_PART_CHAPTER = re.compile(
+    r"^(?:Part\s+(?:One|Two|Three|Four|Five|Six|Seven|Eight|Nine|Ten|\d+)"
+    r"|Chapter\s+\d+"
+    r"|Section\s+\d+)\b",
+    re.IGNORECASE,
+)
+_HEADING_LOCATION_KEY = re.compile(
+    r"^[A-Z]\d*\.\s+.+",
+)
+_HEADING_LANDMARK = re.compile(
+    r"^[A-Z]\.\s+.+\((?:Landmark|landmark)\)",
+)
+
+
+class DetectChaptersBody(BaseModel):
+    pages_text: list[dict]
+
+
+@router.post("/adventure/detect-chapters")
+@limiter.limit("60/minute")
+async def detect_chapters(
+    request: Request,
+    body: DetectChaptersBody,
+    _auth: None = Depends(verify_api_key),
+):
+    """Scan page texts for chapter/section headings using regex heuristics."""
+    chapters: list[dict] = []
+    current: dict | None = None
+
+    for entry in body.pages_text:
+        page_num = int(entry.get("page", 0))
+        text = str(entry.get("text", ""))
+        lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+
+        found_heading = None
+        confidence = "low"
+
+        for i, line in enumerate(lines):
+            if len(line) > 120:
+                continue
+
+            if _HEADING_ALL_CAPS.match(line) and len(line.split()) >= 3:
+                found_heading = line.title()
+                has_prose_after = i + 1 < len(lines) and len(lines[i + 1]) > 60
+                confidence = "high" if has_prose_after else "medium"
+                break
+
+            if _HEADING_PART_CHAPTER.match(line):
+                found_heading = line.strip().rstrip(":")
+                confidence = "high"
+                break
+
+            if _HEADING_LANDMARK.match(line):
+                found_heading = line.strip()
+                confidence = "high"
+                break
+
+            if (
+                len(line) < 60
+                and (line == line.upper() or line.istitle())
+                and i + 1 < len(lines)
+                and len(lines[i + 1]) > 60
+            ):
+                found_heading = line.title() if line == line.upper() else line
+                confidence = "medium"
+                break
+
+        if found_heading:
+            if current:
+                chapters.append(current)
+            current = {
+                "title": found_heading,
+                "start_page": page_num,
+                "end_page": page_num,
+                "confidence": confidence,
+            }
+        elif current:
+            current["end_page"] = page_num
+
+    if current:
+        chapters.append(current)
+
+    logging.info("detect-chapters: found %d chapters across %d pages", len(chapters), len(body.pages_text))
+    return {"chapters": chapters}
+
+
+# ── Analyze full chapter (multi-page Claude call) ────────────────────────────
+
+class AnalyzeChapterBody(BaseModel):
+    chapter_title: str = ""
+    pages_text: list[str]
+    page_numbers: list[int]
+    campaign_system: str = "pathfinder1e"
+
+
+@router.post("/adventure/analyze-chapter")
+@limiter.limit("20/minute")
+async def analyze_chapter(
+    request: Request,
+    body: AnalyzeChapterBody,
+    _auth: None = Depends(verify_api_key),
+):
+    """Send combined chapter pages to Claude for structured extraction."""
+    from app.core.config import ANTHROPIC_API_KEY
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY is not set. Add it to .env.")
+
+    if not body.pages_text or not body.page_numbers:
+        return {"error": "No pages provided."}
+
+    combined_parts = []
+    for i, page_text in enumerate(body.pages_text):
+        pg = body.page_numbers[i] if i < len(body.page_numbers) else i + 1
+        combined_parts.append(f"--- PAGE {pg} ---\n{page_text}")
+    combined_text = "\n\n".join(combined_parts)
+
+    chapter_prompt = (
+        f"You are analyzing pages {body.page_numbers[0]}–{body.page_numbers[-1]} "
+        f"of a tabletop RPG module. These pages all belong to the chapter or location: "
+        f'"{body.chapter_title}".\n\n'
+        f"Treat all these pages as ONE unified scene. The map and room descriptions "
+        f"belong together. Sub-sections like \"Arrival at Oleg's\" or \"Ambush at Oleg's\" "
+        f"should be captured in gm_notes but the whole chapter is one scene.\n\n"
+        f"{_ANALYZE_PAGE_PROMPT}\n\n"
+        f"Combined chapter text:\n{combined_text[:15000]}"
+    )
+
+    logging.info(
+        "analyze-chapter: title=%r, pages=%s, combined_len=%d",
+        body.chapter_title, body.page_numbers, len(combined_text),
+    )
+
+    raw_text = ""
     try:
         import anthropic
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
-            max_tokens=1000,
+            max_tokens=2000,
             messages=[
-                {"role": "user", "content": f"{_ANALYZE_PAGE_PROMPT}\n\n--- PAGE {body.page_number} ---\n{text[:12000]}"}
+                {"role": "user", "content": chapter_prompt}
             ],
         )
         raw_text = message.content[0].text if message.content else ""
@@ -1331,7 +1592,176 @@ async def analyze_single_page(
     except anthropic.AuthenticationError as e:
         raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
     except Exception as e:
-        logging.exception("analyze-page failed for page %d: %s", body.page_number, e)
+        logging.exception("analyze-chapter failed for %r: %s", body.chapter_title, e)
+        return {"error": str(e), "raw": ""}
+
+
+# ── Parse PDF chunk via native document upload to Claude ─────────────────────
+
+_MAX_CLAUDE_PDF_CHUNK_PAGES = 100
+
+
+def _extract_pdf_page_range_for_claude(
+    pdf_bytes: bytes,
+    start_page: int,
+    end_page: int,
+) -> tuple[bytes, str, bool]:
+    """
+    Build a smaller PDF containing only the requested 1-based page range.
+    Returns (bytes, human_note, used_slice). On failure returns (original, reason, False).
+    """
+    if not pdf_bytes:
+        return pdf_bytes, "empty", False
+    src = None
+    dst = None
+    try:
+        src = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if getattr(src, "needs_pass", False):
+            if not src.authenticate(""):
+                return pdf_bytes, "encrypted_needs_password", False
+        n = src.page_count
+        if n < 1:
+            return pdf_bytes, "no_pages", False
+        start_idx = max(0, min(int(start_page) - 1, n - 1))
+        if end_page and int(end_page) > 0:
+            end_idx = min(int(end_page) - 1, n - 1)
+        else:
+            end_idx = n - 1
+        if start_idx > end_idx:
+            return pdf_bytes, "bad_range", False
+        span = end_idx - start_idx + 1
+        truncated = False
+        if span > _MAX_CLAUDE_PDF_CHUNK_PAGES:
+            end_idx = start_idx + _MAX_CLAUDE_PDF_CHUNK_PAGES - 1
+            truncated = True
+        dst = fitz.open()
+        dst.insert_pdf(src, from_page=start_idx, to_page=end_idx)
+        try:
+            out = dst.tobytes(deflate=True, garbage=3, clean=True)
+        except TypeError:
+            out = dst.tobytes()
+        note = f"sliced_pages_{start_idx + 1}-{end_idx + 1}"
+        if truncated:
+            note += f"_truncated_max_{_MAX_CLAUDE_PDF_CHUNK_PAGES}"
+        return out, note, True
+    except Exception as e:
+        logging.warning("PDF page extract for Claude failed, using full file: %s", e)
+        return pdf_bytes, f"slice_failed:{e}", False
+    finally:
+        if dst is not None:
+            dst.close()
+        if src is not None:
+            src.close()
+
+
+@router.post("/adventure/parse-pdf-chunk")
+@limiter.limit("10/minute")
+async def parse_pdf_chunk(
+    request: Request,
+    pdf_file: UploadFile = File(...),
+    chunk_title: str = Form(""),
+    start_page: int = Form(1),
+    end_page: int = Form(0),
+    campaign_system: str = Form("pathfinder1e"),
+    _auth: None = Depends(verify_api_key),
+):
+    """Send a PDF directly to Claude as a native document for structured extraction."""
+    from app.core.config import ANTHROPIC_API_KEY
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY is not set. Add it to .env.")
+
+    pdf_bytes = await pdf_file.read()
+    logging.info(
+        "parse-pdf-chunk: title=%r, start=%d, end=%d, pdf_size=%d bytes",
+        chunk_title, start_page, end_page, len(pdf_bytes),
+    )
+
+    if not pdf_bytes:
+        return {"error": "Uploaded PDF is empty."}
+
+    payload_bytes, slice_note, used_slice = _extract_pdf_page_range_for_claude(
+        pdf_bytes, start_page, end_page
+    )
+    logging.info(
+        "parse-pdf-chunk: slice_note=%s, used_slice=%s, payload_size=%d",
+        slice_note, used_slice, len(payload_bytes),
+    )
+
+    if slice_note == "encrypted_needs_password":
+        return {
+            "error": "This PDF is password-protected. Remove security in a PDF app and upload again.",
+            "raw": "",
+        }
+
+    pdf_b64 = base64.b64encode(payload_bytes).decode("utf-8")
+
+    if used_slice:
+        orig_hi = end_page if end_page and int(end_page) > 0 else None
+        range_desc = f"original module pages {start_page}" + (
+            f"–{orig_hi}" if orig_hi else " through end of document"
+        )
+        page_instruction = (
+            f"The attached PDF is a server-side extract ({range_desc}). "
+            "It contains only those pages — analyze the entire attachment."
+        )
+    elif end_page > 0:
+        page_instruction = f"Focus ONLY on pages {start_page} to {end_page} of this PDF. Ignore all other pages."
+    else:
+        page_instruction = f"Start from page {start_page} of this PDF."
+
+    prompt = f"""{page_instruction}
+Chapter/Section being extracted: "{chunk_title or 'Full document'}"
+
+{_ANALYZE_PAGE_PROMPT}"""
+
+    raw_text = ""
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "document",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "application/pdf",
+                            "data": pdf_b64,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt,
+                    },
+                ],
+            }],
+        )
+        raw_text = message.content[0].text if message.content else ""
+        json_match = re.search(r"\{[\s\S]*\}", raw_text)
+        if json_match:
+            parsed = json.loads(json_match.group())
+        else:
+            parsed = json.loads(raw_text)
+        return parsed
+    except json.JSONDecodeError:
+        return {"error": "Could not parse Claude response as JSON", "raw": raw_text[:2000]}
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
+    except anthropic.BadRequestError as e:
+        logging.warning("parse-pdf-chunk Anthropic 400: %s", e)
+        hint = (
+            "Claude could not read this PDF. Try: (1) set an explicit End page so only a smaller range is sent, "
+            "(2) export or print-to-PDF from your viewer to flatten the file, "
+            "(3) remove password protection. "
+            f"Details: {e}"
+        )
+        return {"error": hint, "raw": str(e)}
+    except Exception as e:
+        logging.exception("parse-pdf-chunk failed for %r: %s", chunk_title, e)
         return {"error": str(e), "raw": ""}
 
 

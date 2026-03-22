@@ -19,6 +19,7 @@ import {
   parseMarkdownTemplate,
   MARKDOWN_ADVENTURE_TEMPLATE,
 } from "../lib/parseMarkdownTemplate";
+import { getBaseUrl } from "../api.js";
 
 const SCENE_TYPES = ["combat", "social", "exploration", "trap", "travel"];
 const TEXT_PAGE_SIZE = 3000;
@@ -124,9 +125,8 @@ export default function LibraryPage() {
   const [templateCopyToast, setTemplateCopyToast] = useState("");
   const templateCopyTimerRef = useRef(null);
 
-  /* Step 2 — page-by-page analysis state */
+  /* Step 2 — chunk-based PDF analysis state */
   const pdfViewerRef = useRef(null);
-  const pdfDocRef = useRef(null);
   const [pdfNumPages, setPdfNumPages] = useState(0);
   const [pdfPage, setPdfPage] = useState(1);
   const [pdfScale, setPdfScale] = useState(1);
@@ -134,19 +134,9 @@ export default function LibraryPage() {
   const leftPaneRef = useRef(null);
   const [leftPaneWidth, setLeftPaneWidth] = useState(0);
 
-  const textPageCount = useMemo(
-    () => (textFileContent ? Math.max(1, Math.ceil(textFileContent.length / TEXT_PAGE_SIZE)) : 0),
-    [textFileContent]
-  );
-  const [textPage, setTextPage] = useState(1);
-
-  const [pageAnalysis, setPageAnalysis] = useState(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analyzeError, setAnalyzeError] = useState("");
-  const [editingCard, setEditingCard] = useState(null);
-  const [editingText, setEditingText] = useState("");
-
-  const [workflowScenes, setWorkflowScenes] = useState([]);
+  const [chunks, setChunks] = useState([]);
+  const [isAnalyzingChunks, setIsAnalyzingChunks] = useState(false);
+  const [chunkProgress, setChunkProgress] = useState("");
 
   /* Step 3 — review state */
   const [reviewItems, setReviewItems] = useState([]);
@@ -208,10 +198,13 @@ export default function LibraryPage() {
 
   const authFetch = useCallback(
     (input, init = {}) => {
+      const base = getBaseUrl();
+      const url =
+        typeof input === "string" && input.startsWith("/") && base ? `${base}${input}` : input;
       const headers = new Headers(init.headers || {});
       const key = apiKey.trim();
       if (key) headers.set("X-API-Key", key);
-      return fetch(input, { ...init, headers });
+      return fetch(url, { ...init, headers });
     },
     [apiKey]
   );
@@ -248,7 +241,6 @@ export default function LibraryPage() {
       setTextFileContent("");
       setPdfNumPages(0);
       setPdfPage(1);
-      setTextPage(1);
 
       if (!list.length) { setUploadedFile(null); return; }
       const first = list[0];
@@ -354,166 +346,129 @@ export default function LibraryPage() {
     [files, requireApiKey, apiKey, selectedSystemId, authFetch, deriveDocumentName]
   );
 
-  /* ── Go to page-by-page Step 2 ──────────────────────────────────── */
+  /* ── Go to chunk mode Step 2 ─────────────────────────────────────── */
 
-  const goToPageMode = useCallback(() => {
+  const goToChunkMode = useCallback(() => {
     if (!files.length) { setParseError("Select a file first."); return; }
-    setPageAnalysis(null);
-    setAnalyzeError("");
-    setWorkflowScenes([]);
+    setChunks([{ _id: createId("chunk"), title: documentName || "", startPage: 1, endPage: 0 }]);
+    setIsAnalyzingChunks(false);
+    setChunkProgress("");
+    setPdfPage(1);
     setStep(2);
-  }, [files]);
+  }, [files, documentName]);
 
-  /* ── Page text extraction ───────────────────────────────────────── */
+  /* ── Chunk table editing ───────────────────────────────────────── */
 
-  const extractCurrentPageText = useCallback(async () => {
-    if (docKind === "pdf") {
-      const pdfDoc = pdfDocRef.current;
-      if (!pdfDoc) return "";
-      const page = await pdfDoc.getPage(pdfPage);
-      const content = await page.getTextContent();
-      return content.items.map((it) => it.str || "").join(" ").trim();
-    }
-    if (textFileContent) {
-      const start = (textPage - 1) * TEXT_PAGE_SIZE;
-      return textFileContent.slice(start, start + TEXT_PAGE_SIZE).trim();
-    }
-    return "";
-  }, [docKind, pdfPage, textPage, textFileContent]);
-
-  /* ── Analyze this page ──────────────────────────────────────────── */
-
-  const analyzePage = useCallback(async () => {
-    setIsAnalyzing(true);
-    setAnalyzeError("");
-    setPageAnalysis(null);
-    setEditingCard(null);
-    try {
-      const pageText = await extractCurrentPageText();
-      if (!pageText) { setAnalyzeError("No text found on this page."); return; }
-      const pageNum = docKind === "pdf" ? pdfPage : textPage;
-      const res = await authFetch("/adventure/analyze-page", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_text: pageText, page_number: pageNum, campaign_system: selectedSystemId }),
-      });
-      const data = await res.json();
-      if (data.error) { setAnalyzeError(data.error); return; }
-      setPageAnalysis(data);
-    } catch (err) {
-      setAnalyzeError(err.message || "Analysis failed.");
-    } finally {
-      setIsAnalyzing(false);
-    }
-  }, [extractCurrentPageText, docKind, pdfPage, textPage, authFetch, selectedSystemId]);
-
-  /* ── Workflow scene management ──────────────────────────────────── */
-
-  const activeScene = workflowScenes[workflowScenes.length - 1] ?? null;
-
-  const acceptSceneTitle = useCallback((title, sceneType) => {
-    const newScene = {
-      id: createId("wf_scene"),
-      title,
-      readAloud: "",
-      gmNotes: "",
-      type: SCENE_TYPES.includes(sceneType) ? sceneType : "exploration",
-      npcs: [],
-      monsters: [],
-    };
-    setWorkflowScenes((prev) => [...prev, newScene]);
+  const updateChunk = useCallback((id, patch) => {
+    setChunks((prev) => prev.map((c) => (c._id === id ? { ...c, ...patch } : c)));
+  }, []);
+  const removeChunk = useCallback((id) => {
+    setChunks((prev) => prev.filter((c) => c._id !== id));
+  }, []);
+  const addBlankChunk = useCallback(() => {
+    setChunks((prev) => [...prev, { _id: createId("chunk"), title: "", startPage: 1, endPage: 0 }]);
   }, []);
 
-  const appendToActiveScene = useCallback((field, value) => {
-    setWorkflowScenes((prev) => {
-      if (prev.length === 0) {
-        const s = { id: createId("wf_scene"), title: "Scene 1", readAloud: "", gmNotes: "", type: "exploration", npcs: [], monsters: [] };
-        return [{ ...s, [field]: value }];
+  /* ── Analyze all chunks (sequential, sends PDF to Claude) ──────── */
+
+  const analyzeAllChunks = useCallback(async () => {
+    const valid = chunks.filter((c) => c.title);
+    if (!valid.length || !uploadedFile) return;
+    setIsAnalyzingChunks(true);
+    setChunkProgress(`Analyzing section 1 of ${valid.length}…`);
+
+    const allItems = [];
+    for (let i = 0; i < valid.length; i++) {
+      const chunk = valid[i];
+      setChunkProgress(`Analyzing section ${i + 1} of ${valid.length} — ${chunk.title}…`);
+      try {
+        const formData = new FormData();
+        formData.append("pdf_file", uploadedFile);
+        formData.append("chunk_title", chunk.title);
+        formData.append("start_page", String(chunk.startPage || 1));
+        formData.append("end_page", String(chunk.endPage || 0));
+        formData.append("campaign_system", selectedSystemId);
+
+        const res = await authFetch("/adventure/parse-pdf-chunk", { method: "POST", body: formData });
+        const raw = await res.text();
+        let data;
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch {
+          allItems.push({
+            id: createId("rv_scene"), title: chunk.title, readAloud: "",
+            gmNotes: `Analysis error: Bad response (${res.status}) — ${raw.slice(0, 280)}`, type: "exploration",
+            npcs: [], monsters: [], imageUrl: "", status: "error",
+            _error: "Invalid JSON from server",
+          });
+          continue;
+        }
+        if (!res.ok) {
+          const detail = data?.detail ?? data?.error ?? raw;
+          const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
+          allItems.push({
+            id: createId("rv_scene"), title: chunk.title, readAloud: "",
+            gmNotes: `Analysis error: ${msg}`, type: "exploration",
+            npcs: [], monsters: [], imageUrl: "", status: "error", _error: msg,
+          });
+          continue;
+        }
+        console.log(`CHUNK ${i + 1} (${chunk.title}) RESPONSE:`, JSON.stringify(data, null, 2));
+
+        if (data.error) {
+          allItems.push({
+            id: createId("rv_scene"), title: chunk.title, readAloud: "",
+            gmNotes: `Analysis error: ${data.error}`, type: "exploration",
+            npcs: [], monsters: [], imageUrl: "", status: "error", _error: data.error,
+          });
+        } else {
+          allItems.push({
+            id: createId("rv_scene"),
+            title: data.scene_title || chunk.title || "Untitled",
+            readAloud: data.read_aloud || "",
+            gmNotes: data.gm_notes || "",
+            type: SCENE_TYPES.includes(data.scene_type) ? data.scene_type : "exploration",
+            npcs: (data.npcs || []).map((n) => ({
+              id: createId("rv_npc"), name: n.name || "", role: n.role || "",
+            })),
+            monsters: (data.monsters || []).map((m) => ({
+              id: createId("rv_monster"), name: m.name || "", hp: m.hp || "",
+              ac: m.ac ? String(m.ac) : "", cr: m.cr || "",
+            })),
+            imageUrl: "",
+            status: "pending",
+          });
+        }
+      } catch (err) {
+        const isNet =
+          err?.name === "TypeError" ||
+          (typeof err?.message === "string" &&
+            (err.message.includes("Failed to fetch") ||
+              err.message.includes("NetworkError") ||
+              err.message.includes("Load failed")));
+        const msg = isNet
+          ? "Network error — ensure the API is running (default port 7862). With npm run dev, the Vite proxy must reach the backend; PDF + Claude can take several minutes."
+          : err.message || "Unknown error";
+        allItems.push({
+          id: createId("rv_scene"), title: chunk.title, readAloud: "",
+          gmNotes: `Analysis error: ${msg}`, type: "exploration",
+          npcs: [], monsters: [], imageUrl: "", status: "error", _error: msg,
+        });
       }
-      return prev.map((s, i) => (i === prev.length - 1 ? { ...s, [field]: s[field] ? s[field] + "\n\n" + value : value } : s));
-    });
+    }
+
+    setReviewItems(allItems);
+    setActiveReviewIdx(0);
+    setIsAnalyzingChunks(false);
+    setChunkProgress("");
+    setStep(3);
+  }, [chunks, uploadedFile, selectedSystemId, authFetch]);
+
+  /* ── PDF meta callback ─────────────────────────────────────────── */
+
+  const handlePdfMeta = useCallback((numPages) => {
+    setPdfNumPages(numPages);
   }, []);
-
-  const acceptNpc = useCallback((npc) => {
-    setWorkflowScenes((prev) => {
-      if (prev.length === 0) {
-        return [{ id: createId("wf_scene"), title: "Scene 1", readAloud: "", gmNotes: "", type: "exploration", npcs: [npc], monsters: [] }];
-      }
-      return prev.map((s, i) => (i === prev.length - 1 ? { ...s, npcs: [...s.npcs, npc] } : s));
-    });
-  }, []);
-
-  const acceptMonster = useCallback((monster) => {
-    setWorkflowScenes((prev) => {
-      if (prev.length === 0) {
-        return [{ id: createId("wf_scene"), title: "Scene 1", readAloud: "", gmNotes: "", type: "exploration", npcs: [], monsters: [monster] }];
-      }
-      return prev.map((s, i) => (i === prev.length - 1 ? { ...s, monsters: [...s.monsters, monster] } : s));
-    });
-  }, []);
-
-  const wfTotals = useMemo(() => {
-    let npcs = 0, monsters = 0;
-    for (const s of workflowScenes) { npcs += s.npcs.length; monsters += s.monsters.length; }
-    return { scenes: workflowScenes.length, npcs, monsters };
-  }, [workflowScenes]);
-
-  /* ── Accept all & next page ─────────────────────────────────────── */
-
-  const acceptAllAndNext = useCallback(() => {
-    if (!pageAnalysis) return;
-    const pa = pageAnalysis;
-    if (pa.is_new_scene && pa.scene_title) acceptSceneTitle(pa.scene_title, pa.scene_type);
-    if (pa.read_aloud) appendToActiveScene("readAloud", pa.read_aloud);
-    if (pa.gm_notes) appendToActiveScene("gmNotes", pa.gm_notes);
-    for (const npc of pa.npcs || []) {
-      if (npc.name) acceptNpc({ id: createId("wf_npc"), ...npc });
-    }
-    for (const m of pa.monsters || []) {
-      if (m.name) acceptMonster({ id: createId("wf_mon"), ...m });
-    }
-    setPageAnalysis(null);
-    setEditingCard(null);
-    const maxPage = docKind === "pdf" ? pdfNumPages : textPageCount;
-    const currentPage = docKind === "pdf" ? pdfPage : textPage;
-    if (currentPage < maxPage) {
-      if (docKind === "pdf") setPdfPage((p) => p + 1);
-      else setTextPage((p) => p + 1);
-    }
-  }, [pageAnalysis, acceptSceneTitle, appendToActiveScene, acceptNpc, acceptMonster, docKind, pdfNumPages, textPageCount, pdfPage, textPage]);
-
-  const skipPage = useCallback(() => {
-    setPageAnalysis(null);
-    setEditingCard(null);
-    const maxPage = docKind === "pdf" ? pdfNumPages : textPageCount;
-    const currentPage = docKind === "pdf" ? pdfPage : textPage;
-    if (currentPage < maxPage) {
-      if (docKind === "pdf") setPdfPage((p) => p + 1);
-      else setTextPage((p) => p + 1);
-    }
-  }, [docKind, pdfNumPages, textPageCount, pdfPage, textPage]);
-
-  /* ── Save campaign from workflow ────────────────────────────────── */
-
-  const saveWorkflowAndGoPrep = useCallback(() => {
-    const campaignId = resolveOrCreateCampaignId(documentName);
-    for (const scene of workflowScenes) {
-      const npcIds = [];
-      for (const npc of scene.npcs) {
-        if (!(npc.name || "").trim()) continue;
-        const npcId = npc.id || createId("wf_npc");
-        npcIds.push(npcId);
-        upsertNpc({ id: npcId, campaignId, name: npc.name.trim(), summary: npc.description || npc.role || "", role: npc.role || undefined, tags: [] });
-      }
-      upsertScene({
-        id: scene.id, campaignId, title: scene.title || "Scene", name: scene.title || "Scene",
-        summary: (scene.readAloud || scene.title || "Scene").trim().slice(0, 280) || "Scene",
-        readAloud: scene.readAloud, read_aloud: scene.readAloud, notes: scene.gmNotes, type: scene.type,
-        npcIds, monsters: scene.monsters || [], codexEntryIds: [], actionLogIds: [], narrationClipIds: [], tags: [],
-      });
-    }
-    navigate("/prep");
-  }, [workflowScenes, resolveOrCreateCampaignId, documentName, upsertNpc, upsertScene, navigate]);
 
   /* ── Reset ──────────────────────────────────────────────────────── */
 
@@ -526,9 +481,7 @@ export default function LibraryPage() {
     setReviewItems([]); setActiveReviewIdx(0);
     setTemplateSectionOpen(false); setTemplateCopyToast("");
     setPdfNumPages(0); setPdfPage(1); setPdfScale(1); setPdfFitScale(1);
-    setTextPage(1); setPageAnalysis(null); setIsAnalyzing(false); setAnalyzeError("");
-    setWorkflowScenes([]); setEditingCard(null); setEditingText("");
-    pdfDocRef.current = null;
+    setChunks([]); setIsAnalyzingChunks(false); setChunkProgress("");
     window.setTimeout(() => { if (libraryFileInputRef.current) libraryFileInputRef.current.value = ""; }, 0);
   }, []);
 
@@ -577,7 +530,7 @@ export default function LibraryPage() {
   const handleSaveAll = useCallback(() => {
     const campaignId = resolveOrCreateCampaignId(documentName);
     for (const item of reviewItems) {
-      if (item.status === "skipped") continue;
+      if (item.status === "skipped" || item.status === "error") continue;
       const npcIds = [];
       for (const npc of item.npcs) {
         if (!(npc.name || "").trim()) continue;
@@ -595,16 +548,9 @@ export default function LibraryPage() {
     navigate("/prep");
   }, [reviewItems, resolveOrCreateCampaignId, documentName, upsertNpc, upsertScene, navigate]);
 
-  const allReviewed = reviewItems.length > 0 && reviewItems.every((r) => r.status === "approved" || r.status === "skipped");
+  const allReviewed = reviewItems.length > 0 && reviewItems.every((r) => r.status === "approved" || r.status === "skipped" || r.status === "error");
 
-  const stepLabel = step === 1 ? "Upload & parse" : step === 2 ? "Page-by-page analysis" : "Review & correct";
-
-  /* ── PDF.js doc ref capture ─────────────────────────────────────── */
-
-  const handlePdfMeta = useCallback((numPages, pdfDoc) => {
-    setPdfNumPages(numPages);
-    if (pdfDoc) pdfDocRef.current = pdfDoc;
-  }, []);
+  const stepLabel = step === 1 ? "Upload & parse" : step === 2 ? "Define sections" : "Review & correct";
 
   /* ── Render ─────────────────────────────────────────────────────── */
 
@@ -686,9 +632,12 @@ export default function LibraryPage() {
               <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={() => runParse("/adventure/parse")} disabled={isParsing || !files.length}>
                 Quick Parse (no AI)
               </button>
-              <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={goToPageMode} disabled={!files.length}>
-                Page-by-page mode
+              <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={goToChunkMode} disabled={!files.length || docKind !== "pdf"}>
+                Build scenes by section →
               </button>
+              <p className="text-[11px] text-[#9c7a3a] font-heading m-0 leading-relaxed text-center">
+                Define page ranges — Claude reads the actual PDF for each section.
+              </p>
             </div>
 
             {parseError && <div className="intake-error mt-2">{parseError}</div>}
@@ -708,19 +657,29 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {/* ─── Step 2: Page-by-page analysis ─────────────────────── */}
+      {/* ─── Step 2: Chunk-based PDF analysis ──────────────────────── */}
       {step === 2 && (
         <div className="flex flex-col flex-1 min-h-0 min-w-0 gap-2">
           <div className="flex flex-wrap gap-2 items-center justify-between shrink-0">
             <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={handleStartOver}>← Back to upload</button>
-            <button type="button" className="nav-glyph-btn intake-parse-btn is-active" onClick={saveWorkflowAndGoPrep} disabled={workflowScenes.length === 0}>
-              Save campaign & go to Prep →
+            <button type="button" className="nav-glyph-btn intake-parse-btn is-active" onClick={analyzeAllChunks} disabled={isAnalyzingChunks || !chunks.some((c) => c.title)}>
+              {isAnalyzingChunks ? "Analyzing…" : "Analyze all sections →"}
             </button>
           </div>
 
+          {isAnalyzingChunks && chunkProgress && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-[#5a3e1b] bg-[#1a1008]">
+              <img src="/static/img/ParsingWizard.png" alt="" style={{ height: 40 }} draggable={false} className="rounded opacity-80" />
+              <p className="font-heading text-sm text-[#e7c27a] m-0 library-loading-dots">
+                {chunkProgress}
+                <span className="ld-dot">.</span><span className="ld-dot">.</span><span className="ld-dot">.</span>
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-1 min-h-0 min-w-0 gap-0 border border-[#5a3e1b] rounded-lg overflow-hidden bg-[#120a04]" style={{ minHeight: "min(70dvh, 720px)", maxHeight: "calc(100dvh - 12rem)" }}>
 
-            {/* Left — document viewer */}
+            {/* Left — PDF viewer */}
             <section ref={leftPaneRef} className="flex flex-1 min-w-0 min-h-0 flex-col border-r border-[#5a3e1b]">
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-3">
                 {docKind === "pdf" && uploadedFile ? (
@@ -733,149 +692,69 @@ export default function LibraryPage() {
                     onMeta={handlePdfMeta}
                     onFitScaleChange={(v) => setPdfFitScale(Math.min(3, Math.max(0.5, v || 1)))}
                   />
-                ) : textFileContent ? (
-                  <div className="rounded border border-[#2a1a08] bg-[#130c06] p-3 text-sm text-[#e8d4a8] leading-relaxed whitespace-pre-wrap">
-                    {textFileContent.slice((textPage - 1) * TEXT_PAGE_SIZE, textPage * TEXT_PAGE_SIZE)}
-                  </div>
                 ) : (
-                  <p className="text-xs text-[#7a6348] italic m-0">No document loaded.</p>
+                  <p className="text-xs text-[#7a6348] italic m-0">No PDF loaded.</p>
                 )}
               </div>
-              <div className="shrink-0 px-3 py-2 border-t border-[#3a2510] bg-[#1a1008] flex flex-wrap items-center gap-2 justify-between">
-                <div className="flex items-center gap-2">
-                  <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40" disabled={(docKind === "pdf" ? pdfPage : textPage) <= 1}
-                    onClick={() => { if (docKind === "pdf") setPdfPage((p) => Math.max(1, p - 1)); else setTextPage((p) => Math.max(1, p - 1)); }}>
-                    ← Prev
-                  </button>
-                  <span className="text-xs font-heading text-[#d8b36f]">
-                    Page {docKind === "pdf" ? pdfPage : textPage} of {docKind === "pdf" ? pdfNumPages : textPageCount}
-                  </span>
-                  <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
-                    disabled={(docKind === "pdf" ? pdfPage : textPage) >= (docKind === "pdf" ? pdfNumPages : textPageCount)}
-                    onClick={() => { if (docKind === "pdf") setPdfPage((p) => Math.min(pdfNumPages, p + 1)); else setTextPage((p) => Math.min(textPageCount, p + 1)); }}>
-                    Next →
-                  </button>
-                </div>
-                <button type="button" className="nav-glyph-btn intake-parse-btn is-active text-sm py-1.5" onClick={analyzePage} disabled={isAnalyzing}>
-                  {isAnalyzing ? "Analyzing…" : "Analyze this page ✦"}
+              <div className="shrink-0 px-3 py-2 border-t border-[#3a2510] bg-[#1a1008] flex items-center gap-2 justify-center">
+                <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
+                  disabled={pdfPage <= 1} onClick={() => setPdfPage((p) => Math.max(1, p - 1))}>
+                  ← Prev
+                </button>
+                <span className="text-xs font-heading text-[#d8b36f]">
+                  Page {pdfPage} of {pdfNumPages || "?"}
+                </span>
+                <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
+                  disabled={pdfPage >= pdfNumPages} onClick={() => setPdfPage((p) => Math.min(pdfNumPages, p + 1))}>
+                  Next →
                 </button>
               </div>
             </section>
 
-            {/* Right — AI results panel */}
-            <section className="flex w-[380px] shrink-0 min-h-0 flex-col bg-[#1a1008]">
-              <div className="shrink-0 px-3 py-2 border-b border-[#3a2510] flex items-center justify-between">
-                <p className="text-[10px] uppercase tracking-wider text-[#9c7a3a] font-heading m-0">
-                  {wfTotals.scenes} scenes · {wfTotals.npcs} NPCs · {wfTotals.monsters} monsters collected
+            {/* Right — Chunk builder */}
+            <section className="flex w-[400px] shrink-0 min-h-0 flex-col bg-[#1a1008]">
+              <div className="shrink-0 px-4 py-3 border-b border-[#3a2510]">
+                <p className="text-xs text-[#b89a62] m-0 leading-relaxed">
+                  Define sections to extract — Claude will read the actual PDF for each one.
                 </p>
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-                {/* Idle state */}
-                {!pageAnalysis && !isAnalyzing && !analyzeError && (
-                  <div className="flex flex-col items-center justify-center gap-4 py-8 text-center">
-                    <img src="/static/img/Spellbook.png" alt="" style={{ height: 60 }} draggable={false} className="opacity-60" />
-                    <p className="text-xs text-[#7a6348] m-0 font-heading leading-relaxed">
-                      Click "Analyze this page" to extract scenes, NPCs, and read-alouds from the current page.
-                    </p>
+                {chunks.map((chunk, i) => (
+                  <div key={chunk._id} className="rounded-md border border-[#3a2510] bg-[#0e0804] p-3 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] uppercase tracking-wider text-[#9c7a3a] font-heading">Section {i + 1}</span>
+                      <button type="button" className="text-xs text-[#a08060] hover:text-[#e7c27a]" onClick={() => removeChunk(chunk._id)} title="Remove section">×</button>
+                    </div>
+                    <input type="text" value={chunk.title} placeholder="e.g. Oleg's Trading Post"
+                      onChange={(e) => updateChunk(chunk._id, { title: e.target.value })}
+                      className="w-full bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1.5 text-xs text-[#e7c27a]" />
+                    <div className="flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 text-[10px] text-[#9c7a3a] font-heading">
+                        Start
+                        <input type="number" min={1} value={chunk.startPage}
+                          onChange={(e) => updateChunk(chunk._id, { startPage: Math.max(1, Number(e.target.value) || 1) })}
+                          className="w-16 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] text-center" />
+                      </label>
+                      <label className="flex items-center gap-1.5 text-[10px] text-[#9c7a3a] font-heading">
+                        End
+                        <input type="number" min={0} value={chunk.endPage}
+                          onChange={(e) => updateChunk(chunk._id, { endPage: Math.max(0, Number(e.target.value) || 0) })}
+                          className="w-16 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] text-center" />
+                      </label>
+                      <span className="text-[9px] text-[#6a5838]">{chunk.endPage ? "" : "(0 = all)"}</span>
+                    </div>
                   </div>
-                )}
+                ))}
 
-                {/* Loading */}
-                {isAnalyzing && (
-                  <div className="flex flex-col items-center justify-center gap-4 py-8">
-                    <p className="font-heading text-sm text-[#e7c27a] m-0 library-loading-dots">
-                      Claude is reading page {docKind === "pdf" ? pdfPage : textPage}
-                      <span className="ld-dot">.</span><span className="ld-dot">.</span><span className="ld-dot">.</span>
-                    </p>
-                  </div>
-                )}
+                <button type="button" className="w-full text-xs font-heading text-[#d8b36f] border border-dashed border-[#6b5030] rounded px-3 py-2 hover:border-[#9b7440]" onClick={addBlankChunk}>
+                  + Add section
+                </button>
 
-                {analyzeError && <div className="intake-error text-xs">{analyzeError}</div>}
-
-                {/* Results cards */}
-                {pageAnalysis && !isAnalyzing && (
-                  <>
-                    {pageAnalysis.is_new_scene && pageAnalysis.scene_title ? (
-                      <ResultCard
-                        headerColor="#c9a227" headerLabel="New scene" title={pageAnalysis.scene_title}
-                        onAccept={() => acceptSceneTitle(pageAnalysis.scene_title, pageAnalysis.scene_type)}
-                        editingCard={editingCard} cardKey="scene_title" setEditingCard={setEditingCard}
-                        editingText={editingText} setEditingText={setEditingText}
-                        onAcceptEdited={(t) => acceptSceneTitle(t, pageAnalysis.scene_type)}
-                        initialEdit={pageAnalysis.scene_title}
-                      />
-                    ) : null}
-
-                    {pageAnalysis.read_aloud ? (
-                      <ResultCard
-                        headerColor="#6b8f6b" headerLabel="Read-aloud text" body={pageAnalysis.read_aloud}
-                        onAccept={() => appendToActiveScene("readAloud", pageAnalysis.read_aloud)}
-                        editingCard={editingCard} cardKey="read_aloud" setEditingCard={setEditingCard}
-                        editingText={editingText} setEditingText={setEditingText}
-                        onAcceptEdited={(t) => appendToActiveScene("readAloud", t)}
-                        initialEdit={pageAnalysis.read_aloud}
-                      />
-                    ) : null}
-
-                    {pageAnalysis.gm_notes ? (
-                      <ResultCard
-                        headerColor="#5a7abf" headerLabel="GM notes" body={pageAnalysis.gm_notes}
-                        onAccept={() => appendToActiveScene("gmNotes", pageAnalysis.gm_notes)}
-                        editingCard={editingCard} cardKey="gm_notes" setEditingCard={setEditingCard}
-                        editingText={editingText} setEditingText={setEditingText}
-                        onAcceptEdited={(t) => appendToActiveScene("gmNotes", t)}
-                        initialEdit={pageAnalysis.gm_notes}
-                      />
-                    ) : null}
-
-                    {(pageAnalysis.npcs || []).map((npc, i) => npc.name ? (
-                      <ResultCard
-                        key={`npc-${i}`}
-                        headerColor="#bf5a5a" headerLabel={`NPC — ${npc.name}`}
-                        body={[npc.role, npc.description, npc.personality].filter(Boolean).join(" · ")}
-                        badges={[npc.hp && `HP ${npc.hp}`, npc.ac && `AC ${npc.ac}`, npc.cr && `CR ${npc.cr}`].filter(Boolean)}
-                        onAccept={() => acceptNpc({ id: createId("wf_npc"), ...npc })}
-                        editingCard={editingCard} cardKey={`npc-${i}`} setEditingCard={setEditingCard}
-                        editingText={editingText} setEditingText={setEditingText}
-                        onAcceptEdited={() => acceptNpc({ id: createId("wf_npc"), ...npc })}
-                        initialEdit=""
-                        hideEdit
-                      />
-                    ) : null)}
-
-                    {(pageAnalysis.monsters || []).map((m, i) => m.name ? (
-                      <ResultCard
-                        key={`mon-${i}`}
-                        headerColor="#c9a227" headerLabel={`Monster — ${m.name}`}
-                        body={m.notes || ""}
-                        badges={[m.hp && `HP ${m.hp}`, m.ac && `AC ${m.ac}`, m.cr && `CR ${m.cr}`].filter(Boolean)}
-                        onAccept={() => acceptMonster({ id: createId("wf_mon"), ...m })}
-                        editingCard={editingCard} cardKey={`mon-${i}`} setEditingCard={setEditingCard}
-                        editingText={editingText} setEditingText={setEditingText}
-                        onAcceptEdited={() => acceptMonster({ id: createId("wf_mon"), ...m })}
-                        initialEdit=""
-                        hideEdit
-                      />
-                    ) : null)}
-
-                    {!pageAnalysis.scene_title && !pageAnalysis.read_aloud && !pageAnalysis.gm_notes && !(pageAnalysis.npcs || []).length && !(pageAnalysis.monsters || []).length && (
-                      <p className="text-xs text-[#7a6348] italic m-0">Nothing relevant found on this page.</p>
-                    )}
-                  </>
-                )}
+                <p className="text-[10px] text-[#6a5838] italic m-0 leading-relaxed">
+                  Tip — use the PDF viewer on the left to find page numbers for each chapter.
+                </p>
               </div>
-
-              {pageAnalysis && !isAnalyzing && (
-                <div className="shrink-0 px-3 py-2 border-t border-[#3a2510] flex flex-col gap-1.5">
-                  <button type="button" className="nav-glyph-btn intake-parse-btn is-active w-full text-xs" onClick={acceptAllAndNext}>
-                    Accept all & next page →
-                  </button>
-                  <button type="button" className="text-xs font-heading px-3 py-1.5 rounded border border-[#5a5a5a] bg-[#2a2a2a]/40 text-[#aaa] hover:bg-[#333]/60 w-full" onClick={skipPage}>
-                    Skip page →
-                  </button>
-                </div>
-              )}
             </section>
           </div>
         </div>
@@ -895,7 +774,7 @@ export default function LibraryPage() {
               </div>
               <div className="flex-1 overflow-y-auto">
                 {reviewItems.map((item, i) => {
-                  const dotColor = item.status === "approved" ? "#6b8f6b" : item.status === "skipped" ? "#6b6b6b" : "#c9a227";
+                  const dotColor = item.status === "approved" ? "#6b8f6b" : item.status === "skipped" ? "#6b6b6b" : item.status === "error" ? "#bf5a5a" : "#c9a227";
                   const isActive = i === activeReviewIdx;
                   return (
                     <button key={item.id} type="button" onClick={() => setActiveReviewIdx(i)}
@@ -916,6 +795,12 @@ export default function LibraryPage() {
               <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
                 {activeReview ? (
                   <>
+                    {activeReview.status === "error" && activeReview._error ? (
+                      <div className="rounded border border-red-800/50 bg-red-950/30 px-4 py-3 text-xs text-red-300">
+                        <p className="font-heading text-sm text-red-400 m-0 mb-1">Analysis failed for this chapter</p>
+                        <p className="m-0 leading-relaxed">{activeReview._error}</p>
+                      </div>
+                    ) : null}
                     {activeReview.imageUrl ? (
                       <div className="flex items-center gap-3 p-2 rounded border border-[#3a2510] bg-[#0e0804]">
                         <img src={activeReview.imageUrl} alt="" className="rounded object-contain" style={{ maxHeight: 80 }} draggable={false} />
@@ -992,40 +877,3 @@ export default function LibraryPage() {
   );
 }
 
-/* ── ResultCard component for Step 2 AI results ───────────────────── */
-
-function ResultCard({ headerColor, headerLabel, title, body, badges, onAccept, editingCard, cardKey, setEditingCard, editingText, setEditingText, onAcceptEdited, initialEdit, hideEdit }) {
-  const isEditing = editingCard === cardKey;
-  return (
-    <div className="rounded-md border border-[#3a2510] bg-[#0e0804] overflow-hidden">
-      <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider font-heading" style={{ color: headerColor }}>{headerLabel}</div>
-      <div className="px-3 pb-2">
-        {title && <p className="text-sm text-[#e7c27a] font-heading m-0 mb-1">{title}</p>}
-        {body && !isEditing && <p className="text-xs text-[#d8c4a0] leading-relaxed m-0 mb-2 whitespace-pre-wrap">{body.length > 300 ? body.slice(0, 300) + "…" : body}</p>}
-        {badges?.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-2">
-            {badges.map((b, i) => (<span key={i} className="text-[9px] px-1.5 py-0.5 rounded border border-[#5a3e1b] bg-[#1a0f06] text-[#b89a62]">{b}</span>))}
-          </div>
-        )}
-        {isEditing && (
-          <div className="space-y-1 mb-2">
-            <textarea value={editingText} onChange={(e) => setEditingText(e.target.value)} rows={4} className="w-full bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1.5 text-xs text-[#e7c27a] resize-y" />
-            <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-green-700/60 bg-green-950/40 text-green-300 hover:bg-green-900/50"
-              onClick={() => { onAcceptEdited(editingText); setEditingCard(null); }}>Done</button>
-          </div>
-        )}
-        {!isEditing && (
-          <div className="flex items-center gap-2">
-            <button type="button" className="text-[11px] font-heading px-2 py-1 rounded border border-green-700/60 bg-green-950/40 text-green-300 hover:bg-green-900/50" onClick={onAccept}>Accept</button>
-            {!hideEdit && (
-              <button type="button" className="text-[11px] font-heading px-2 py-1 rounded border border-amber-700/50 bg-amber-950/30 text-amber-300 hover:bg-amber-900/40"
-                onClick={() => { setEditingCard(cardKey); setEditingText(initialEdit || body || title || ""); }}>Edit</button>
-            )}
-            <button type="button" className="text-[11px] font-heading px-2 py-1 rounded border border-[#5a5a5a] bg-[#2a2a2a]/40 text-[#aaa] hover:bg-[#333]/60"
-              onClick={() => {}}>Skip</button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
