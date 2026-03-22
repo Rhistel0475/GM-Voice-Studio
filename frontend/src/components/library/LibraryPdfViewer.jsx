@@ -31,6 +31,87 @@ function ensurePdfJs() {
 }
 
 /**
+ * Groups text layer spans into paragraph blocks; a new paragraph starts when gap > 1.5× line height.
+ * Wraps each group in a .pdf-para-block div (preserving span positions) for hover/click.
+ * @param {HTMLDivElement} textLayerDiv
+ * @param {(text: string) => void} [onParagraphClick]
+ */
+function groupTextLayerIntoParagraphs(textLayerDiv, onParagraphClick) {
+  const spans = Array.from(textLayerDiv.querySelectorAll("span")).filter((s) => s.textContent?.trim());
+  if (spans.length === 0) return;
+
+  const containerRect = textLayerDiv.getBoundingClientRect();
+  /** @type {{ span: Element; top: number; bottom: number; left: number; right: number }[]} */
+  const items = spans.map((span) => {
+    const r = span.getBoundingClientRect();
+    return {
+      span,
+      top: r.top - containerRect.top,
+      bottom: r.bottom - containerRect.top,
+      left: r.left - containerRect.left,
+      right: r.right - containerRect.left,
+    };
+  });
+  items.sort((a, b) => a.top - b.top || a.left - b.left);
+
+  const firstHeight = items[0]?.bottom - items[0]?.top || 14;
+  const gapThreshold = firstHeight * 1.2 * 1.5;
+
+  /** @type {{ span: Element; top: number; bottom: number; left: number; right: number }[][]} */
+  const groups = [];
+  let current = [items[0]];
+  let lastBottom = items[0].bottom;
+
+  for (let i = 1; i < items.length; i++) {
+    const it = items[i];
+    if (it.top - lastBottom > gapThreshold) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(it);
+    lastBottom = it.bottom;
+  }
+  if (current.length) groups.push(current);
+
+  groups.forEach((groupItems) => {
+    const minL = Math.min(...groupItems.map((i) => i.left));
+    const minT = Math.min(...groupItems.map((i) => i.top));
+    const maxR = Math.max(...groupItems.map((i) => i.right));
+    const maxB = Math.max(...groupItems.map((i) => i.bottom));
+
+    const div = document.createElement("div");
+    div.className = "pdf-para-block";
+    div.style.cssText =
+      "position:absolute;cursor:pointer;border-radius:4px;padding:2px 4px;transition:background 0.15s;";
+    div.style.left = `${minL}px`;
+    div.style.top = `${minT}px`;
+    div.style.width = `${maxR - minL}px`;
+    div.style.height = `${maxB - minT}px`;
+
+    groupItems.forEach(({ span, left, top }) => {
+      span.style.position = "absolute";
+      span.style.left = `${left - minL}px`;
+      span.style.top = `${top - minT}px`;
+      span.style.margin = "0";
+      span.style.transform = "none";
+      div.appendChild(span);
+    });
+
+    if (onParagraphClick) {
+      div.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const text = Array.from(div.querySelectorAll("span"))
+          .map((s) => s.textContent)
+          .join(" ")
+          .trim();
+        if (text) onParagraphClick(text);
+      });
+    }
+    textLayerDiv.appendChild(div);
+  });
+}
+
+/**
  * Renders a PDF from a File (ArrayBuffer) with canvas + selectable text layer.
  * @param {{
  * file: File | null,
@@ -38,11 +119,12 @@ function ensurePdfJs() {
  * containerWidth?: number,
  * onMeta?: (numPages: number) => void,
  * currentPage?: number,
- * onFitScaleChange?: (scale: number) => void
+ * onFitScaleChange?: (scale: number) => void,
+ * onParagraphClick?: (text: string) => void
  * }} props
  */
 const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
-  { file, scale = 1, containerWidth = 0, currentPage = 1, onMeta, onFitScaleChange },
+  { file, scale = 1, containerWidth = 0, currentPage = 1, onMeta, onFitScaleChange, onParagraphClick },
   ref
 ) {
   const hostRef = useRef(null);
@@ -52,7 +134,6 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
   const pdfjsRef = useRef(null);
   const renderTaskRef = useRef(null);
   const renderPageRef = useRef(null);
-  const selectionMirrorRef = useRef(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -63,12 +144,6 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
         if (renderTaskRef.current) {
           renderTaskRef.current.cancel();
           renderTaskRef.current = null;
-        }
-      },
-      /** @param {string} text */
-      mirrorSelectionText(text) {
-        if (selectionMirrorRef.current) {
-          selectionMirrorRef.current.value = text || "";
         }
       },
     }),
@@ -124,13 +199,15 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
           textDivs,
         });
         await textTask.promise;
+
+        groupTextLayerIntoParagraphs(textLayerDiv, onParagraphClick);
       } catch (e) {
         if (e?.name !== "RenderingCancelledException") {
           throw e;
         }
       }
     },
-    [scale]
+    [scale, onParagraphClick]
   );
 
   useEffect(() => {
@@ -158,7 +235,7 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
         pdfRef.current = pdf;
         if (cancelled) return;
-        onMeta?.(pdf.numPages);
+        onMeta?.(pdf.numPages, pdf);
         const firstPage = await pdf.getPage(1);
         const baseViewport = firstPage.getViewport({ scale: 1 });
         const safePaneWidth = Math.max(1, Number(containerWidth) || 0);
@@ -225,13 +302,6 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
       <div ref={hostRef} className="library-pdf-page-wrap mx-auto relative">
         <canvas ref={canvasRef} className="block" />
         <div ref={textLayerHostRef} />
-        <textarea
-          ref={selectionMirrorRef}
-          readOnly
-          tabIndex={-1}
-          aria-hidden
-          className="absolute left-0 top-0 h-full w-full opacity-0 pointer-events-none resize-none border-0 p-0 m-0"
-        />
       </div>
     </div>
   );

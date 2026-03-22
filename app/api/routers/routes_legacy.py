@@ -113,6 +113,13 @@ except ImportError:
 _ASSETS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "static" / "campaign_assets"
 
 
+def _ensure_dir(path: Path) -> None:
+    """Create directory with parents. If path exists as a file, remove it first (avoids Errno 17)."""
+    if path.exists() and not path.is_dir():
+        path.unlink()
+    path.mkdir(parents=True, exist_ok=True)
+
+
 def _list_campaign_embedded_image_urls(campaign_id: int) -> list[str]:
     """List image files under static/campaign_assets/{id}/embedded/ as /campaign-assets URLs."""
     embedded = _ASSETS_DIR / str(int(campaign_id)) / "embedded"
@@ -1071,65 +1078,72 @@ async def parse_adventure_docs(
     if len(files) > _MAX_ADVENTURE_FILES:
         raise HTTPException(400, f"Too many files. Max {_MAX_ADVENTURE_FILES} files per parse.")
 
-    all_text_parts: list[str] = []
-    uploaded_files: list[dict] = []
-    pdf_raws: list[bytes] = []
-    for upload in files:
-        raw_peek = await upload.read()
-        await upload.seek(0)
-        text, meta = await _read_adventure_upload(upload)
-        all_text_parts.append(text)
-        uploaded_files.append(meta)
-        suffix = Path(upload.filename or "").suffix.lower()
-        if suffix == ".pdf":
-            pdf_raws.append(raw_peek)
-
-    merged = "\n\n".join(all_text_parts)
-    parsed = _parse_adventure_text(merged)
-    system_id = normalize_campaign_system(campaign_system)
-    parsed["system_id"] = system_id
-    parsed["systemId"] = system_id
-    parsed["system"] = get_campaign_system_preset(system_id)
-
-    # normalize_campaign_entities expects NPCs/locations as dicts, not plain strings
-    if isinstance(parsed.get("npcs"), list):
-        coerced_npcs: list[dict] = []
-        for n in parsed["npcs"]:
-            if isinstance(n, str) and n.strip():
-                coerced_npcs.append({"name": n.strip(), "summary": "", "description": ""})
-            elif isinstance(n, dict):
-                coerced_npcs.append(n)
-        parsed["npcs"] = coerced_npcs
-    if isinstance(parsed.get("locations"), list):
-        coerced_locs: list[dict] = []
-        for loc in parsed["locations"]:
-            if isinstance(loc, str) and loc.strip():
-                coerced_locs.append({"name": loc.strip(), "description": ""})
-            elif isinstance(loc, dict):
-                coerced_locs.append(loc)
-        parsed["locations"] = coerced_locs
-
     try:
-        cid = campaign_repository.create_from_parse_result(parsed)
-        parsed["campaign_id"] = cid
+        all_text_parts: list[str] = []
+        uploaded_files: list[dict] = []
+        pdf_raws: list[bytes] = []
+        for upload in files:
+            raw_peek = await upload.read()
+            await upload.seek(0)
+            text, meta = await _read_adventure_upload(upload)
+            all_text_parts.append(text)
+            uploaded_files.append(meta)
+            suffix = Path(upload.filename or "").suffix.lower()
+            if suffix == ".pdf":
+                pdf_raws.append(raw_peek)
+
+        merged = "\n\n".join(all_text_parts)
+        parsed = _parse_adventure_text(merged)
+        system_id = normalize_campaign_system(campaign_system)
+        parsed["system_id"] = system_id
+        parsed["systemId"] = system_id
+        parsed["system"] = get_campaign_system_preset(system_id)
+
+        # normalize_campaign_entities expects NPCs/locations as dicts, not plain strings
+        if isinstance(parsed.get("npcs"), list):
+            coerced_npcs: list[dict] = []
+            for n in parsed["npcs"]:
+                if isinstance(n, str) and n.strip():
+                    coerced_npcs.append({"name": n.strip(), "summary": "", "description": ""})
+                elif isinstance(n, dict):
+                    coerced_npcs.append(n)
+            parsed["npcs"] = coerced_npcs
+        if isinstance(parsed.get("locations"), list):
+            coerced_locs: list[dict] = []
+            for loc in parsed["locations"]:
+                if isinstance(loc, str) and loc.strip():
+                    coerced_locs.append({"name": loc.strip(), "description": ""})
+                elif isinstance(loc, dict):
+                    coerced_locs.append(loc)
+            parsed["locations"] = coerced_locs
+
+        try:
+            cid = campaign_repository.create_from_parse_result(parsed)
+            parsed["campaign_id"] = cid
+        except Exception as e:
+            logging.warning("Failed to persist fast-parse campaign to DB: %s", e)
+
+        if pdf_raws and parsed.get("campaign_id") is not None:
+            cid = int(parsed["campaign_id"])
+            embedded_dir = _ASSETS_DIR / str(cid) / "embedded"
+            _ensure_dir(embedded_dir)
+            img_counter = 0
+            for raw_pdf in pdf_raws:
+                try:
+                    _new_imgs, _pages = await run_in_threadpool(
+                        _extract_embedded_images, raw_pdf, embedded_dir, img_counter, str(cid)
+                    )
+                    img_counter += len(_new_imgs)
+                except Exception as ex:
+                    logging.warning("PDF image extraction (fast parse) failed: %s", ex)
+
+        return {"files": uploaded_files, **parsed}
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.warning("Failed to persist fast-parse campaign to DB: %s", e)
-
-    if pdf_raws and parsed.get("campaign_id") is not None:
-        cid = int(parsed["campaign_id"])
-        embedded_dir = _ASSETS_DIR / str(cid) / "embedded"
-        embedded_dir.mkdir(parents=True)
-        img_counter = 0
-        for raw_pdf in pdf_raws:
-            try:
-                _new_imgs, _pages = await run_in_threadpool(
-                    _extract_embedded_images, raw_pdf, embedded_dir, img_counter, str(cid)
-                )
-                img_counter += len(_new_imgs)
-            except Exception as ex:
-                logging.warning("PDF image extraction (fast parse) failed: %s", ex)
-
-    return {"files": uploaded_files, **parsed}
+        logging.exception("Parse adventure failed: %s", e)
+        msg = str(e) if str(e) else type(e).__name__
+        raise HTTPException(500, f"Parse failed: {msg}") from e
 
 
 def _extract_embedded_images(raw_pdf: bytes, embedded_dir: Path, start_counter: int, session_id: str) -> tuple[list[dict], int]:
@@ -1233,7 +1247,7 @@ async def ai_parse_adventure_docs(
     _cleanup_old_sessions(_ASSETS_DIR)
     session_dir = _ASSETS_DIR / asset_key
     embedded_dir = session_dir / "embedded"
-    embedded_dir.mkdir(parents=True)
+    _ensure_dir(embedded_dir)
 
     raw_images: list[dict] = []
     total_pages = 0
@@ -1254,6 +1268,71 @@ async def ai_parse_adventure_docs(
         result["images"] = []
 
     return {"files": uploaded_files, **result}
+
+
+class AnalyzePageBody(BaseModel):
+    page_text: str = Field(..., min_length=1)
+    page_number: int = Field(1, ge=1)
+    campaign_system: str = DEFAULT_CAMPAIGN_SYSTEM_ID
+
+
+_ANALYZE_PAGE_PROMPT = """You are analyzing a single page from a tabletop RPG adventure module.
+Extract ONLY what appears on this page. Do not invent or infer from other pages.
+Return ONLY valid JSON with these keys:
+{
+  "scene_title": "title if this page starts a new scene or area, empty string if not",
+  "read_aloud": "any boxed, italicized, or read-aloud text meant to be read to players, copied verbatim, empty string if none",
+  "gm_notes": "GM-only tactical info, DCs, trap details, secret doors — not read to players, empty string if none",
+  "npcs": [{"name": "", "role": "ally|villain|neutral|quest-giver", "description": "", "personality": "", "hp": "", "ac": 0, "cr": ""}],
+  "monsters": [{"name": "", "hp": "", "ac": 0, "cr": "", "notes": ""}],
+  "is_new_scene": true or false,
+  "scene_type": "combat|social|exploration|trap|travel or empty string"
+}
+NPCs are named characters with personality. Monsters are combat stat blocks.
+If nothing relevant is on this page, return all empty strings and empty arrays."""
+
+
+@router.post("/adventure/analyze-page")
+@limiter.limit("30/minute")
+async def analyze_single_page(
+    request: Request,
+    body: AnalyzePageBody,
+    _auth: None = Depends(verify_api_key),
+):
+    """Send a single page of text to Claude for structured extraction."""
+    from app.core.config import ANTHROPIC_API_KEY
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY is not set. Add it to .env.")
+
+    text = body.page_text.strip()
+    if not text:
+        raise HTTPException(400, "page_text is empty.")
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            messages=[
+                {"role": "user", "content": f"{_ANALYZE_PAGE_PROMPT}\n\n--- PAGE {body.page_number} ---\n{text[:12000]}"}
+            ],
+        )
+        raw_text = message.content[0].text if message.content else ""
+        json_match = re.search(r"\{[\s\S]*\}", raw_text)
+        if json_match:
+            parsed = json.loads(json_match.group())
+        else:
+            parsed = json.loads(raw_text)
+        return parsed
+    except json.JSONDecodeError:
+        return {"error": "Could not parse Claude response as JSON", "raw": raw_text[:2000]}
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
+    except Exception as e:
+        logging.exception("analyze-page failed for page %d: %s", body.page_number, e)
+        return {"error": str(e), "raw": ""}
 
 
 @router.get("/api/campaigns")
@@ -1679,8 +1758,8 @@ async def extract_adventure_images(
     session_dir = _ASSETS_DIR / session_id
     embedded_dir = session_dir / "embedded"
     pages_dir = session_dir / "pages"
-    embedded_dir.mkdir(parents=True)
-    pages_dir.mkdir(parents=True)
+    _ensure_dir(embedded_dir)
+    _ensure_dir(pages_dir)
 
     embedded_urls: list[str] = []
     page_urls: list[str] = []

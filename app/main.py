@@ -3,13 +3,14 @@ FastAPI application factory and entry point.
 Load .env, create app, register middleware, routers, static mounts, and startup.
 """
 import logging
+import traceback
 import os
 import time
 import uuid
 from pathlib import Path
 
 from fastapi import Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies.auth import limiter
@@ -95,15 +96,32 @@ _patch_tied_weights_keys_list()
 
 # Import FastAPI and slowapi after env is loaded
 from fastapi import FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+
+
+def _generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Capture unhandled exceptions and return JSON with error detail so the client can display it."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    if isinstance(exc, RequestValidationError):
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+    tb = traceback.format_exc()
+    logging.exception("Unhandled exception: %s", exc)
+    msg = str(exc) if str(exc) else type(exc).__name__
+    return JSONResponse(
+        status_code=500,
+        content={"detail": msg, "_traceback": tb.splitlines()[-6:]},
+    )
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="GM Voice Studio API")
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(Exception, _generic_exception_handler)
     app.add_middleware(SlowAPIMiddleware)
 
     if CORS_ORIGINS:
