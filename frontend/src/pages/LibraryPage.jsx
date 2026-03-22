@@ -4,6 +4,7 @@ import { GripVertical, Upload } from "lucide-react";
 import PrepPanel from "../components/prep/PrepPanel";
 import LibraryPdfViewer from "../components/library/LibraryPdfViewer";
 import { createId } from "../lib/utils/ids";
+import { clearCampaignData } from "../lib/clearCampaignData";
 import { persistSceneContent, setBackendCampaignId } from "../lib/campaignPersistence";
 import { useCampaignContextStore } from "../store/campaignContext";
 import {
@@ -157,7 +158,7 @@ export default function LibraryPage() {
   const leftPaneRef = useRef(null);
   const pdfViewerRef = useRef(null);
   const libraryFileInputRef = useRef(null);
-  const selectionReadTimerRef = useRef(null);
+  const panScrollStartRef = useRef({ startX: 0, startScrollLeft: 0 });
   const [leftPaneWidth, setLeftPaneWidth] = useState(0);
   const [pdfNumPages, setPdfNumPages] = useState(0);
   const [pdfPage, setPdfPage] = useState(1);
@@ -167,11 +168,13 @@ export default function LibraryPage() {
   const [libraryImageUrls, setLibraryImageUrls] = useState([]);
   const [imageCopyToast, setImageCopyToast] = useState("");
   const imageToastTimerRef = useRef(null);
-  const [selectionText, setSelectionText] = useState("");
-  const [showToolbar, setShowToolbar] = useState(false);
-  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
+  const [selectedText, setSelectedText] = useState("");
+  const [imagesExpanded, setImagesExpanded] = useState(false);
+  const [spacePanActive, setSpacePanActive] = useState(false);
+  const [isPanDragging, setIsPanDragging] = useState(false);
   const [sendToast, setSendToast] = useState("");
   const sendToastTimerRef = useRef(null);
+  const [isClearingAllAdventure, setIsClearingAllAdventure] = useState(false);
 
   /** Raw parse JSON — workflow scenes from Parse Document */
   const [parsePayload, setParsePayload] = useState(null);
@@ -272,7 +275,6 @@ export default function LibraryPage() {
     return () => {
       if (imageToastTimerRef.current) clearTimeout(imageToastTimerRef.current);
       if (sendToastTimerRef.current) clearTimeout(sendToastTimerRef.current);
-      if (selectionReadTimerRef.current) clearTimeout(selectionReadTimerRef.current);
     };
   }, []);
 
@@ -446,7 +448,7 @@ export default function LibraryPage() {
     }
   };
 
-  const handleStartOver = () => {
+  const resetLibraryWizardState = useCallback(() => {
     setStep(1);
     setParseError("");
     setDocumentName("");
@@ -455,6 +457,8 @@ export default function LibraryPage() {
     setUploadedDocUrl("");
     setTextFileContent("");
     setUploadDocError("");
+    setUploadDocLoading(false);
+    setIsParsing(false);
     setPdfNumPages(0);
     setPdfPage(1);
     setPdfScale(1);
@@ -467,14 +471,41 @@ export default function LibraryPage() {
     setBuilderError("");
     setLibraryImageUrls([]);
     setImageCopyToast("");
-    setSelectionText("");
-    setShowToolbar(false);
-    setToolbarPos({ x: 0, y: 0 });
+    setSelectedText("");
+    setImagesExpanded(false);
+    setSpacePanActive(false);
+    setIsPanDragging(false);
     setSendToast("");
+    if (typeof window !== "undefined") {
+      window.getSelection()?.removeAllRanges();
+    }
+    pdfViewerRef.current?.mirrorSelectionText?.("");
     window.setTimeout(() => {
       if (libraryFileInputRef.current) libraryFileInputRef.current.value = "";
     }, 0);
+  }, []);
+
+  const handleStartOver = () => {
+    resetLibraryWizardState();
   };
+
+  const handleClearAllAdventureData = useCallback(async () => {
+    if (isClearingAllAdventure) return;
+    if (
+      !window.confirm(
+        "Clear all adventure data everywhere? This removes the library wizard, resets campaign state on every page, clears local caches, and deletes all saved campaigns on the server. This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    setIsClearingAllAdventure(true);
+    try {
+      await clearCampaignData({ deleteBackendCampaigns: true, xApiKey: apiKey.trim() });
+      resetLibraryWizardState();
+    } finally {
+      setIsClearingAllAdventure(false);
+    }
+  }, [apiKey, isClearingAllAdventure, resetLibraryWizardState]);
 
   const handleClearDocumentData = useCallback(() => {
     setFiles([]);
@@ -489,11 +520,12 @@ export default function LibraryPage() {
     setPdfFitScale(1);
     setPdfUseFit(true);
     setLibraryImageUrls([]);
-    setSelectionText("");
-    setShowToolbar(false);
+    setSelectedText("");
+    setImagesExpanded(false);
     if (typeof window !== "undefined") {
       window.getSelection()?.removeAllRanges();
     }
+    pdfViewerRef.current?.mirrorSelectionText?.("");
     window.setTimeout(() => {
       if (libraryFileInputRef.current) libraryFileInputRef.current.value = "";
     }, 0);
@@ -517,8 +549,8 @@ export default function LibraryPage() {
     if (typeof window !== "undefined") {
       window.getSelection()?.removeAllRanges();
     }
-    setSelectionText("");
-    setShowToolbar(false);
+    setSelectedText("");
+    pdfViewerRef.current?.mirrorSelectionText?.("");
   }, []);
 
   const emitSentToast = useCallback((label) => {
@@ -530,21 +562,93 @@ export default function LibraryPage() {
     }, 1500);
   }, []);
 
-  const handleDocumentMouseUp = useCallback((e) => {
-    if (selectionReadTimerRef.current) clearTimeout(selectionReadTimerRef.current);
-    const rect = e.currentTarget.getBoundingClientRect();
-    selectionReadTimerRef.current = window.setTimeout(() => {
-      const selected = window.getSelection()?.toString().trim() || "";
-      if (selected.length > 3) {
-        setSelectionText(selected);
-        setToolbarPos({ x: rect.left, y: rect.top });
-        setShowToolbar(true);
+  const handleMouseUp = useCallback(() => {
+    // Wait for browser to fully commit the selection
+    setTimeout(() => {
+      requestAnimationFrame(() => {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+        const range = selection.getRangeAt(0);
+        const text = range.toString().trim();
+        if (text.length > 3) {
+          setSelectedText(text);
+          pdfViewerRef.current?.mirrorSelectionText?.(text);
+        }
+      });
+    }, 100);
+  }, []);
+
+  useEffect(() => {
+    if (step !== 2) return undefined;
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => document.removeEventListener("mouseup", handleMouseUp);
+  }, [handleMouseUp, step]);
+
+  const handleLeftPaneKeyDown = useCallback(
+    (e) => {
+      if (docKind !== "pdf" || pdfNumPages <= 0) return;
+      if (e.key === " " || e.code === "Space") {
+        e.preventDefault();
+        setSpacePanActive(true);
         return;
       }
-      setSelectionText("");
-      setShowToolbar(false);
-    }, 10);
-  }, []);
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setPdfPage((p) => Math.max(1, p - 1));
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setPdfPage((p) => Math.min(pdfNumPages, p + 1));
+      }
+    },
+    [docKind, pdfNumPages]
+  );
+
+  useEffect(() => {
+    if (!spacePanActive) return undefined;
+    const onKeyUp = (ev) => {
+      if (ev.key === " " || ev.code === "Space") {
+        setSpacePanActive(false);
+      }
+    };
+    window.addEventListener("keyup", onKeyUp);
+    return () => window.removeEventListener("keyup", onKeyUp);
+  }, [spacePanActive]);
+
+  useEffect(() => {
+    if (!isPanDragging) return undefined;
+    const onMove = (ev) => {
+      const el = docScrollRef.current;
+      if (!el) return;
+      const { startX, startScrollLeft } = panScrollStartRef.current;
+      el.scrollLeft = startScrollLeft - (ev.clientX - startX);
+    };
+    const onUp = () => setIsPanDragging(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [isPanDragging]);
+
+  const handleDocScrollMouseDown = useCallback(
+    (e) => {
+      const el = docScrollRef.current;
+      if (!el) return;
+      if (e.button === 1) {
+        e.preventDefault();
+        panScrollStartRef.current = { startX: e.clientX, startScrollLeft: el.scrollLeft };
+        setIsPanDragging(true);
+        return;
+      }
+      if (spacePanActive && e.button === 0) {
+        e.preventDefault();
+        panScrollStartRef.current = { startX: e.clientX, startScrollLeft: el.scrollLeft };
+        setIsPanDragging(true);
+      }
+    },
+    [spacePanActive]
+  );
 
   const upsertSceneFromWorkflow = useCallback(
     (sceneDraft) => {
@@ -575,8 +679,8 @@ export default function LibraryPage() {
 
   const sendSelectionToField = useCallback(
     (field) => {
-      if (!activeWorkflow || !selectionText.trim()) return;
-      const raw = selectionText.trim();
+      if (!activeWorkflow || !selectedText.trim()) return;
+      const raw = selectedText.trim();
       let next = { ...activeWorkflow, saved: false };
 
       if (field === "readAloud") {
@@ -604,7 +708,7 @@ export default function LibraryPage() {
       upsertSceneFromWorkflow(next);
       clearSelectionToolbar();
     },
-    [activeWorkflow, selectionText, activeSceneIndex, upsertSceneFromWorkflow, clearSelectionToolbar, emitSentToast]
+    [activeWorkflow, selectedText, activeSceneIndex, upsertSceneFromWorkflow, clearSelectionToolbar, emitSentToast]
   );
 
   const allScenesSaved = workflowScenes.length > 0 && workflowScenes.every((w) => w.saved);
@@ -870,6 +974,21 @@ export default function LibraryPage() {
 
             {parseError && <div className="intake-error mt-2">{parseError}</div>}
 
+            <div className="mt-4 pt-3 border-t border-[#4f341f]">
+              <p className="text-[11px] text-[#9c7a3a] font-heading mb-2 leading-relaxed m-0">
+                Clear all adventure data app-wide: this resets campaign state on every page, removes local caches, and
+                deletes all saved campaigns on the server.
+              </p>
+              <button
+                type="button"
+                className="w-full text-xs font-heading px-3 py-2 rounded border border-red-800/70 bg-red-950/40 text-red-300 hover:bg-red-900/50 disabled:opacity-50"
+                onClick={() => void handleClearAllAdventureData()}
+                disabled={isClearingAllAdventure}
+              >
+                {isClearingAllAdventure ? "Clearing…" : "Clear all adventure data"}
+              </button>
+            </div>
+
             <div className="subhead mt-3">Queued files</div>
             <div className="intake-file-list">
               {files.length ? (
@@ -905,7 +1024,12 @@ export default function LibraryPage() {
             style={{ minHeight: "min(70dvh, 720px)", maxHeight: "calc(100dvh - 12rem)" }}
           >
             {/* Left — PDF / text viewer, selection toolbar, images */}
-            <section ref={leftPaneRef} className="flex flex-1 min-w-0 min-h-0 flex-col border-r border-[#5a3e1b]">
+            <section
+              ref={leftPaneRef}
+              className="flex flex-1 min-w-0 min-h-0 flex-col border-r border-[#5a3e1b] focus:outline-none"
+              tabIndex={0}
+              onKeyDown={handleLeftPaneKeyDown}
+            >
               <div className="shrink-0 border-b border-[#3a2510] bg-[#1a1008]">
                 <div className="px-3 py-2 flex flex-wrap items-center gap-2 justify-between">
                   <h2 className="font-heading text-sm text-[#e7c27a] tracking-wide m-0">Document content</h2>
@@ -948,9 +1072,7 @@ export default function LibraryPage() {
                       className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
                       disabled={pdfPage <= 1}
                       onClick={() => {
-                        const n = Math.max(1, pdfPage - 1);
-                        setPdfPage(n);
-                        pdfViewerRef.current?.scrollToPage(n);
+                        setPdfPage((p) => Math.max(1, p - 1));
                       }}
                     >
                       ← Prev
@@ -989,6 +1111,7 @@ export default function LibraryPage() {
                       onClick={() => {
                         setPdfUseFit(true);
                         setPdfScale(pdfFitScale);
+                        if (docScrollRef.current) docScrollRef.current.scrollLeft = 0;
                       }}
                     >
                       Fit
@@ -998,9 +1121,7 @@ export default function LibraryPage() {
                       className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
                       disabled={pdfPage >= pdfNumPages}
                       onClick={() => {
-                        const n = Math.min(pdfNumPages, pdfPage + 1);
-                        setPdfPage(n);
-                        pdfViewerRef.current?.scrollToPage(n);
+                        setPdfPage((p) => Math.min(pdfNumPages, p + 1));
                       }}
                     >
                       Next →
@@ -1010,44 +1131,52 @@ export default function LibraryPage() {
               </div>
               <div
                 ref={docScrollRef}
-                className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3"
-                onMouseUp={handleDocumentMouseUp}
+                className={[
+                  "flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-auto p-3 space-y-3",
+                  spacePanActive ? "cursor-grab" : "",
+                  isPanDragging ? "cursor-grabbing" : "",
+                ]
+                  .join(" ")
+                  .trim()}
+                onMouseDown={handleDocScrollMouseDown}
               >
-                {showToolbar && (
-                  <div
-                    className="sticky top-0 z-20 -mx-3 mb-3 px-3 py-2 bg-[#1a0f06] border-b border-[#2a1a08] flex flex-wrap items-center gap-2"
-                    data-toolbar-anchor={toolbarPos.x}
-                  >
-                    <button
-                      type="button"
-                      className="text-xs font-heading px-2 py-1 rounded border border-green-700/60 bg-green-950/40 text-green-300 hover:bg-green-900/50"
-                      onClick={() => sendSelectionToField("readAloud")}
-                    >
-                      Read-aloud
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-heading px-2 py-1 rounded border border-blue-700/60 bg-blue-950/40 text-blue-300 hover:bg-blue-900/50"
-                      onClick={() => sendSelectionToField("gmNotes")}
-                    >
-                      GM notes
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-heading px-2 py-1 rounded border border-red-700/60 bg-red-950/40 text-red-300 hover:bg-red-900/50"
-                      onClick={() => sendSelectionToField("newNpc")}
-                    >
-                      New NPC
-                    </button>
-                    <button
-                      type="button"
-                      className="text-xs font-heading px-2 py-1 rounded border border-amber-700/60 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50"
-                      onClick={() => sendSelectionToField("sceneTitle")}
-                    >
-                      Scene title
-                    </button>
+                {selectedText.length > 3 ? (
+                  <div className="sticky top-0 z-20 -mx-3 mb-3 px-3 py-2 bg-[#1a0f06] border-b border-[#2a1a08] flex flex-col gap-2">
+                    <p className="m-0 text-[11px] italic text-[#e7c27a] leading-snug break-words">
+                      {selectedText.length > 60 ? `${selectedText.slice(0, 60)}…` : selectedText}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-xs font-heading px-2 py-1 rounded border border-green-700/60 bg-green-950/40 text-green-300 hover:bg-green-900/50"
+                        onClick={() => sendSelectionToField("readAloud")}
+                      >
+                        Read-aloud
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-heading px-2 py-1 rounded border border-blue-700/60 bg-blue-950/40 text-blue-300 hover:bg-blue-900/50"
+                        onClick={() => sendSelectionToField("gmNotes")}
+                      >
+                        GM notes
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-heading px-2 py-1 rounded border border-red-700/60 bg-red-950/40 text-red-300 hover:bg-red-900/50"
+                        onClick={() => sendSelectionToField("newNpc")}
+                      >
+                        New NPC
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-heading px-2 py-1 rounded border border-amber-700/60 bg-amber-950/40 text-amber-300 hover:bg-amber-900/50"
+                        onClick={() => sendSelectionToField("sceneTitle")}
+                      >
+                        Scene title
+                      </button>
+                    </div>
                   </div>
-                )}
+                ) : null}
                 {!uploadedFile ? (
                   <div className="border-2 border-dashed border-[#4f341f] rounded-md p-4 text-center">
                     <p className="text-xs text-[#b89a62] leading-relaxed m-0 mb-3">
@@ -1073,11 +1202,10 @@ export default function LibraryPage() {
                   <LibraryPdfViewer
                     ref={pdfViewerRef}
                     file={uploadedFile}
+                    currentPage={pdfPage}
                     scale={pdfScale}
                     containerWidth={leftPaneWidth}
-                    scrollRootRef={docScrollRef}
                     onMeta={setPdfNumPages}
-                    onVisiblePageChange={setPdfPage}
                     onFitScaleChange={(nextFit) => {
                       const safeFit = Math.min(3, Math.max(0.5, nextFit || 1));
                       setPdfFitScale(safeFit);
@@ -1094,56 +1222,6 @@ export default function LibraryPage() {
                   </p>
                 )}
 
-                {libraryImageUrls.length > 0 ? (
-                  <div className="pt-4 border-t border-[#2a1a08] mt-2">
-                    <h3 className="font-heading text-xs text-[#e7c27a] tracking-wide uppercase mb-3 m-0">
-                      Extracted images — drag to scene
-                    </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                      {libraryImageUrls.map((url) => (
-                        <div
-                          key={url}
-                          className="relative rounded-[6px] overflow-hidden border border-solid border-[#2a1a08] bg-[#130c06]"
-                          draggable
-                          onDragStart={(e) => {
-                            e.dataTransfer.setData("imageUrl", url);
-                            e.dataTransfer.effectAllowed = "copy";
-                          }}
-                        >
-                          <div
-                            className="absolute left-1 top-1 z-10 flex items-center justify-center p-1 rounded bg-[#0e0a05]/90 text-[#7a6348] cursor-grab active:cursor-grabbing border border-[#2a1a08]"
-                            title="Drag to scene (drop target coming soon)"
-                            aria-hidden
-                          >
-                            <GripVertical size={14} />
-                          </div>
-                          <button
-                            type="button"
-                            className="block w-full p-0 m-0 border-0 bg-transparent cursor-pointer leading-none"
-                            onClick={() => copyImageUrlWithToast(url)}
-                            title="Copy image URL"
-                          >
-                            <img
-                              src={url}
-                              alt=""
-                              className="w-full h-[100px] object-cover rounded-[6px] block"
-                              draggable={false}
-                            />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                {imageCopyToast ? (
-                  <div
-                    className="sticky bottom-0 left-0 right-0 mt-3 py-2 px-3 rounded-md border border-[#5a3e1b] bg-[#1a1008] text-center text-xs font-heading text-[#e7c27a]"
-                    role="status"
-                  >
-                    {imageCopyToast}
-                  </div>
-                ) : null}
                 {sendToast ? (
                   <div
                     className="sticky bottom-0 left-0 right-0 mt-2 py-2 px-3 rounded-md border border-[#2a1a08] bg-[#130c06] text-center text-xs font-heading text-[#9dd08d]"
@@ -1153,6 +1231,68 @@ export default function LibraryPage() {
                   </div>
                 ) : null}
               </div>
+
+              {libraryImageUrls.length > 0 ? (
+                <div className="shrink-0 border-t border-[#3a2510] bg-[#1a1008]">
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-xs font-heading text-[#e7c27a] hover:bg-[#130c06] border-0 bg-transparent"
+                    onClick={() => setImagesExpanded((v) => !v)}
+                  >
+                    Extracted images ({libraryImageUrls.length})
+                  </button>
+                  {imagesExpanded ? (
+                    <div className="px-3 pb-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {libraryImageUrls.map((url) => (
+                          <div
+                            key={url}
+                            className="relative rounded-[6px] overflow-hidden border border-solid border-[#2a1a08] bg-[#130c06]"
+                            draggable
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("imageUrl", url);
+                              e.dataTransfer.effectAllowed = "copy";
+                            }}
+                          >
+                            <div
+                              className="absolute left-1 top-1 z-10 flex items-center justify-center p-1 rounded bg-[#0e0a05]/90 text-[#7a6348] cursor-grab active:cursor-grabbing border border-[#2a1a08]"
+                              title="Drag to scene (drop target coming soon)"
+                              aria-hidden
+                            >
+                              <GripVertical size={14} />
+                            </div>
+                            <button
+                              type="button"
+                              className="block w-full p-0 m-0 border-0 bg-transparent cursor-pointer leading-none"
+                              onClick={() => copyImageUrlWithToast(url)}
+                              title="Copy image URL"
+                            >
+                              <img
+                                src={url}
+                                alt=""
+                                className="w-full h-[100px] object-cover rounded-[6px] block"
+                                draggable={false}
+                              />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      {imageCopyToast ? (
+                        <div
+                          className="mt-2 py-2 px-3 rounded-md border border-[#5a3e1b] bg-[#1a1008] text-center text-xs font-heading text-[#e7c27a]"
+                          role="status"
+                        >
+                          {imageCopyToast}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : imageCopyToast ? (
+                    <div className="px-3 pb-2 text-center text-[11px] font-heading text-[#e7c27a]" role="status">
+                      {imageCopyToast}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </section>
 
             {/* Right — scene builder */}

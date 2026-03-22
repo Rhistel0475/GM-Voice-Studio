@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 const WORKER_SRC = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
@@ -36,50 +36,127 @@ function ensurePdfJs() {
  * file: File | null,
  * scale?: number,
  * containerWidth?: number,
- * scrollRootRef: React.RefObject<HTMLElement | null>,
  * onMeta?: (numPages: number) => void,
- * onVisiblePageChange?: (page: number) => void,
+ * currentPage?: number,
  * onFitScaleChange?: (scale: number) => void
  * }} props
  */
 const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
-  { file, scale = 1, containerWidth = 0, scrollRootRef, onMeta, onVisiblePageChange, onFitScaleChange },
+  { file, scale = 1, containerWidth = 0, currentPage = 1, onMeta, onFitScaleChange },
   ref
 ) {
   const hostRef = useRef(null);
+  const canvasRef = useRef(null);
+  const textLayerHostRef = useRef(null);
+  const pdfRef = useRef(null);
+  const pdfjsRef = useRef(null);
+  const renderTaskRef = useRef(null);
+  const renderPageRef = useRef(null);
+  const selectionMirrorRef = useRef(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const obsRef = useRef(null);
 
   useImperativeHandle(
     ref,
     () => ({
-      /** @param {number} p */
-      scrollToPage(p) {
-        const el = hostRef.current?.querySelector(`[data-page="${p}"]`);
-        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      cancelRender() {
+        if (renderTaskRef.current) {
+          renderTaskRef.current.cancel();
+          renderTaskRef.current = null;
+        }
+      },
+      /** @param {string} text */
+      mirrorSelectionText(text) {
+        if (selectionMirrorRef.current) {
+          selectionMirrorRef.current.value = text || "";
+        }
       },
     }),
     []
   );
 
+  const renderPage = useCallback(
+    async (pageNumber) => {
+      const canvas = canvasRef.current;
+      const textLayerHost = textLayerHostRef.current;
+      const pdfDoc = pdfRef.current;
+      const pdfjsLib = pdfjsRef.current;
+      if (!canvas || !textLayerHost || !pdfDoc || !pdfjsLib) return;
+
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+
+      const total = pdfDoc.numPages || 1;
+      const pageNum = Math.max(1, Math.min(total, Number(pageNumber) || 1));
+      textLayerHost.innerHTML = "";
+
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const viewport = page.getViewport({ scale });
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("Canvas 2D not available");
+
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        if (hostRef.current) {
+          hostRef.current.style.width = `${viewport.width}px`;
+        }
+
+        const renderTask = page.render({ canvasContext: ctx, viewport });
+        renderTaskRef.current = renderTask;
+        await renderTask.promise;
+
+        const textLayerDiv = document.createElement("div");
+        textLayerDiv.className = "textLayer";
+        textLayerDiv.style.cssText = `position:absolute;left:0;top:0;height:${viewport.height}px;width:${viewport.width}px;pointer-events:auto;`;
+        textLayerHost.appendChild(textLayerDiv);
+
+        const textContent = await page.getTextContent();
+        const textDivs = [];
+        const textTask = pdfjsLib.renderTextLayer({
+          textContent,
+          container: textLayerDiv,
+          viewport,
+          textDivs,
+        });
+        await textTask.promise;
+      } catch (e) {
+        if (e?.name !== "RenderingCancelledException") {
+          throw e;
+        }
+      }
+    },
+    [scale]
+  );
+
+  useEffect(() => {
+    renderPageRef.current = renderPage;
+  }, [renderPage]);
+
   useEffect(() => {
     const host = hostRef.current;
-    if (!file || !host) return;
+    const canvas = canvasRef.current;
+    const textLayerHost = textLayerHostRef.current;
+    if (!file || !host || !canvas || !textLayerHost) return;
 
     let cancelled = false;
-    host.innerHTML = "";
+    pdfRef.current = null;
     setLoading(true);
     setError("");
     onMeta?.(0);
-    obsRef.current?.disconnect();
 
     (async () => {
       try {
         const pdfjsLib = await ensurePdfJs();
+        pdfjsRef.current = pdfjsLib;
         const buf = await file.arrayBuffer();
         if (cancelled) return;
         const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+        pdfRef.current = pdf;
         if (cancelled) return;
         onMeta?.(pdf.numPages);
         const firstPage = await pdf.getPage(1);
@@ -87,74 +164,11 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
         const safePaneWidth = Math.max(1, Number(containerWidth) || 0);
         const fitScale = safePaneWidth > 1 ? safePaneWidth / Math.max(1, baseViewport.width) : 1;
         onFitScaleChange?.(fitScale);
-
-        for (let p = 1; p <= pdf.numPages; p++) {
-          const page = await pdf.getPage(p);
-          const viewport = page.getViewport({ scale });
-
-          const wrap = document.createElement("div");
-          wrap.dataset.page = String(p);
-          wrap.className = "library-pdf-page-wrap";
-          wrap.style.cssText = `position:relative;margin:0 auto 16px;width:${viewport.width}px;`;
-
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-          if (!ctx) throw new Error("Canvas 2D not available");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          canvas.style.display = "block";
-
-          const textLayerDiv = document.createElement("div");
-          textLayerDiv.className = "textLayer";
-          textLayerDiv.style.cssText = `position:absolute;left:0;top:0;height:${viewport.height}px;width:${viewport.width}px;pointer-events:auto;`;
-
-          await page.render({ canvasContext: ctx, viewport }).promise;
-          if (cancelled) return;
-
-          wrap.appendChild(canvas);
-
-          try {
-            const textContent = await page.getTextContent();
-            const textDivs = [];
-            const renderTask = pdfjsLib.renderTextLayer({
-              textContent,
-              container: textLayerDiv,
-              viewport,
-              textDivs,
-            });
-            await renderTask.promise;
-            if (cancelled) return;
-            wrap.appendChild(textLayerDiv);
-          } catch (tlErr) {
-            console.warn("PDF text layer failed", tlErr);
-          }
-
-          host.appendChild(wrap);
-        }
-
-        if (cancelled) return;
-        const root = scrollRootRef?.current;
-        if (root && host.childElementCount > 0) {
-          obsRef.current?.disconnect();
-          const pages = host.querySelectorAll(".library-pdf-page-wrap[data-page]");
-          const obs = new IntersectionObserver(
-            (entries) => {
-              const hits = entries
-                .filter((e) => e.isIntersecting)
-                .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-              if (hits[0]?.target?.dataset?.page) {
-                const pn = parseInt(hits[0].target.dataset.page, 10);
-                if (!Number.isNaN(pn)) onVisiblePageChange?.(pn);
-              }
-            },
-            { root, threshold: [0.12, 0.25, 0.45, 0.65] }
-          );
-          pages.forEach((el) => obs.observe(el));
-          obsRef.current = obs;
-          onVisiblePageChange?.(1);
-        }
+        await renderPageRef.current?.(1);
       } catch (e) {
-        if (!cancelled) setError(e?.message || "Failed to render PDF");
+        if (!cancelled && e?.name !== "RenderingCancelledException") {
+          setError(e?.message || "Failed to render PDF");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -162,20 +176,63 @@ const LibraryPdfViewer = forwardRef(function LibraryPdfViewer(
 
     return () => {
       cancelled = true;
-      obsRef.current?.disconnect();
-      obsRef.current = null;
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+      pdfRef.current?.destroy();
+      pdfRef.current = null;
+      textLayerHost.innerHTML = "";
     };
-  }, [file, scale, containerWidth, scrollRootRef, onMeta, onVisiblePageChange, onFitScaleChange]);
+  }, [file]);
+
+  useEffect(() => {
+    if (!file || !pdfRef.current) return;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        await renderPage(currentPage);
+      } catch (e) {
+        if (!cancelled && e?.name !== "RenderingCancelledException") {
+          setError(e?.message || "Failed to render PDF page");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      if (renderTaskRef.current) {
+        renderTaskRef.current.cancel();
+        renderTaskRef.current = null;
+      }
+    };
+  }, [currentPage, scale]);
 
   if (!file) return null;
 
   return (
     <div className="library-pdf-root w-full">
       {loading ? (
-        <p className="text-xs text-[#9c7a3a] font-heading m-0 animate-pulse">Rendering PDF…</p>
+        <p className="text-xs text-[#e7c27a] font-heading m-0 animate-pulse">Loading page...</p>
       ) : null}
       {error ? <p className="text-xs text-amber-700/90 m-0">{error}</p> : null}
-      <div ref={hostRef} className="library-pdf-pages mx-auto" />
+      <div ref={hostRef} className="library-pdf-page-wrap mx-auto relative">
+        <canvas ref={canvasRef} className="block" />
+        <div ref={textLayerHostRef} />
+        <textarea
+          ref={selectionMirrorRef}
+          readOnly
+          tabIndex={-1}
+          aria-hidden
+          className="absolute left-0 top-0 h-full w-full opacity-0 pointer-events-none resize-none border-0 p-0 m-0"
+        />
+      </div>
     </div>
   );
 });
