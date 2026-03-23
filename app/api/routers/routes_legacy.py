@@ -1277,6 +1277,13 @@ class AnalyzePageBody(BaseModel):
     image_url: str = ""
 
 
+class ParsePdfChunkBody(BaseModel):
+    chunk_title: str = ""
+    start_page: int = 1
+    end_page: int = 0
+    campaign_system: str = "pathfinder1e"
+
+
 _ANALYZE_PAGE_PROMPT = """You are analyzing a single page from a Pathfinder tabletop RPG adventure module (Kingmaker style).
 Extract ALL relevant content from this page. Do not skip anything.
 
@@ -1593,175 +1600,6 @@ async def analyze_chapter(
         raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
     except Exception as e:
         logging.exception("analyze-chapter failed for %r: %s", body.chapter_title, e)
-        return {"error": str(e), "raw": ""}
-
-
-# ── Parse PDF chunk via native document upload to Claude ─────────────────────
-
-_MAX_CLAUDE_PDF_CHUNK_PAGES = 100
-
-
-def _extract_pdf_page_range_for_claude(
-    pdf_bytes: bytes,
-    start_page: int,
-    end_page: int,
-) -> tuple[bytes, str, bool]:
-    """
-    Build a smaller PDF containing only the requested 1-based page range.
-    Returns (bytes, human_note, used_slice). On failure returns (original, reason, False).
-    """
-    if not pdf_bytes:
-        return pdf_bytes, "empty", False
-    src = None
-    dst = None
-    try:
-        src = fitz.open(stream=pdf_bytes, filetype="pdf")
-        if getattr(src, "needs_pass", False):
-            if not src.authenticate(""):
-                return pdf_bytes, "encrypted_needs_password", False
-        n = src.page_count
-        if n < 1:
-            return pdf_bytes, "no_pages", False
-        start_idx = max(0, min(int(start_page) - 1, n - 1))
-        if end_page and int(end_page) > 0:
-            end_idx = min(int(end_page) - 1, n - 1)
-        else:
-            end_idx = n - 1
-        if start_idx > end_idx:
-            return pdf_bytes, "bad_range", False
-        span = end_idx - start_idx + 1
-        truncated = False
-        if span > _MAX_CLAUDE_PDF_CHUNK_PAGES:
-            end_idx = start_idx + _MAX_CLAUDE_PDF_CHUNK_PAGES - 1
-            truncated = True
-        dst = fitz.open()
-        dst.insert_pdf(src, from_page=start_idx, to_page=end_idx)
-        try:
-            out = dst.tobytes(deflate=True, garbage=3, clean=True)
-        except TypeError:
-            out = dst.tobytes()
-        note = f"sliced_pages_{start_idx + 1}-{end_idx + 1}"
-        if truncated:
-            note += f"_truncated_max_{_MAX_CLAUDE_PDF_CHUNK_PAGES}"
-        return out, note, True
-    except Exception as e:
-        logging.warning("PDF page extract for Claude failed, using full file: %s", e)
-        return pdf_bytes, f"slice_failed:{e}", False
-    finally:
-        if dst is not None:
-            dst.close()
-        if src is not None:
-            src.close()
-
-
-@router.post("/adventure/parse-pdf-chunk")
-@limiter.limit("10/minute")
-async def parse_pdf_chunk(
-    request: Request,
-    pdf_file: UploadFile = File(...),
-    chunk_title: str = Form(""),
-    start_page: int = Form(1),
-    end_page: int = Form(0),
-    campaign_system: str = Form("pathfinder1e"),
-    _auth: None = Depends(verify_api_key),
-):
-    """Send a PDF directly to Claude as a native document for structured extraction."""
-    from app.core.config import ANTHROPIC_API_KEY
-
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(503, "ANTHROPIC_API_KEY is not set. Add it to .env.")
-
-    pdf_bytes = await pdf_file.read()
-    logging.info(
-        "parse-pdf-chunk: title=%r, start=%d, end=%d, pdf_size=%d bytes",
-        chunk_title, start_page, end_page, len(pdf_bytes),
-    )
-
-    if not pdf_bytes:
-        return {"error": "Uploaded PDF is empty."}
-
-    payload_bytes, slice_note, used_slice = _extract_pdf_page_range_for_claude(
-        pdf_bytes, start_page, end_page
-    )
-    logging.info(
-        "parse-pdf-chunk: slice_note=%s, used_slice=%s, payload_size=%d",
-        slice_note, used_slice, len(payload_bytes),
-    )
-
-    if slice_note == "encrypted_needs_password":
-        return {
-            "error": "This PDF is password-protected. Remove security in a PDF app and upload again.",
-            "raw": "",
-        }
-
-    pdf_b64 = base64.b64encode(payload_bytes).decode("utf-8")
-
-    if used_slice:
-        orig_hi = end_page if end_page and int(end_page) > 0 else None
-        range_desc = f"original module pages {start_page}" + (
-            f"–{orig_hi}" if orig_hi else " through end of document"
-        )
-        page_instruction = (
-            f"The attached PDF is a server-side extract ({range_desc}). "
-            "It contains only those pages — analyze the entire attachment."
-        )
-    elif end_page > 0:
-        page_instruction = f"Focus ONLY on pages {start_page} to {end_page} of this PDF. Ignore all other pages."
-    else:
-        page_instruction = f"Start from page {start_page} of this PDF."
-
-    prompt = f"""{page_instruction}
-Chapter/Section being extracted: "{chunk_title or 'Full document'}"
-
-{_ANALYZE_PAGE_PROMPT}"""
-
-    raw_text = ""
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=4000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "document",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "application/pdf",
-                            "data": pdf_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt,
-                    },
-                ],
-            }],
-        )
-        raw_text = message.content[0].text if message.content else ""
-        json_match = re.search(r"\{[\s\S]*\}", raw_text)
-        if json_match:
-            parsed = json.loads(json_match.group())
-        else:
-            parsed = json.loads(raw_text)
-        return parsed
-    except json.JSONDecodeError:
-        return {"error": "Could not parse Claude response as JSON", "raw": raw_text[:2000]}
-    except anthropic.AuthenticationError as e:
-        raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
-    except anthropic.BadRequestError as e:
-        logging.warning("parse-pdf-chunk Anthropic 400: %s", e)
-        hint = (
-            "Claude could not read this PDF. Try: (1) set an explicit End page so only a smaller range is sent, "
-            "(2) export or print-to-PDF from your viewer to flatten the file, "
-            "(3) remove password protection. "
-            f"Details: {e}"
-        )
-        return {"error": hint, "raw": str(e)}
-    except Exception as e:
-        logging.exception("parse-pdf-chunk failed for %r: %s", chunk_title, e)
         return {"error": str(e), "raw": ""}
 
 
@@ -3028,3 +2866,83 @@ async def npc_generate_dialogue(request: Request, body: GenerateNpcDialogueBody,
         "audio_base64": _audio_to_wav_base64(audio, sr),
         "mime_type": "audio/wav",
     }
+
+
+@router.post("/adventure/parse-pdf-chunk")
+@limiter.limit("10/minute")
+async def parse_pdf_chunk(
+    request: Request,
+    pdf_file: UploadFile = File(...),
+    chunk_title: str = Form(""),
+    start_page: int = Form(1),
+    end_page: int = Form(0),
+    campaign_system: str = Form("pathfinder1e"),
+    _auth: None = Depends(verify_api_key),
+):
+    """Send a PDF chunk directly to Claude as a native document for structured extraction."""
+    from app.core.config import ANTHROPIC_API_KEY
+    import anthropic
+
+    if not ANTHROPIC_API_KEY:
+        raise HTTPException(503, "ANTHROPIC_API_KEY is not set.")
+
+    pdf_bytes = await pdf_file.read()
+    if not pdf_bytes:
+        raise HTTPException(400, "PDF file is empty.")
+
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+
+    logging.info(
+        "parse-pdf-chunk: title=%s pages=%s-%s size=%d bytes",
+        chunk_title, start_page, end_page, len(pdf_bytes)
+    )
+
+    if end_page > 0:
+        page_instruction = f"Focus ONLY on pages {start_page} to {end_page} of this PDF. Ignore all other pages."
+    else:
+        page_instruction = f"Start from page {start_page} of this PDF and extract all adventure content."
+
+    prompt = f"""{page_instruction}
+Chapter or section being extracted: "{chunk_title or 'Full document'}"
+
+{_ANALYZE_PAGE_PROMPT}"""
+
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4000,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": pdf_b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ],
+                }
+            ],
+        )
+        raw_text = message.content[0].text if message.content else ""
+        json_match = re.search(r"\{[\s\S]*\}", raw_text)
+        if json_match:
+            parsed = json.loads(json_match.group())
+        else:
+            parsed = json.loads(raw_text)
+        return parsed
+    except json.JSONDecodeError:
+        return {"error": "Could not parse Claude response as JSON", "raw": raw_text[:2000]}
+    except anthropic.AuthenticationError as e:
+        raise HTTPException(401, f"Invalid ANTHROPIC_API_KEY: {e}")
+    except Exception as e:
+        logging.exception("parse-pdf-chunk failed: %s", e)
+        return {"error": str(e), "raw": ""}

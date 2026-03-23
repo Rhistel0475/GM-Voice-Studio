@@ -134,9 +134,16 @@ export default function LibraryPage() {
   const leftPaneRef = useRef(null);
   const [leftPaneWidth, setLeftPaneWidth] = useState(0);
 
-  const [chunks, setChunks] = useState([]);
-  const [isAnalyzingChunks, setIsAnalyzingChunks] = useState(false);
-  const [chunkProgress, setChunkProgress] = useState("");
+  const [chunkRows, setChunkRows] = useState([{ id: createId("chunk"), title: "", startPage: 1, endPage: 0 }]);
+  const [chunkProgress, setChunkProgress] = useState({ current: 0, total: 0 });
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState("");
+
+  const textPageCount = useMemo(
+    () => (textFileContent ? Math.max(1, Math.ceil(textFileContent.length / TEXT_PAGE_SIZE)) : 0),
+    [textFileContent]
+  );
+  const [textPage, setTextPage] = useState(1);
 
   /* Step 3 — review state */
   const [reviewItems, setReviewItems] = useState([]);
@@ -241,6 +248,7 @@ export default function LibraryPage() {
       setTextFileContent("");
       setPdfNumPages(0);
       setPdfPage(1);
+      setTextPage(1);
 
       if (!list.length) { setUploadedFile(null); return; }
       const first = list[0];
@@ -346,123 +354,57 @@ export default function LibraryPage() {
     [files, requireApiKey, apiKey, selectedSystemId, authFetch, deriveDocumentName]
   );
 
-  /* ── Go to chunk mode Step 2 ─────────────────────────────────────── */
+  /* ── Go to Step 2 (section builder) ────────────────────────────── */
 
-  const goToChunkMode = useCallback(() => {
+  const goToPageMode = useCallback(() => {
     if (!files.length) { setParseError("Select a file first."); return; }
-    setChunks([{ _id: createId("chunk"), title: documentName || "", startPage: 1, endPage: 0 }]);
-    setIsAnalyzingChunks(false);
-    setChunkProgress("");
-    setPdfPage(1);
+    setAnalyzeError("");
+    setChunkRows([{ id: createId("chunk"), title: documentName || "", startPage: 1, endPage: 0 }]);
     setStep(2);
   }, [files, documentName]);
 
-  /* ── Chunk table editing ───────────────────────────────────────── */
-
-  const updateChunk = useCallback((id, patch) => {
-    setChunks((prev) => prev.map((c) => (c._id === id ? { ...c, ...patch } : c)));
-  }, []);
-  const removeChunk = useCallback((id) => {
-    setChunks((prev) => prev.filter((c) => c._id !== id));
-  }, []);
-  const addBlankChunk = useCallback(() => {
-    setChunks((prev) => [...prev, { _id: createId("chunk"), title: "", startPage: 1, endPage: 0 }]);
-  }, []);
-
-  /* ── Analyze all chunks (sequential, sends PDF to Claude) ──────── */
-
-  const analyzeAllChunks = useCallback(async () => {
-    const valid = chunks.filter((c) => c.title);
-    if (!valid.length || !uploadedFile) return;
-    setIsAnalyzingChunks(true);
-    setChunkProgress(`Analyzing section 1 of ${valid.length}…`);
-
-    const allItems = [];
-    for (let i = 0; i < valid.length; i++) {
-      const chunk = valid[i];
-      setChunkProgress(`Analyzing section ${i + 1} of ${valid.length} — ${chunk.title}…`);
+  const runChunkAnalysis = useCallback(async () => {
+    if (!uploadedFile || chunkRows.length === 0) return;
+    setIsAnalyzing(true);
+    setAnalyzeError("");
+    setChunkProgress({ current: 0, total: chunkRows.length });
+    const results = [];
+    for (let i = 0; i < chunkRows.length; i++) {
+      const row = chunkRows[i];
+      setChunkProgress({ current: i + 1, total: chunkRows.length });
       try {
         const formData = new FormData();
         formData.append("pdf_file", uploadedFile);
-        formData.append("chunk_title", chunk.title);
-        formData.append("start_page", String(chunk.startPage || 1));
-        formData.append("end_page", String(chunk.endPage || 0));
+        formData.append("chunk_title", row.title || `Section ${i + 1}`);
+        formData.append("start_page", String(row.startPage || 1));
+        formData.append("end_page", String(row.endPage || 0));
         formData.append("campaign_system", selectedSystemId);
-
         const res = await authFetch("/adventure/parse-pdf-chunk", { method: "POST", body: formData });
-        const raw = await res.text();
-        let data;
-        try {
-          data = raw ? JSON.parse(raw) : {};
-        } catch {
-          allItems.push({
-            id: createId("rv_scene"), title: chunk.title, readAloud: "",
-            gmNotes: `Analysis error: Bad response (${res.status}) — ${raw.slice(0, 280)}`, type: "exploration",
-            npcs: [], monsters: [], imageUrl: "", status: "error",
-            _error: "Invalid JSON from server",
-          });
-          continue;
-        }
-        if (!res.ok) {
-          const detail = data?.detail ?? data?.error ?? raw;
-          const msg = typeof detail === "string" ? detail : JSON.stringify(detail);
-          allItems.push({
-            id: createId("rv_scene"), title: chunk.title, readAloud: "",
-            gmNotes: `Analysis error: ${msg}`, type: "exploration",
-            npcs: [], monsters: [], imageUrl: "", status: "error", _error: msg,
-          });
-          continue;
-        }
-        console.log(`CHUNK ${i + 1} (${chunk.title}) RESPONSE:`, JSON.stringify(data, null, 2));
-
+        const data = await res.json();
         if (data.error) {
-          allItems.push({
-            id: createId("rv_scene"), title: chunk.title, readAloud: "",
-            gmNotes: `Analysis error: ${data.error}`, type: "exploration",
-            npcs: [], monsters: [], imageUrl: "", status: "error", _error: data.error,
-          });
+          results.push({ id: createId("rv_scene"), title: row.title || `Section ${i + 1}`, readAloud: "", gmNotes: `Analysis error: ${data.error}`, type: "exploration", npcs: [], monsters: [], imageUrl: "", status: "error" });
         } else {
-          allItems.push({
+          results.push({
             id: createId("rv_scene"),
-            title: data.scene_title || chunk.title || "Untitled",
+            title: data.scene_title || row.title || `Section ${i + 1}`,
             readAloud: data.read_aloud || "",
             gmNotes: data.gm_notes || "",
-            type: SCENE_TYPES.includes(data.scene_type) ? data.scene_type : "exploration",
-            npcs: (data.npcs || []).map((n) => ({
-              id: createId("rv_npc"), name: n.name || "", role: n.role || "",
-            })),
-            monsters: (data.monsters || []).map((m) => ({
-              id: createId("rv_monster"), name: m.name || "", hp: m.hp || "",
-              ac: m.ac ? String(m.ac) : "", cr: m.cr || "",
-            })),
+            type: data.scene_type || "exploration",
+            npcs: (data.npcs || []).map(n => ({ id: createId("rv_npc"), name: n.name || "", role: n.role || "" })),
+            monsters: (data.monsters || []).map(m => ({ id: createId("rv_monster"), name: m.name || "", hp: m.hp || "", ac: m.ac ? String(m.ac) : "", cr: m.cr || "" })),
             imageUrl: "",
             status: "pending",
           });
         }
       } catch (err) {
-        const isNet =
-          err?.name === "TypeError" ||
-          (typeof err?.message === "string" &&
-            (err.message.includes("Failed to fetch") ||
-              err.message.includes("NetworkError") ||
-              err.message.includes("Load failed")));
-        const msg = isNet
-          ? "Network error — ensure the API is running (default port 7862). With npm run dev, the Vite proxy must reach the backend; PDF + Claude can take several minutes."
-          : err.message || "Unknown error";
-        allItems.push({
-          id: createId("rv_scene"), title: chunk.title, readAloud: "",
-          gmNotes: `Analysis error: ${msg}`, type: "exploration",
-          npcs: [], monsters: [], imageUrl: "", status: "error", _error: msg,
-        });
+        results.push({ id: createId("rv_scene"), title: row.title || `Section ${i + 1}`, readAloud: "", gmNotes: `Network error: ${err.message}`, type: "exploration", npcs: [], monsters: [], imageUrl: "", status: "error" });
       }
     }
-
-    setReviewItems(allItems);
+    setIsAnalyzing(false);
+    setReviewItems(results);
     setActiveReviewIdx(0);
-    setIsAnalyzingChunks(false);
-    setChunkProgress("");
     setStep(3);
-  }, [chunks, uploadedFile, selectedSystemId, authFetch]);
+  }, [uploadedFile, chunkRows, selectedSystemId, authFetch]);
 
   /* ── PDF meta callback ─────────────────────────────────────────── */
 
@@ -481,7 +423,11 @@ export default function LibraryPage() {
     setReviewItems([]); setActiveReviewIdx(0);
     setTemplateSectionOpen(false); setTemplateCopyToast("");
     setPdfNumPages(0); setPdfPage(1); setPdfScale(1); setPdfFitScale(1);
-    setChunks([]); setIsAnalyzingChunks(false); setChunkProgress("");
+    setTextPage(1);
+    setChunkRows([{ id: createId("chunk"), title: "", startPage: 1, endPage: 0 }]);
+    setChunkProgress({ current: 0, total: 0 });
+    setIsAnalyzing(false);
+    setAnalyzeError("");
     window.setTimeout(() => { if (libraryFileInputRef.current) libraryFileInputRef.current.value = ""; }, 0);
   }, []);
 
@@ -632,7 +578,7 @@ export default function LibraryPage() {
               <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={() => runParse("/adventure/parse")} disabled={isParsing || !files.length}>
                 Quick Parse (no AI)
               </button>
-              <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={goToChunkMode} disabled={!files.length || docKind !== "pdf"}>
+              <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={goToPageMode} disabled={!files.length || docKind !== "pdf"}>
                 Build scenes by section →
               </button>
               <p className="text-[11px] text-[#9c7a3a] font-heading m-0 leading-relaxed text-center">
@@ -662,24 +608,16 @@ export default function LibraryPage() {
         <div className="flex flex-col flex-1 min-h-0 min-w-0 gap-2">
           <div className="flex flex-wrap gap-2 items-center justify-between shrink-0">
             <button type="button" className="nav-glyph-btn intake-parse-btn" onClick={handleStartOver}>← Back to upload</button>
-            <button type="button" className="nav-glyph-btn intake-parse-btn is-active" onClick={analyzeAllChunks} disabled={isAnalyzingChunks || !chunks.some((c) => c.title)}>
-              {isAnalyzingChunks ? "Analyzing…" : "Analyze all sections →"}
+            <button type="button" className="nav-glyph-btn intake-parse-btn is-active" onClick={runChunkAnalysis} disabled={isAnalyzing || chunkRows.length === 0}>
+              {isAnalyzing ? `Analyzing section ${chunkProgress.current} of ${chunkProgress.total}…` : "Analyze all sections →"}
             </button>
           </div>
 
-          {isAnalyzingChunks && chunkProgress && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-[#5a3e1b] bg-[#1a1008]">
-              <img src="/static/img/ParsingWizard.png" alt="" style={{ height: 40 }} draggable={false} className="rounded opacity-80" />
-              <p className="font-heading text-sm text-[#e7c27a] m-0 library-loading-dots">
-                {chunkProgress}
-                <span className="ld-dot">.</span><span className="ld-dot">.</span><span className="ld-dot">.</span>
-              </p>
-            </div>
-          )}
+          {analyzeError && <div className="intake-error text-xs">{analyzeError}</div>}
 
           <div className="flex flex-1 min-h-0 min-w-0 gap-0 border border-[#5a3e1b] rounded-lg overflow-hidden bg-[#120a04]" style={{ minHeight: "min(70dvh, 720px)", maxHeight: "calc(100dvh - 12rem)" }}>
 
-            {/* Left — PDF viewer */}
+            {/* Left — PDF viewer for reference */}
             <section ref={leftPaneRef} className="flex flex-1 min-w-0 min-h-0 flex-col border-r border-[#5a3e1b]">
               <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-3">
                 {docKind === "pdf" && uploadedFile ? (
@@ -692,68 +630,77 @@ export default function LibraryPage() {
                     onMeta={handlePdfMeta}
                     onFitScaleChange={(v) => setPdfFitScale(Math.min(3, Math.max(0.5, v || 1)))}
                   />
+                ) : textFileContent ? (
+                  <div className="rounded border border-[#2a1a08] bg-[#130c06] p-3 text-sm text-[#e8d4a8] leading-relaxed whitespace-pre-wrap">
+                    {textFileContent.slice((textPage - 1) * TEXT_PAGE_SIZE, textPage * TEXT_PAGE_SIZE)}
+                  </div>
                 ) : (
-                  <p className="text-xs text-[#7a6348] italic m-0">No PDF loaded.</p>
+                  <p className="text-xs text-[#7a6348] italic m-0">No document loaded.</p>
                 )}
               </div>
-              <div className="shrink-0 px-3 py-2 border-t border-[#3a2510] bg-[#1a1008] flex items-center gap-2 justify-center">
-                <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
-                  disabled={pdfPage <= 1} onClick={() => setPdfPage((p) => Math.max(1, p - 1))}>
+              <div className="shrink-0 px-3 py-2 border-t border-[#3a2510] bg-[#1a1008] flex items-center gap-2">
+                <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] disabled:opacity-40"
+                  disabled={(docKind === "pdf" ? pdfPage : textPage) <= 1}
+                  onClick={() => { if (docKind === "pdf") setPdfPage(p => Math.max(1, p - 1)); else setTextPage(p => Math.max(1, p - 1)); }}>
                   ← Prev
                 </button>
                 <span className="text-xs font-heading text-[#d8b36f]">
-                  Page {pdfPage} of {pdfNumPages || "?"}
+                  Page {docKind === "pdf" ? pdfPage : textPage} of {docKind === "pdf" ? pdfNumPages : textPageCount}
                 </span>
-                <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] hover:border-[#9b7440] disabled:opacity-40"
-                  disabled={pdfPage >= pdfNumPages} onClick={() => setPdfPage((p) => Math.min(pdfNumPages, p + 1))}>
+                <button type="button" className="text-xs font-heading px-2 py-1 rounded border border-[#5a3e1b] bg-[#130c06] text-[#e7c27a] disabled:opacity-40"
+                  disabled={(docKind === "pdf" ? pdfPage : textPage) >= (docKind === "pdf" ? pdfNumPages : textPageCount)}
+                  onClick={() => { if (docKind === "pdf") setPdfPage(p => Math.min(pdfNumPages, p + 1)); else setTextPage(p => Math.min(textPageCount, p + 1)); }}>
                   Next →
                 </button>
+                <span className="ml-auto text-[10px] text-[#5a3e1b]">Use page numbers to fill in sections →</span>
               </div>
             </section>
 
-            {/* Right — Chunk builder */}
+            {/* Right — section/chunk builder */}
             <section className="flex w-[400px] shrink-0 min-h-0 flex-col bg-[#1a1008]">
-              <div className="shrink-0 px-4 py-3 border-b border-[#3a2510]">
-                <p className="text-xs text-[#b89a62] m-0 leading-relaxed">
-                  Define sections to extract — Claude will read the actual PDF for each one.
-                </p>
+              <div className="shrink-0 px-3 py-2 border-b border-[#3a2510]">
+                <p className="text-[10px] uppercase tracking-wider text-[#9c7a3a] font-heading m-0">Define sections — Claude reads the actual PDF for each one</p>
               </div>
-
-              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-3">
-                {chunks.map((chunk, i) => (
-                  <div key={chunk._id} className="rounded-md border border-[#3a2510] bg-[#0e0804] p-3 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase tracking-wider text-[#9c7a3a] font-heading">Section {i + 1}</span>
-                      <button type="button" className="text-xs text-[#a08060] hover:text-[#e7c27a]" onClick={() => removeChunk(chunk._id)} title="Remove section">×</button>
-                    </div>
-                    <input type="text" value={chunk.title} placeholder="e.g. Oleg's Trading Post"
-                      onChange={(e) => updateChunk(chunk._id, { title: e.target.value })}
-                      className="w-full bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1.5 text-xs text-[#e7c27a]" />
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+                {chunkRows.map((row, i) => (
+                  <div key={row.id} className="flex flex-col gap-1.5 p-2 rounded border border-[#3a2510] bg-[#130c06]">
                     <div className="flex items-center gap-2">
-                      <label className="flex items-center gap-1.5 text-[10px] text-[#9c7a3a] font-heading">
-                        Start
-                        <input type="number" min={1} value={chunk.startPage}
-                          onChange={(e) => updateChunk(chunk._id, { startPage: Math.max(1, Number(e.target.value) || 1) })}
-                          className="w-16 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] text-center" />
-                      </label>
-                      <label className="flex items-center gap-1.5 text-[10px] text-[#9c7a3a] font-heading">
-                        End
-                        <input type="number" min={0} value={chunk.endPage}
-                          onChange={(e) => updateChunk(chunk._id, { endPage: Math.max(0, Number(e.target.value) || 0) })}
-                          className="w-16 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] text-center" />
-                      </label>
-                      <span className="text-[9px] text-[#6a5838]">{chunk.endPage ? "" : "(0 = all)"}</span>
+                      <input
+                        type="text"
+                        className="flex-1 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] font-heading"
+                        placeholder="Section title e.g. Oleg's Trading Post"
+                        value={row.title}
+                        onChange={e => setChunkRows(prev => prev.map((r, idx) => idx === i ? { ...r, title: e.target.value } : r))}
+                      />
+                      <button type="button" className="text-[#7a5a2a] hover:text-[#e7c27a] text-sm shrink-0" onClick={() => setChunkRows(prev => prev.filter((_, idx) => idx !== i))}>×</button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-[10px] text-[#7a5a2a] font-heading">Pages</label>
+                      <input
+                        type="number"
+                        min={1}
+                        className="w-16 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] text-center"
+                        placeholder="From"
+                        value={row.startPage}
+                        onChange={e => setChunkRows(prev => prev.map((r, idx) => idx === i ? { ...r, startPage: Number(e.target.value) } : r))}
+                      />
+                      <span className="text-[#5a3e1b] text-xs">to</span>
+                      <input
+                        type="number"
+                        min={1}
+                        className="w-16 bg-[#1a0f06] border border-[#5a3e1b] rounded px-2 py-1 text-xs text-[#e7c27a] text-center"
+                        placeholder="To"
+                        value={row.endPage}
+                        onChange={e => setChunkRows(prev => prev.map((r, idx) => idx === i ? { ...r, endPage: Number(e.target.value) } : r))}
+                      />
                     </div>
                   </div>
                 ))}
-
-                <button type="button" className="w-full text-xs font-heading text-[#d8b36f] border border-dashed border-[#6b5030] rounded px-3 py-2 hover:border-[#9b7440]" onClick={addBlankChunk}>
+                <button type="button"
+                  className="w-full text-xs font-heading text-[#d8b36f] border border-dashed border-[#6b5030] rounded px-2 py-2 hover:border-[#9b7440]"
+                  onClick={() => setChunkRows(prev => [...prev, { id: createId("chunk"), title: "", startPage: 1, endPage: pdfNumPages || 10 }])}>
                   + Add section
                 </button>
-
-                <p className="text-[10px] text-[#6a5838] italic m-0 leading-relaxed">
-                  Tip — use the PDF viewer on the left to find page numbers for each chapter.
-                </p>
               </div>
             </section>
           </div>
