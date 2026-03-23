@@ -1284,56 +1284,36 @@ class ParsePdfChunkBody(BaseModel):
     campaign_system: str = "pathfinder1e"
 
 
-_ANALYZE_PAGE_PROMPT = """You are analyzing a single page from a Pathfinder tabletop RPG adventure module (Kingmaker style).
-Extract ALL relevant content from this page. Do not skip anything.
+_ANALYZE_PAGE_PROMPT = """You are extracting GM prep data from a Pathfinder adventure module (Kingmaker style).
 
-This module uses these specific formats — learn them:
+CRITICAL RULES — do not skip these:
 
-READ-ALOUD TEXT:
-- Opening descriptive paragraphs at the start of a location section
-- Text after a location header like "Oleg's Trading Post" or "Q. Rickety Bridge (Landmark)"
-- Any text describing what players see, hear, or experience
-- Example: "Oleg's trading post is surrounded by a wooden palisade that stands 10 feet high. At each corner of the palisade are 20-foot-square watchtowers..."
+1. ROOM KEYS go in gm_notes. This module uses lettered keys like "A1. Market Yard", "A2. Guesthouse", "A5. Middens". Copy ALL of them into gm_notes preserving their labels. Example gm_notes output: "A1. Market Yard: This open area is where trade takes place. A2. Guesthouse: Oleg rents beds at 5sp/night. A5. Middens: Three 3-foot-deep composting pits."
 
-GM NOTES:
-- Lettered/numbered location keys like "A5. Middens: Three 3-foot-deep composting pits"
-- Mechanical info: DCs, trap stats, locked doors, hidden items
-- Tactical notes the GM needs but players don't hear
-- Example: "A8. Office: This room is where Oleg keeps his ledgers. DC 15 Perception to notice the hidden compartment."
+2. VILLAIN STAT BLOCKS go in monsters. Any NPC with a CR rating, XP value, and AC/HP stats is a monster entry even if they have a name and personality. Examples: "Happs Bydon CR 1/2, XP 200, Male human ranger 1, LE, AC 14, HP 11". "Kressle CR 2, XP 600, Female human ranger 2, CE".
 
-NPCS:
-- Named characters with descriptions and personality
-- Format: Name (alignment, race, class, level) — any details given
-- Example: "Oleg Leveton (CG male human expert 2) — stern and unimaginative, owns the trading post"
-- Example: "Svetlana (NG female human expert 2) — Oleg's wife, pleaded with him to abandon the post"
-- Example: "Jhod Kavken — traveling priest, has a recurring dream about a temple"
+3. TRAPS go in monsters. Any entry with "CR X", Perception DC, and Disable Device DC is a trap monster. Example: "Bear Trap CR 1, XP 400, mechanical, Perception DC 15, Disable Device DC 20".
 
-MONSTERS / VILLAINS:
-- Stat block headers like "HAPPS BYDON CR 1/2" or "BEAR TRAP CR 1"
-- Always include: name, CR, XP, AC, HP, type
-- Villains are NPCs with combat stat blocks (LE/CE/NE alignment usually)
-- Traps count as monsters — extract them with their trigger and effect
-- Example villain: "Happs Bydon, CR 1/2, XP 200, Male human ranger 1, LE, AC 14, touch 12"
-- Example trap: "Bear Trap, CR 1, XP 400, mechanical, Perception DC 15, Disable Device DC 20, Atk +10 melee"
+4. READ-ALOUD is the opening descriptive paragraph of the location — what the GM reads to set the scene. For Oleg's Trading Post it would be the paragraph describing the palisade walls and watchtowers.
 
-SCENE TITLE:
-- Major headings like "OLEG'S TRADING POST", "ARRIVAL AT OLEG'S", "C. TRAP-FILLED GLADE"
-- Landmark names like "Q. RICKETY BRIDGE (LANDMARK)"
+5. FRIENDLY NPCs (no stat block, no CR) go in npcs. Oleg, Svetlana, Bokken, Jhod are npcs. Happs Bydon, Kressle, bandits with stats are monsters.
 
-Return ONLY valid JSON — no markdown, no preamble:
+6. SCENE TITLE is the main heading — "OLEG'S TRADING POST", "ARRIVAL AT OLEG'S", "C. TRAP-FILLED GLADE".
+
+Return ONLY valid JSON with no markdown or preamble:
 {
-  "scene_title": "the main heading or location name on this page, empty string if none",
-  "read_aloud": "the opening descriptive paragraph for the location, written as something the GM reads to players. If multiple locations on the page, use the first/main one.",
-  "gm_notes": "all lettered/numbered location keys and their descriptions, DCs, trap mechanics, tactical info. Preserve the A1/A2/Q format.",
+  "scene_title": "main heading or location name",
+  "read_aloud": "opening descriptive paragraph the GM reads to players",
+  "gm_notes": "ALL lettered room keys with full descriptions (A1, A2, A3 etc), DCs, tactical notes, treasure",
   "npcs": [
     {
       "name": "full name",
       "role": "ally|villain|neutral|quest-giver",
-      "description": "physical description and stat info",
-      "personality": "how they act, what they want",
-      "hp": "hp value as string",
+      "description": "appearance and background",
+      "personality": "how they act",
+      "hp": "",
       "ac": 0,
-      "cr": "CR value as string e.g. CR 1/2"
+      "cr": ""
     }
   ],
   "monsters": [
@@ -1341,23 +1321,13 @@ Return ONLY valid JSON — no markdown, no preamble:
       "name": "name",
       "hp": "hp value",
       "ac": 0,
-      "cr": "CR value",
-      "notes": "type, trigger if trap, key abilities"
+      "cr": "CR value e.g. CR 1/2",
+      "notes": "class, alignment, XP, key attacks or trap trigger/effect"
     }
   ],
   "is_new_scene": true,
   "scene_type": "combat|social|exploration|trap|travel"
-}
-
-EXTRACTION RULES:
-- A page with "ARRIVAL AT OLEG'S" is is_new_scene: true, scene_type: social
-- A page with "TRAP-FILLED GLADE" is is_new_scene: true, scene_type: trap
-- A page with only a map and location keys is is_new_scene: true, scene_type: exploration
-- Happs Bydon and similar bandit leaders are monsters (villains with stat blocks)
-- Bear Trap and similar are monsters (traps with stat blocks)
-- Oleg, Svetlana, Jhod are npcs (named characters without combat stat blocks)
-- If a page has ONLY a map image with no text, return empty strings and empty arrays
-- Never return empty read_aloud if there is any descriptive text on the page"""
+}"""
 
 
 @router.post("/adventure/analyze-page")
