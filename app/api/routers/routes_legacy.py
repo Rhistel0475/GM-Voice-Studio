@@ -2908,6 +2908,27 @@ Chapter or section being extracted: "{chunk_title or 'Full document'}"
 {_ANALYZE_PAGE_PROMPT}"""
 
     try:
+        import pdfplumber, io
+
+        # Extract text from specified page range using pdfplumber
+        extracted_pages = []
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+            total_pages = len(pdf.pages)
+            s = max(0, start_page - 1)
+            e = min(total_pages, end_page if end_page > 0 else total_pages)
+            for page_num in range(s, e):
+                page = pdf.pages[page_num]
+                text = page.extract_text() or ""
+                if text.strip():
+                    extracted_pages.append(f"--- PAGE {page_num + 1} ---\n{text}")
+
+        combined_text = "\n\n".join(extracted_pages)
+
+        if not combined_text.strip():
+            return {"error": "No text could be extracted from the specified pages. The PDF may be image-based or DRM-protected.", "raw": ""}
+
+        logging.info("parse-pdf-chunk: extracted %d chars from %d pages", len(combined_text), len(extracted_pages))
+
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-sonnet-4-20250514",
@@ -2915,20 +2936,7 @@ Chapter or section being extracted: "{chunk_title or 'Full document'}"
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {
-                            "type": "document",
-                            "source": {
-                                "type": "base64",
-                                "media_type": "application/pdf",
-                                "data": pdf_b64,
-                            },
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ],
+                    "content": f"{prompt}\n\nExtracted text:\n{combined_text[:15000]}"
                 }
             ],
         )
