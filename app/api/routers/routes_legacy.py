@@ -2880,7 +2880,6 @@ Chapter or section being extracted: "{chunk_title or 'Full document'}"
     try:
         import pdfplumber, io
 
-        # Extract text from specified page range using pdfplumber
         extracted_pages = []
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             total_pages = len(pdf.pages)
@@ -2888,9 +2887,45 @@ Chapter or section being extracted: "{chunk_title or 'Full document'}"
             e = min(total_pages, end_page if end_page > 0 else total_pages)
             for page_num in range(s, e):
                 page = pdf.pages[page_num]
-                text = page.extract_text() or ""
+                width = page.width
+
+                words = page.extract_words(x_tolerance=3, y_tolerance=3, keep_blank_chars=False)
+                if not words:
+                    continue
+
+                x_positions = sorted(set(round(w['x0'] / 10) * 10 for w in words))
+                mid = width / 2
+
+                left_words = [w for w in words if w['x0'] < mid - 20]
+                right_words = [w for w in words if w['x0'] >= mid - 20]
+
+                def words_to_text(word_list):
+                    if not word_list:
+                        return ""
+                    lines = {}
+                    for w in word_list:
+                        y = round(w['top'] / 3) * 3
+                        if y not in lines:
+                            lines[y] = []
+                        lines[y].append(w)
+                    result = []
+                    for y in sorted(lines.keys()):
+                        line_words = sorted(lines[y], key=lambda w: w['x0'])
+                        result.append(' '.join(w['text'] for w in line_words))
+                    return '\n'.join(result)
+
+                left_text = words_to_text(left_words)
+                right_text = words_to_text(right_words)
+
+                if left_text.strip() and right_text.strip() and len(right_text.strip()) > 100:
+                    text = left_text.strip() + "\n\n" + right_text.strip()
+                elif left_text.strip():
+                    text = left_text.strip()
+                else:
+                    text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
+
                 if text.strip():
-                    extracted_pages.append(f"--- PAGE {page_num + 1} ---\n{text}")
+                    extracted_pages.append(f"--- PAGE {page_num + 1} ---\n{text.strip()}")
 
         combined_text = "\n\n".join(extracted_pages)
 
